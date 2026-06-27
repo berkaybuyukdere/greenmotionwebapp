@@ -1,0 +1,45 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "frontDeskCustomers",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "dedupeKey", "order": "ASCENDING" },
+        { "fieldPath": "submittedAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "frontDeskCustomers",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "handoverAracId", "order": "ASCENDING" },
+        { "fieldPath": "submittedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "frontDeskCustomers",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "franchiseId", "order": "ASCENDING" },
+        { "fieldPath": "submittedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "roleScope.countryCode", "order": "ASCENDING" },
+        { "fieldPath": "role", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "roleScope.countryCode", "order": "ASCENDING" },
+        { "fieldPath": "isActive", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

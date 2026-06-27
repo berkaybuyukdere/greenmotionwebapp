@@ -1,0 +1,1733 @@
+/**
+ * ERPX — Stripe Dashboard design system
+ * Canonical tokens from ERPXDashboard.jsx (lists, typography, spacing, colors).
+ * Sidebar tokens (--erpx-sidebar-*) are app chrome — do not change here for list views.
+ */
+
+:root {
+    --erpx-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Ubuntu, sans-serif;
+    --erpx-font-mono: 'SF Mono', SFMono-Regular, ui-monospace, 'Cascadia Mono', monospace;
+
+    /* Typography scale (ERPXDashboard.jsx) */
+    --erpx-text-page-title: 22px;
+    --erpx-text-page-subtitle: 12.5px;
+    --erpx-text-panel-title: 14px;
+    --erpx-text-tab: 13.5px;
+    --erpx-text-table-head: 11px;
+    --erpx-text-table-cell: 13.5px;
+    --erpx-text-table-cell-sm: 12.5px;
+    --erpx-text-table-date: 12px;
+    --erpx-text-badge: 12px;
+    --erpx-text-filter-chip: 12.5px;
+    --erpx-text-kpi-label: 12px;
+    --erpx-text-kpi-value: 26px;
+    --erpx-text-summary-value: 18px;
+    --erpx-text-customer-name: 13px;
+    --erpx-text-customer-email: 11.5px;
+    --erpx-text-footer: 12.5px;
+
+    /* Spacing (ERPXDashboard.jsx) */
+    --erpx-page-pad-y: 24px;
+    --erpx-page-pad-x: 32px;
+    --erpx-page-max-width: 1200px;
+    --erpx-table-th-pad: 8px 16px;
+    --erpx-table-td-pad: 11px 16px;
+    --erpx-table-td-pad-loose: 12px 16px;
+    --erpx-panel-header-pad: 14px 18px;
+    --erpx-row-divider: #f0f2f5;
+    --erpx-row-hover: #fafbfc;
+
+    /* Brand */
+    --erpx-brand: #635bff;
+    --erpx-brand-dark: #4f46e5;
+    --erpx-brand-light: #eef0ff;
+
+    /* Surfaces */
+    --erpx-canvas: #f6f8fa;
+    --erpx-surface: #ffffff;
+    --erpx-subtle: #f0f2f5;
+    --erpx-muted: #e8ecf0;
+
+    /* Borders */
+    --erpx-border: #e3e8ee;
+    --erpx-border-strong: #c1c9d2;
+
+    /* Text */
+    --erpx-ink: #0a2540;
+    --erpx-ink-secondary: #425466;
+    --erpx-ink-muted: #697386;
+    --erpx-ink-disabled: #a3acba;
+
+    /* Semantic */
+    --erpx-green: #1a9e6a;
+    --erpx-green-bg: #cbffe4;
+    --erpx-green-border: #85efac;
+    --erpx-amber: #b45309;
+    --erpx-amber-bg: #fef3c7;
+    --erpx-amber-border: #fcd34d;
+    --erpx-red: #c0123c;
+    --erpx-red-bg: #ffe4e8;
+    --erpx-red-border: #fca5a5;
+    --erpx-info: #0062d1;
+    --erpx-info-bg: #dbeafe;
+    --erpx-info-border: #93c5fd;
+    --erpx-neutral: #636e7b;
+    --erpx-neutral-bg: #eef0f3;
+    --erpx-neutral-border: #d1d5db;
+
+    /* Sidebar — light: white surface; dark: gray stripe panel */
+    --erpx-sidebar-bg: #ffffff;
+    --erpx-sidebar-text: #425466;
+    --erpx-sidebar-hover: #f6f8fa;
+    --erpx-sidebar-active: #eef0ff;
+    --erpx-sidebar-active-text: #635bff;
+    --erpx-sidebar-divider: #e3e8ee;
+    --erpx-sidebar-label: #697386;
+
+    /* Radius & shadow */
+    --erpx-radius-sm: 4px;
+    --erpx-radius: 6px;
+    --erpx-radius-lg: 8px;
+    --erpx-radius-xl: 12px;
+    --erpx-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+    --erpx-shadow-focus: 0 0 0 3px rgba(99, 91, 255, 0.25);
+
+    /* Legacy aliases (components still use erpx-blue etc.) */
+    --erpx-blue: var(--erpx-brand);
+    --erpx-blue-bg: var(--erpx-brand-light);
+    --erpx-blue-border: #a5b4fc;
+    --erpx-gray-bg: var(--erpx-neutral-bg);
+    --erpx-gray-border: var(--erpx-neutral-border);
+}
+
+.dark {
+    --erpx-canvas: #0c0e12;
+    --erpx-surface: #141820;
+    --erpx-subtle: #1a1f28;
+    --erpx-muted: #252b36;
+    --erpx-border: #2e3440;
+    --erpx-border-strong: #4b5563;
+    --erpx-ink: #f3f4f6;
+    --erpx-ink-secondary: #d1d5db;
+    --erpx-ink-muted: #9ca3af;
+    --erpx-ink-disabled: #6b7280;
+    --erpx-brand: #818cf8;
+    --erpx-brand-dark: #6366f1;
+    --erpx-brand-light: rgba(99, 102, 241, 0.15);
+    --erpx-blue: var(--erpx-brand);
+    --erpx-blue-bg: var(--erpx-brand-light);
+    --erpx-green: #34d399;
+    --erpx-green-bg: rgba(52, 211, 153, 0.12);
+    --erpx-red: #f87171;
+    --erpx-red-bg: rgba(248, 113, 113, 0.12);
+    --erpx-amber: #fbbf24;
+    --erpx-amber-bg: rgba(251, 191, 36, 0.12);
+    --erpx-sidebar-bg: #1a1f28;
+    --erpx-sidebar-text: #9ca3af;
+    --erpx-sidebar-hover: #252b36;
+    --erpx-sidebar-active: rgba(99, 102, 241, 0.18);
+    --erpx-sidebar-active-text: #a5b4fc;
+    --erpx-sidebar-divider: #2e3440;
+    --erpx-sidebar-label: #6b7280;
+}
+
+/* ─── Buttons (Stripe .btn) ─── */
+.gm-btn {
+    font-family: var(--erpx-font);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-weight: 600;
+    border-radius: var(--erpx-radius);
+    border: 1px solid transparent;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+    text-decoration: none;
+}
+
+.gm-btn:active:not(:disabled) {
+    transform: translateY(1px);
+}
+
+.gm-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.gm-btn-sm {
+    min-height: auto;
+    padding: 4px 10px;
+    font-size: 12px;
+    line-height: 1.25rem;
+    gap: 4px;
+}
+
+.gm-btn-md {
+    min-height: auto;
+    padding: 7px 14px;
+    font-size: 13px;
+    line-height: 1.25rem;
+    gap: 6px;
+}
+
+.gm-btn-lg {
+    min-height: 2.25rem;
+    padding: 8px 16px;
+    font-size: 14px;
+}
+
+/* Primary — solid brand */
+.gm-btn-primary,
+.gm-btn-primary.gm-btn-solid {
+    background-color: var(--erpx-brand);
+    border-color: var(--erpx-brand);
+    color: #ffffff;
+    box-shadow: var(--erpx-shadow-sm);
+}
+
+.gm-btn-primary:hover:not(:disabled),
+.gm-btn-primary.gm-btn-solid:hover:not(:disabled) {
+    background-color: var(--erpx-brand-dark);
+    border-color: var(--erpx-brand-dark);
+    color: #ffffff;
+}
+
+.gm-btn-primary:focus-visible,
+.gm-btn-primary.gm-btn-solid:focus-visible {
+    outline: none;
+    box-shadow: var(--erpx-shadow-focus);
+}
+
+/* Secondary — white outline */
+.gm-btn-secondary {
+    background-color: var(--erpx-surface);
+    border-color: var(--erpx-border);
+    color: var(--erpx-ink);
+    font-weight: 500;
+    box-shadow: none;
+}
+
+.gm-btn-secondary:hover:not(:disabled) {
+    background-color: var(--erpx-subtle);
+    border-color: var(--erpx-border-strong);
+}
+
+.gm-btn-secondary svg {
+    color: var(--erpx-ink-muted);
+}
+
+/* Danger */
+.gm-btn-danger {
+    background-color: #df1b41;
+    border-color: #df1b41;
+    color: #ffffff;
+}
+
+.gm-btn-danger:hover:not(:disabled) {
+    background-color: var(--erpx-red);
+    border-color: var(--erpx-red);
+}
+
+/* Success tint */
+.gm-btn-success {
+    background-color: var(--erpx-green-bg);
+    border-color: var(--erpx-green-border);
+    color: var(--erpx-green);
+    font-weight: 500;
+}
+
+.gm-btn-success:hover:not(:disabled) {
+    background-color: #b8f5d4;
+}
+
+/* Ghost */
+.gm-btn-ghost {
+    background-color: transparent;
+    border-color: transparent;
+    color: var(--erpx-ink-secondary);
+    box-shadow: none;
+    font-weight: 500;
+}
+
+.gm-btn-ghost:hover:not(:disabled) {
+    background-color: var(--erpx-subtle);
+    border-color: var(--erpx-border);
+    color: var(--erpx-ink);
+}
+
+/* Icon row actions */
+.gm-btn-icon {
+    min-height: 1.75rem;
+    padding: 0 0.5rem;
+    font-size: 12px;
+    font-weight: 500;
+    background-color: var(--erpx-surface);
+    border-color: var(--erpx-border);
+    color: var(--erpx-ink-secondary);
+    box-shadow: none;
+}
+
+.gm-btn-icon:hover:not(:disabled) {
+    background-color: var(--erpx-subtle);
+    color: var(--erpx-ink);
+}
+
+.gm-btn-icon-danger {
+    color: var(--erpx-red);
+    background-color: var(--erpx-red-bg);
+    border-color: var(--erpx-red-border);
+}
+
+/* Filter chips — ERPXDashboard FilterChip */
+.gm-filter-chip,
+.gm-filter-tab {
+    font-family: var(--erpx-font);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    min-height: auto;
+    padding: 4px 11px;
+    font-size: var(--erpx-text-filter-chip);
+    font-weight: 500;
+    line-height: 1.2;
+    border-radius: var(--erpx-radius);
+    border: 1px solid var(--erpx-border);
+    background: var(--erpx-surface);
+    color: var(--erpx-ink-secondary);
+    transition: all 0.14s ease;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.gm-filter-chip .gm-filter-dot,
+.gm-filter-tab .gm-filter-dot {
+    margin: 0;
+    flex-shrink: 0;
+    align-self: center;
+}
+
+.gm-filter-chip:hover,
+.gm-filter-tab:hover {
+    border-color: var(--erpx-border-strong);
+    background: var(--erpx-subtle);
+}
+
+.gm-filter-chip-active,
+.gm-filter-tab-active {
+    background: var(--erpx-brand-light);
+    border-color: var(--erpx-brand);
+    color: var(--erpx-brand);
+    font-weight: 600;
+}
+
+/* Badges */
+.gm-badge {
+    font-family: var(--erpx-font);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.4;
+    border-radius: var(--erpx-radius-sm);
+    border: 1px solid transparent;
+    white-space: nowrap;
+}
+
+.gm-badge-success {
+    color: var(--erpx-green);
+    background: var(--erpx-green-bg);
+    border-color: var(--erpx-green-border);
+}
+
+.gm-badge-warning {
+    color: var(--erpx-amber);
+    background: var(--erpx-amber-bg);
+    border-color: var(--erpx-amber-border);
+}
+
+.gm-badge-neutral {
+    color: var(--erpx-neutral);
+    background: var(--erpx-neutral-bg);
+    border-color: var(--erpx-neutral-border);
+}
+
+.gm-badge-info {
+    color: var(--erpx-info);
+    background: var(--erpx-info-bg);
+    border-color: var(--erpx-info-border);
+}
+
+.gm-badge-danger,
+.gm-badge-failed {
+    color: var(--erpx-red);
+    background: var(--erpx-red-bg);
+    border-color: var(--erpx-red-border);
+}
+
+.gm-badge-purple {
+    color: var(--erpx-brand);
+    background: var(--erpx-brand-light);
+    border-color: #a5b4fc;
+}
+
+.gm-badge-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: currentColor;
+}
+
+.gm-badge-success .gm-badge-dot { background: var(--erpx-green); }
+.gm-badge-warning .gm-badge-dot { background: var(--erpx-amber); }
+.gm-badge-danger .gm-badge-dot,
+.gm-badge-failed .gm-badge-dot { background: var(--erpx-red); }
+.gm-badge-info .gm-badge-dot { background: var(--erpx-info); }
+.gm-badge-neutral .gm-badge-dot { background: var(--erpx-neutral); }
+.gm-badge-purple .gm-badge-dot { background: var(--erpx-brand); }
+
+/* Filter row — status chips strip (ERPXDashboard TransactionsView) */
+.gm-filter-row {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.gm-filter-strip {
+    display: flex;
+    gap: 5px;
+    padding: 10px 16px;
+    background: var(--erpx-canvas);
+    border-bottom: 1px solid var(--erpx-border);
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.gm-filter-strip + .gm-toolbar,
+.gm-filter-strip + .gm-table-wrap {
+    margin-top: 0;
+}
+
+.gm-filter-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+.gm-filter-count {
+    margin-left: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--erpx-ink-muted);
+}
+
+.gm-filter-tab-active .gm-filter-count {
+    color: var(--erpx-brand);
+}
+
+/* Toolbar — ERPXDashboard column filters row */
+.gm-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 16px;
+    border-bottom: 1px solid var(--erpx-border);
+    flex-wrap: wrap;
+    background: var(--erpx-surface);
+}
+
+.gm-toolbar-group {
+    display: flex;
+    gap: 8px;
+    flex: 1;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.gm-toolbar-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+    flex-wrap: wrap;
+}
+
+.gm-filter-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border: 1px solid var(--erpx-border);
+    border-radius: var(--erpx-radius);
+    font-size: var(--erpx-text-filter-chip);
+    font-weight: 500;
+    color: var(--erpx-ink-secondary);
+    background: var(--erpx-surface);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    font-family: var(--erpx-font);
+}
+
+.gm-filter-btn:hover {
+    border-color: var(--erpx-border-strong);
+    background: var(--erpx-subtle);
+}
+
+.gm-filter-btn-active {
+    background: var(--erpx-brand-light);
+    border-color: var(--erpx-brand);
+    color: var(--erpx-brand);
+}
+
+/* Res kodu primary column */
+.gm-res-code-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.gm-res-code {
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: -0.01em;
+    color: var(--erpx-ink);
+    font-variant-numeric: tabular-nums;
+}
+
+.gm-res-code-sub {
+    font-family: var(--erpx-font-mono);
+    font-size: 11.5px;
+    color: var(--erpx-ink-muted);
+    font-weight: 500;
+}
+
+/* Customer cell */
+.gm-customer-cell {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+}
+
+.gm-avatar {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10.5px;
+    font-weight: 700;
+    flex-shrink: 0;
+    text-transform: uppercase;
+    line-height: 1;
+}
+
+.gm-customer-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.gm-customer-name {
+    font-size: var(--erpx-text-customer-name);
+    font-weight: 500;
+    color: var(--erpx-ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.35;
+}
+
+.gm-customer-email {
+    font-size: var(--erpx-text-customer-email);
+    color: var(--erpx-ink-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.35;
+}
+
+/* Icon chips (photos, actions) */
+.gm-icon-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-width: 34px;
+    padding: 2px 8px;
+    border-radius: var(--erpx-radius-sm);
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid transparent;
+    font-family: var(--erpx-font);
+}
+
+button.gm-icon-chip {
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.gm-icon-chip-info {
+    background: var(--erpx-info-bg);
+    color: var(--erpx-info);
+    border-color: var(--erpx-info-border);
+}
+
+.gm-icon-chip-success {
+    background: var(--erpx-green-bg);
+    color: var(--erpx-green);
+    border-color: var(--erpx-green-border);
+}
+
+.gm-icon-chip-warning {
+    background: var(--erpx-amber-bg);
+    color: var(--erpx-amber);
+    border-color: var(--erpx-amber-border);
+}
+
+.gm-icon-chip-purple {
+    background: var(--erpx-brand-light);
+    color: var(--erpx-brand);
+    border-color: #a5b4fc;
+}
+
+.gm-row-action {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--erpx-radius-sm);
+    color: var(--erpx-ink-muted);
+    cursor: pointer;
+    transition: background 0.1s ease, color 0.1s ease;
+    border: none;
+    background: transparent;
+    padding: 0;
+}
+
+.gm-row-action:hover {
+    background: var(--erpx-subtle);
+    color: var(--erpx-ink-secondary);
+}
+
+.gm-table-footer {
+    padding: 11px 16px;
+    border-top: 1px solid var(--erpx-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: var(--erpx-text-footer);
+    color: var(--erpx-ink-muted);
+    background: var(--erpx-surface);
+}
+
+.gm-table-footer strong {
+    color: var(--erpx-ink-secondary);
+    font-weight: 500;
+}
+
+.gm-table-footer-meta {
+    font-size: var(--erpx-text-footer);
+}
+
+.gm-table-group-row td {
+    background: var(--erpx-canvas) !important;
+    padding: 8px 16px !important;
+    cursor: pointer;
+}
+
+.gm-table-group-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--erpx-ink-muted);
+}
+
+.gm-tabs-counted .gm-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.gm-tab-count {
+    background: var(--erpx-subtle);
+    color: var(--erpx-ink-muted);
+    border-radius: 10px;
+    padding: 1px 6px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.gm-tab-active .gm-tab-count {
+    background: var(--erpx-brand-light);
+    color: var(--erpx-brand);
+}
+
+.gm-summary-paid .gm-summary-value { color: var(--erpx-green); }
+.gm-summary-outstanding .gm-summary-value { color: var(--erpx-amber); }
+.gm-summary-overdue .gm-summary-value { color: #ea580c; }
+.gm-summary-count {
+    font-size: 11.5px;
+    color: var(--erpx-ink-muted);
+    margin-top: 2px;
+}
+
+.gm-table-plate {
+    font-family: var(--erpx-font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--erpx-ink-secondary);
+}
+
+.gm-table-date {
+    color: var(--erpx-ink-muted);
+    font-size: var(--erpx-text-table-date);
+    white-space: nowrap;
+}
+
+.gm-table-desc {
+    color: var(--erpx-ink-secondary);
+    font-size: var(--erpx-text-table-cell-sm);
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Tables */
+.gm-table-wrap {
+    background: var(--erpx-surface);
+    border: 1px solid var(--erpx-border);
+    border-radius: var(--erpx-radius-lg);
+    overflow: hidden;
+    box-shadow: none;
+}
+
+/* Full list block — ERPXDashboard TransactionsView / AccountingView */
+.gm-list-panel {
+    overflow: hidden;
+}
+
+.gm-list-panel > .gm-filter-strip:first-child,
+.gm-list-panel > .gm-tabs:first-child {
+    border-top: none;
+}
+
+.gm-list-panel > .gm-table {
+    border-radius: 0;
+}
+
+.gm-list-panel > .gm-toolbar + .gm-table,
+.gm-list-panel > .gm-filter-strip + .gm-table {
+    border-top: none;
+}
+
+.gm-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--erpx-font);
+    font-size: var(--erpx-text-table-cell);
+}
+
+.gm-table thead {
+    background: var(--erpx-canvas);
+    border-bottom: 1px solid var(--erpx-border);
+}
+
+.gm-table thead th {
+    padding: var(--erpx-table-th-pad);
+    text-align: left;
+    font-size: var(--erpx-text-table-head);
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--erpx-ink-muted);
+    white-space: nowrap;
+}
+
+.gm-table tbody tr {
+    border-bottom: 1px solid var(--erpx-row-divider);
+    transition: background 0.1s ease;
+    cursor: pointer;
+}
+
+.gm-table tbody tr:last-child {
+    border-bottom: none;
+}
+
+.gm-table tbody tr:hover {
+    background: var(--erpx-row-hover);
+}
+
+.dark .gm-table tbody tr {
+    border-bottom-color: var(--erpx-border);
+}
+
+.dark .gm-table tbody tr:hover {
+    background: var(--erpx-subtle);
+}
+
+.gm-table tbody td {
+    padding: var(--erpx-table-td-pad);
+    color: var(--erpx-ink);
+    vertical-align: middle;
+}
+
+.gm-table tbody td.gm-table-muted {
+    color: var(--erpx-ink-secondary);
+    font-size: var(--erpx-text-table-cell-sm);
+}
+
+.gm-table tbody td.gm-table-cell-loose {
+    padding: var(--erpx-table-td-pad-loose);
+}
+
+.gm-table-link {
+    color: var(--erpx-brand);
+    font-weight: 500;
+}
+
+.gm-table-link:hover {
+    text-decoration: underline;
+}
+
+.gm-table .gm-table-mono {
+    font-family: var(--erpx-font-mono);
+    font-size: 12px;
+    color: var(--erpx-ink-secondary);
+}
+
+.gm-table .gm-table-amount {
+    font-size: var(--erpx-text-table-cell);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Tabs — ERPXDashboard TabBar */
+.gm-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--erpx-border);
+    margin-bottom: 0;
+    gap: 0;
+}
+
+.gm-tabs-inset {
+    padding: 0 16px;
+}
+
+.gm-tab {
+    padding: 9px 16px;
+    font-size: var(--erpx-text-tab);
+    font-weight: 500;
+    color: var(--erpx-ink-muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: color 0.14s ease;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+    font-family: var(--erpx-font);
+}
+
+.gm-tab:hover {
+    color: var(--erpx-ink);
+}
+
+.gm-tab-active {
+    color: var(--erpx-ink);
+    border-bottom-color: var(--erpx-ink);
+    font-weight: 600;
+}
+
+/* Dashboard stat cards — ERPXDashboard KpiCard */
+.gm-dash-stat {
+    font-family: var(--erpx-font);
+    display: flex;
+    flex-direction: column;
+    padding: 18px 22px;
+    border-radius: var(--erpx-radius-lg);
+    border: 1px solid var(--erpx-border);
+    background: var(--erpx-surface);
+    cursor: default;
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.gm-dash-stat:hover {
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+
+.gm-dash-stat-title {
+    font-size: var(--erpx-text-kpi-label);
+    font-weight: 500;
+    color: var(--erpx-ink-muted);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.gm-dash-stat-value {
+    font-size: var(--erpx-text-kpi-value);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+    color: var(--erpx-ink);
+    font-variant-numeric: tabular-nums;
+    margin-bottom: 6px;
+}
+
+.gm-dash-card {
+    font-family: var(--erpx-font);
+    text-align: left;
+    width: 100%;
+    padding: 20px 24px;
+    border-radius: var(--erpx-radius-lg);
+    border: 1px solid var(--erpx-border);
+    background: var(--erpx-surface);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.gm-dash-card:hover {
+    border-color: var(--erpx-border-strong);
+    box-shadow: var(--erpx-shadow-sm);
+}
+
+.gm-dash-card-selected {
+    border-color: var(--erpx-brand);
+    box-shadow: 0 0 0 1px var(--erpx-brand), var(--erpx-shadow-sm);
+}
+
+.gm-dash-card-title {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--erpx-ink-muted);
+}
+
+.gm-dash-card-value {
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--erpx-ink);
+    margin-top: 6px;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.15;
+}
+
+.gm-dash-card-delta {
+    font-size: 12px;
+    font-weight: 600;
+    margin-top: 4px;
+}
+
+.gm-dash-card-chart {
+    margin-top: 1rem;
+    min-height: 4rem;
+}
+
+.gm-dash-card-footer {
+    margin-top: 0.5rem;
+    font-size: 11px;
+    color: var(--erpx-ink-muted);
+}
+
+/* Panels & list rows */
+.gm-panel {
+    font-family: var(--erpx-font);
+    background: var(--erpx-surface);
+    border: 1px solid var(--erpx-border);
+    border-radius: var(--erpx-radius-lg);
+    overflow: hidden;
+}
+
+.gm-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--erpx-panel-header-pad);
+    border-bottom: 1px solid var(--erpx-border);
+}
+
+.gm-panel-title {
+    font-size: var(--erpx-text-panel-title);
+    font-weight: 600;
+    color: var(--erpx-ink);
+}
+
+.gm-panel-body {
+    padding: 16px;
+}
+
+.gm-list-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: var(--erpx-table-td-pad);
+    border-bottom: 1px solid var(--erpx-row-divider);
+    transition: background 0.1s ease;
+}
+
+.gm-list-row:last-child {
+    border-bottom: none;
+}
+
+.gm-list-row:hover {
+    background: var(--erpx-row-hover);
+}
+
+.dark .gm-list-row {
+    border-bottom-color: var(--erpx-border);
+}
+
+.dark .gm-list-row:hover {
+    background: var(--erpx-subtle);
+}
+
+/* Main content shell (App.js wrapper) — padding only, full width lists */
+.erpx-main-shell {
+    padding: var(--erpx-page-pad-y) var(--erpx-page-pad-x);
+    max-width: 100%;
+    width: 100%;
+    min-width: 0;
+    font-family: var(--erpx-font);
+}
+
+/* Avoid double padding when a view root also uses .erpx-page */
+.erpx-main-shell .erpx-page {
+    padding: 0;
+}
+
+/* Page transition stage — exiting view must not reserve layout height (Framer popLayout) */
+.erpx-view-stage {
+    position: relative;
+    width: 100%;
+    min-height: 0;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.erpx-view-layer {
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    flex: 0 0 auto;
+}
+
+/* Full-height views (Excel, mail) — fill main column */
+.erpx-view-layer-fill {
+    flex: 1 1 auto;
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Page layout — ERPXDashboard typography; default full width for list views */
+.erpx-page {
+    padding: var(--erpx-page-pad-y) var(--erpx-page-pad-x);
+    max-width: 100%;
+    width: 100%;
+    min-width: 0;
+    font-family: var(--erpx-font);
+}
+
+.erpx-page-constrained {
+    max-width: var(--erpx-page-max-width);
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.erpx-page-flush {
+    padding-left: 0;
+    padding-right: 0;
+}
+
+@media (max-width: 768px) {
+    .erpx-page {
+        padding: 16px;
+    }
+}
+
+.erpx-page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 22px;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.erpx-page-title {
+    font-size: var(--erpx-text-page-title);
+    font-weight: 700;
+    color: var(--erpx-ink);
+    letter-spacing: -0.025em;
+    line-height: 1.3;
+}
+
+.erpx-page-subtitle {
+    font-size: var(--erpx-text-page-subtitle);
+    color: var(--erpx-ink-muted);
+    margin-top: 2px;
+    line-height: 1.4;
+}
+
+/* Summary row (accounting KPIs) */
+.gm-summary-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+/* Stripe dashboard metric row (Payment success rate style) */
+.gm-stripe-metric-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.gm-stripe-metric-tile {
+    font-family: Helvetica, Arial, sans-serif;
+    flex: 1 1 200px;
+    min-width: min(100%, 200px);
+    max-width: 100%;
+    text-align: left;
+    padding: 18px 20px;
+    border-radius: var(--erpx-radius-lg);
+    border: 1px solid var(--erpx-border);
+    background: var(--erpx-surface);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.gm-stripe-metric-tile:hover {
+    border-color: var(--erpx-border-strong);
+    box-shadow: var(--erpx-shadow-sm);
+}
+
+.gm-stripe-metric-tile-selected {
+    border-color: var(--erpx-brand);
+    box-shadow: 0 0 0 1px var(--erpx-brand), var(--erpx-shadow-sm);
+}
+
+.gm-stripe-metric-tile-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--erpx-ink-muted);
+    line-height: 1.35;
+}
+
+.gm-stripe-metric-tile-body {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.gm-stripe-metric-tile-value {
+    font-size: var(--erpx-text-kpi-value);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    color: var(--erpx-ink);
+}
+
+.gm-stripe-metric-tile-delta {
+    font-size: 12px;
+    font-weight: 600;
+    padding-bottom: 4px;
+    white-space: nowrap;
+}
+
+.gm-stripe-metric-tile-count {
+    font-size: 11.5px;
+    color: var(--erpx-ink-muted);
+}
+
+/* Office Operations — legacy grid alias */
+.gm-office-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.gm-office-metric {
+    font-family: Helvetica, Arial, sans-serif;
+    text-align: left;
+    width: 100%;
+    min-width: 0;
+    padding: 14px 16px;
+    border-radius: var(--erpx-radius-lg);
+    border: 1px solid var(--erpx-border);
+    background: var(--erpx-surface);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.gm-office-metric:hover {
+    border-color: var(--erpx-border-strong);
+    box-shadow: var(--erpx-shadow-sm);
+}
+
+.gm-office-metric-selected {
+    border-color: var(--erpx-brand);
+    box-shadow: 0 0 0 1px var(--erpx-brand), var(--erpx-shadow-sm);
+    background: var(--erpx-brand-light);
+}
+
+.gm-office-metric-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--erpx-ink-muted);
+    line-height: 1.35;
+    min-width: 0;
+}
+
+.gm-office-metric-label > span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gm-office-metric-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--erpx-ink-muted);
+}
+
+.gm-office-metric,
+.gm-office-metric-label,
+.gm-office-metric-value,
+.gm-office-metric-count,
+.gm-office-metric-delta {
+    font-family: Helvetica, Arial, sans-serif;
+}
+
+.gm-office-metric-value {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+    color: var(--erpx-ink);
+}
+
+.gm-office-metric-count {
+    font-size: 11.5px;
+    color: var(--erpx-ink-muted);
+    margin-top: 2px;
+}
+
+.gm-office-metric-delta {
+    font-size: 11.5px;
+    font-weight: 600;
+}
+
+.gm-office-metric-delta-positive {
+    color: var(--erpx-green);
+}
+
+.gm-office-metric-delta-negative {
+    color: var(--erpx-red);
+}
+
+.gm-office-metric-delta-neutral {
+    color: var(--erpx-ink-muted);
+}
+
+.gm-office-metric-tone-success .gm-office-metric-value {
+    color: var(--erpx-green);
+}
+
+.gm-office-metric-tone-warning .gm-office-metric-value {
+    color: var(--erpx-amber);
+}
+
+.gm-office-metric-tone-danger .gm-office-metric-value {
+    color: var(--erpx-red);
+}
+
+.gm-office-metric-tone-info .gm-office-metric-value {
+    color: var(--erpx-info);
+}
+
+.gm-office-metric-tone-purple .gm-office-metric-value {
+    color: var(--erpx-brand);
+}
+
+/* Office operation list rows */
+.gm-op-list {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--erpx-border);
+    border-radius: var(--erpx-radius-lg);
+    overflow: hidden;
+    background: var(--erpx-surface);
+}
+
+.gm-op-item {
+    border-bottom: 1px solid #f0f2f5;
+}
+
+.gm-op-item:last-child {
+    border-bottom: none;
+}
+
+.dark .gm-op-item {
+    border-bottom-color: var(--erpx-border);
+}
+
+.gm-op-row-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    cursor: pointer;
+    transition: background 0.1s ease;
+    outline: none;
+}
+
+.gm-op-row-header:hover {
+    background: #fafbfc;
+}
+
+.dark .gm-op-row-header:hover {
+    background: var(--erpx-subtle);
+}
+
+.gm-op-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--erpx-radius);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    border: 1px solid var(--erpx-border);
+    background: var(--erpx-canvas);
+    color: var(--erpx-ink-secondary);
+}
+
+.gm-op-icon-info {
+    background: var(--erpx-info-bg);
+    color: var(--erpx-info);
+    border-color: var(--erpx-info-border);
+}
+
+.gm-op-icon-success {
+    background: var(--erpx-green-bg);
+    color: var(--erpx-green);
+    border-color: var(--erpx-green-border);
+}
+
+.gm-op-icon-warning {
+    background: var(--erpx-amber-bg);
+    color: var(--erpx-amber);
+    border-color: var(--erpx-amber-border);
+}
+
+.gm-op-icon-danger {
+    background: var(--erpx-red-bg);
+    color: var(--erpx-red);
+    border-color: var(--erpx-red-border);
+}
+
+.gm-op-icon-purple {
+    background: var(--erpx-brand-light);
+    color: var(--erpx-brand);
+    border-color: #a5b4fc;
+}
+
+.gm-op-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.gm-op-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+}
+
+.gm-op-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--erpx-ink);
+}
+
+.gm-op-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    font-size: 12px;
+    color: var(--erpx-ink-muted);
+}
+
+.gm-op-meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.gm-op-chevron {
+    flex-shrink: 0;
+    color: var(--erpx-ink-muted);
+    transition: transform 0.2s ease;
+}
+
+.gm-op-chevron-open {
+    transform: rotate(180deg);
+}
+
+.gm-op-row-body {
+    padding: 0 16px 14px 64px;
+    border-top: 1px solid #f0f2f5;
+    background: var(--erpx-canvas);
+}
+
+.dark .gm-op-row-body {
+    border-top-color: var(--erpx-border);
+    background: var(--erpx-subtle);
+}
+
+.gm-summary-card {
+    background: var(--erpx-surface);
+    border: 1px solid var(--erpx-border);
+    border-radius: var(--erpx-radius-lg);
+    padding: 13px 16px;
+}
+
+.gm-summary-card .gm-summary-label {
+    font-size: 11px;
+    color: var(--erpx-ink-muted);
+    font-weight: 500;
+    margin-bottom: 6px;
+}
+
+.gm-summary-card .gm-summary-value {
+    font-size: var(--erpx-text-summary-value);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+    color: var(--erpx-ink);
+}
+
+/* Search box */
+.gm-search-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    min-height: 36px;
+    min-width: 280px;
+    flex: 1 1 280px;
+    max-width: 420px;
+    background: var(--erpx-surface);
+    border: 1px solid var(--erpx-border);
+    border-radius: var(--erpx-radius);
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.gm-toolbar-date {
+    min-width: 11rem;
+    flex-shrink: 0;
+}
+
+.gm-table th.gm-table-actions-col,
+.gm-table td.gm-table-actions-col {
+    width: 44px;
+    padding-left: 8px !important;
+    padding-right: 12px !important;
+    text-align: right;
+}
+
+/* Shuttle day group header stats */
+.gm-shuttle-day-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px 24px;
+}
+
+.gm-shuttle-day-title {
+    flex: 1 1 200px;
+    min-width: 0;
+}
+
+.gm-shuttle-day-stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(72px, 1fr));
+    gap: 16px 24px;
+    flex-shrink: 0;
+}
+
+.gm-shuttle-day-stat-label {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--erpx-ink-muted);
+    margin-bottom: 2px;
+    white-space: nowrap;
+}
+
+.gm-shuttle-day-stat-value {
+    font-size: 15px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+}
+
+.gm-customer-cell-icon {
+    color: var(--erpx-ink-muted);
+    flex-shrink: 0;
+}
+
+.gm-search-box:focus-within {
+    border-color: var(--erpx-brand);
+    box-shadow: 0 0 0 3px rgba(99, 91, 255, 0.12);
+}
+
+.gm-search-box input {
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: 13px;
+    color: var(--erpx-ink);
+    width: 100%;
+    font-family: var(--erpx-font);
+}
+
+.gm-search-box input::placeholder {
+    color: var(--erpx-ink-disabled);
+}
+
+/* Segmented */
+.gm-segmented {
+    display: flex;
+    gap: 4px;
+    padding: 2px;
+    border-radius: var(--erpx-radius);
+    border: 1px solid var(--erpx-border);
+    background: var(--erpx-canvas);
+}
+
+.gm-segmented-item {
+    flex: 1;
+    min-height: 1.625rem;
+    padding: 0 8px;
+    font-size: 12px;
+    font-weight: 500;
+    border-radius: 4px;
+    border: none;
+    background: transparent;
+    color: var(--erpx-ink-secondary);
+    cursor: pointer;
+}
+
+.gm-segmented-item:hover {
+    background: var(--erpx-surface);
+}
+
+.gm-segmented-item-active {
+    background: var(--erpx-brand-light);
+    color: var(--erpx-brand);
+    font-weight: 600;
+}
+
+.gm-metric-value {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--erpx-ink);
+    font-variant-numeric: tabular-nums;
+}
+
+.gm-price-value {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+
+/* Card alias (stat tiles, report blocks) */
+.gm-card {
+    font-family: var(--erpx-font);
+    background: var(--erpx-surface);
+    border: 1px solid var(--erpx-border);
+    border-radius: var(--erpx-radius-lg);
+}
+
+/* Form fields — Stripe input spec */
+.gm-field {
+    font-family: var(--erpx-font);
+    width: 100%;
+    min-height: 36px;
+    padding: 0 12px;
+    background: var(--erpx-surface);
+    border: 1px solid #e3e8ee;
+    border-radius: var(--erpx-radius);
+    font-size: 14px;
+    color: var(--erpx-ink);
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.gm-field::placeholder {
+    color: var(--erpx-ink-disabled);
+}
+
+.gm-field:focus {
+    border-color: #635bff;
+    box-shadow: 0 0 0 3px rgba(99, 91, 255, 0.15);
+}
+
+.gm-field:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+select.gm-field {
+    appearance: none;
+    padding-right: 28px;
+    cursor: pointer;
+}
+
+.gm-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--erpx-ink-secondary);
+    margin-bottom: 4px;
+}
+
+.erpx-dash-grid {
+    display: grid;
+    gap: 12px;
+}
+
+/* Main content auto-table styling */
+.erpx-main {
+    background: var(--erpx-canvas);
+    color: var(--erpx-ink);
+    font-family: var(--erpx-font);
+}
+
+.erpx-main table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--erpx-font);
+    font-size: 13.5px;
+}
+
+.erpx-main table thead {
+    background: var(--erpx-canvas);
+    border-bottom: 1px solid var(--erpx-border);
+}
+
+.erpx-main table thead th {
+    padding: 9px 16px !important;
+    font-size: 11.5px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--erpx-ink-muted) !important;
+    background: var(--erpx-canvas) !important;
+    border-bottom: 1px solid var(--erpx-border) !important;
+}
+
+.erpx-main table tbody tr {
+    border-bottom: 1px solid #f0f2f5;
+    transition: background 0.1s ease;
+}
+
+.erpx-main table tbody tr:hover {
+    background: #fafbfc !important;
+}
+
+.dark .erpx-main table tbody tr:hover {
+    background: var(--erpx-subtle) !important;
+}
+
+.erpx-main table tbody td {
+    padding: 12px 16px !important;
+    color: var(--erpx-ink);
+    font-size: 13.5px !important;
+    vertical-align: middle;
+}
+
+.erpx-main .bg-gradient-to-r {
+    background: var(--erpx-canvas) !important;
+}
+
+.erpx-main button:not([class*='gm-btn']):not([class*='gm-nav']):not([class*='rounded-full']):not(.gm-filter-tab):not(.gm-tab) {
+    font-family: var(--erpx-font);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: var(--erpx-radius);
+    border: 1px solid var(--erpx-border);
+    background: var(--erpx-surface);
+    color: var(--erpx-ink);
+    transition: all 0.15s ease;
+}
+
+.erpx-main button:not([class*='gm-btn']):not([class*='gm-nav']):not([class*='rounded-full']):hover {
+    background: var(--erpx-subtle);
+    border-color: var(--erpx-border-strong);
+}
+
+/* Stripe inputs in main */
+.erpx-main input[type='text'],
+.erpx-main input[type='email'],
+.erpx-main input[type='search'],
+.erpx-main input[type='number'],
+.erpx-main input[type='date'],
+.erpx-main select,
+.erpx-main textarea {
+    font-family: var(--erpx-font);
+    border-color: var(--erpx-border);
+    border-radius: var(--erpx-radius);
+    color: var(--erpx-ink);
+}
+
+.erpx-main input:focus,
+.erpx-main select:focus,
+.erpx-main textarea:focus {
+    border-color: var(--erpx-brand);
+    box-shadow: 0 0 0 3px rgba(99, 91, 255, 0.15);
+    outline: none;
+}

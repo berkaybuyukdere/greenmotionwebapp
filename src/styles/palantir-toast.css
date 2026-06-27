@@ -1,0 +1,151 @@
+.pal-toast-stack {
+    position: fixed;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10050;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    pointer-events: none;
+    width: min(480px, calc(100vw - 24px));
+}
+
+.pal-toast-stack > * {
+    pointer-events: auto;
+}
+
+.pal-toast {
+    position: relative;
+    width: 100%;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: start;
+    gap: 12px;
+    padding: 11px 14px 11px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--erpx-border);
+    background: var(--erpx-surface);
+    box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.04),
+        0 16px 40px -18px rgba(0, 0, 0, 0.45);
+    overflow: hidden;
+}
+
+.pal-toast::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--pal-toast-accent, var(--erpx-brand));
+}
+
+.pal-toast--success {
+    --pal-toast-accent: var(--erpx-green);
+}
+
+.pal-toast--error {
+    --pal-toast-accent: var(--erpx-red);
+}
+
+.pal-toast--warning {
+    --pal-toast-accent: var(--erpx-amber);
+}
+
+.pal-toast--info {
+    --pal-toast-accent: var(--erpx-brand);
+}
+
+.pal-toast--export {
+    --pal-toast-accent: var(--erpx-brand);
+}
+
+.pal-toast-icon {
+    margin-top: 1px;
+    color: var(--pal-toast-accent, var(--erpx-brand));
+    flex-shrink: 0;
+}
+
+.pal-toast-body {
+    min-width: 0;
+}
+
+.pal-toast-kicker {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--erpx-ink-muted);
+    margin-bottom: 2px;
+}
+
+.pal-toast-message {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--erpx-ink);
+}
+
+.pal-toast-detail {
+    margin-top: 3px;
+    font-size: 11px;
+    line-height: 1.35;
+    color: var(--erpx-ink-secondary);
+    font-family: var(--erpx-font-mono, ui-monospace, monospace);
+    word-break: break-all;
+}
+
+.pal-toast-close {
+    margin-top: 1px;
+    padding: 2px;
+    border: none;
+    background: transparent;
+    color: var(--erpx-ink-muted);
+    cursor: pointer;
+    border-radius: 4px;
+    transition: color 0.15s, background 0.15s;
+}
+
+.pal-toast-close:hover {
+    color: var(--erpx-ink);
+    background: var(--erpx-muted);
+}
+
+.pal-pdf-cancel-row {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--erpx-border);
+}
+
+.pal-pdf-cancel-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--erpx-ink-secondary);
+    background: transparent;
+    border: 1px solid var(--erpx-border);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.pal-pdf-cancel-btn:hover {
+    color: var(--erpx-red);
+    border-color: var(--erpx-red-border);
+    background: var(--erpx-red-bg);
+}
+
+.pal-pdf-panel--cancelled .pal-pdf-transfer-bar,
+.pal-pdf-panel--cancelled .pal-pdf-transfer-rail-fill {
+    opacity: 0.35;
+}

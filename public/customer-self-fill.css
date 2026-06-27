@@ -1,0 +1,226 @@
+/* Palantir-style public customer QR forms (return + checkout) */
+:root {
+  --csf-canvas: #e8eaed;
+  --csf-surface: #ffffff;
+  --csf-subtle: #f4f5f7;
+  --csf-border: rgba(15, 23, 42, 0.12);
+  --csf-ink: #0f172a;
+  --csf-ink-secondary: #334155;
+  --csf-ink-muted: #64748b;
+  --csf-brand: #1e293b;
+  --csf-brand-hover: #0f172a;
+  --csf-green: #059669;
+  --csf-red: #dc2626;
+  --csf-radius: 4px;
+  --csf-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --csf-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--csf-font);
+  background: var(--csf-canvas);
+  color: var(--csf-ink);
+  min-height: 100dvh;
+  display: flex;
+  justify-content: center;
+  padding: 20px 14px 40px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.csf-shell { width: 100%; max-width: 440px; }
+
+.csf-header {
+  margin-bottom: 14px;
+  padding: 0 2px;
+}
+
+.csf-kicker {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--csf-ink-muted);
+  margin-bottom: 6px;
+}
+
+.csf-title {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.25;
+}
+
+.csf-subtitle {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--csf-ink-muted);
+  line-height: 1.5;
+}
+
+.csf-panel {
+  background: var(--csf-surface);
+  border: 1px solid var(--csf-border);
+  border-radius: var(--csf-radius);
+  overflow: hidden;
+}
+
+.csf-panel-body { padding: 18px 16px 20px; }
+
+.csf-micro {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--csf-ink-muted);
+  margin-bottom: 6px;
+}
+
+.csf-field { margin-bottom: 14px; }
+
+.csf-input {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--csf-border);
+  border-radius: var(--csf-radius);
+  font-size: 16px;
+  color: var(--csf-ink);
+  background: var(--csf-subtle);
+  outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+  -webkit-appearance: none;
+}
+
+.csf-input:focus {
+  border-color: var(--csf-brand);
+  box-shadow: 0 0 0 2px rgba(30, 41, 59, 0.12);
+  background: #fff;
+}
+
+.csf-input.error { border-color: var(--csf-red); }
+
+.csf-error {
+  display: none;
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--csf-red);
+}
+
+.csf-error.visible { display: block; }
+
+.csf-sig-wrap {
+  border: 1px solid var(--csf-border);
+  border-radius: var(--csf-radius);
+  background: #fff;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.csf-sig-canvas {
+  display: block;
+  width: 100%;
+  height: 148px;
+  cursor: crosshair;
+  touch-action: none;
+  background: #fff;
+}
+
+.csf-sig-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  border-top: 1px solid var(--csf-border);
+  background: var(--csf-subtle);
+}
+
+.csf-sig-hint {
+  font-size: 10px;
+  color: var(--csf-ink-muted);
+  letter-spacing: 0.04em;
+}
+
+.csf-btn-ghost {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--csf-ink-muted);
+  background: transparent;
+  border: 1px solid var(--csf-border);
+  border-radius: var(--csf-radius);
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.csf-btn-primary {
+  width: 100%;
+  margin-top: 6px;
+  padding: 13px 16px;
+  background: var(--csf-brand);
+  color: #fff;
+  border: none;
+  border-radius: var(--csf-radius);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.csf-btn-primary:hover:not(:disabled) { background: var(--csf-brand-hover); }
+.csf-btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.csf-note {
+  font-size: 11px;
+  color: var(--csf-ink-muted);
+  line-height: 1.55;
+  margin-bottom: 16px;
+}
+
+.csf-state {
+  text-align: center;
+  padding: 28px 16px;
+}
+
+.csf-state h2 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  letter-spacing: -0.02em;
+}
+
+.csf-state p {
+  font-size: 13px;
+  color: var(--csf-ink-muted);
+  line-height: 1.55;
+}
+
+.csf-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: csf-spin 0.65s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+@keyframes csf-spin { to { transform: rotate(360deg); } }
+
+.csf-check {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  background: rgba(5, 150, 105, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--csf-green);
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.csf-hidden { display: none !important; }

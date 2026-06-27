@@ -1,0 +1,193 @@
+/**
+ * Palantir dashboard KPI tiles — larger headline values
+ */
+
+.pal-dash-kpi {
+    background: var(--erpx-surface);
+    border: 1px solid var(--erpx-border);
+    border-radius: 0;
+    padding: 18px 20px;
+    min-height: 118px;
+    transition: border-color 0.12s, background 0.12s;
+    cursor: pointer;
+}
+
+.pal-dash-kpi:hover {
+    border-color: var(--erpx-border-strong);
+    background: var(--erpx-subtle);
+}
+
+.pal-dash-kpi:focus-visible {
+    outline: none;
+    box-shadow: var(--erpx-shadow-focus);
+}
+
+.pal-dash-kpi-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.pal-dash-kpi-icon {
+    color: var(--erpx-ink-muted);
+    display: flex;
+}
+
+.pal-dash-kpi-label {
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--erpx-ink-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 4px;
+}
+
+.pal-dash-kpi-value {
+    font-size: clamp(34px, 3.6vw, 42px);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
+    color: var(--erpx-ink);
+    line-height: 1.05;
+}
+
+.pal-dash-kpi-sub {
+    font-size: 10.5px;
+    color: var(--erpx-ink-muted);
+    margin-top: 2px;
+}
+
+.pal-dash-kpi-sub.up {
+    color: var(--erpx-green);
+}
+
+.pal-dash-kpi-sub.down {
+    color: var(--erpx-red);
+}
+
+.pal-dash-kpi-trend {
+    font-size: 12px;
+    font-weight: 600;
+    margin-top: 4px;
+}
+
+.pal-dash-kpi-trend .tone-up {
+    color: var(--erpx-green);
+}
+
+.pal-dash-kpi-trend .tone-down {
+    color: var(--erpx-red);
+}
+
+.pal-dash-kpi-prev {
+    font-size: 10px;
+    color: var(--erpx-ink-muted);
+    margin-top: 6px;
+}
+
+.pal-dash-kpi-prev strong {
+    color: var(--erpx-amber);
+    font-weight: 600;
+}
+
+.pal-dash-kpi-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+
+@media (max-width: 1100px) {
+    .pal-dash-kpi-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 560px) {
+    .pal-dash-kpi-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+.pal-dash-metric {
+    background: var(--erpx-surface);
+    border: 1px solid var(--erpx-border);
+    border-radius: var(--erpx-radius);
+    padding: 12px 14px;
+}
+
+.pal-analytics-kpi.pal-dash-kpi .pal-dash-kpi-value {
+    font-size: clamp(32px, 3.2vw, 36px);
+}
+
+/* Dashboard content panels (activities, office ops, returns) */
+.pal-dash-panel {
+    background: var(--erpx-surface);
+    border: 1px solid var(--erpx-border);
+    border-radius: 0;
+    overflow: hidden;
+}
+
+.pal-dash-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--erpx-border);
+}
+
+.pal-dash-panel-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--erpx-ink-secondary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.pal-dash-panel-body {
+    padding: 18px 22px;
+}
+
+.pal-dash-panel-body.padded {
+    padding: 20px 24px;
+}
+
+.pal-dash-list-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--erpx-border);
+}
+
+.pal-dash-list-row:last-child {
+    border-bottom: none;
+}
+
+.pal-dash-summary {
+    padding: 12px 14px;
+    border: 1px solid var(--erpx-border);
+    border-radius: var(--erpx-radius-sm);
+    background: var(--erpx-subtle);
+}
+
+.pal-dash-summary-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--erpx-ink-muted);
+}
+
+.pal-dash-summary-value {
+    font-size: clamp(22px, 2.4vw, 28px);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--erpx-ink);
+    letter-spacing: -0.02em;
+    margin-top: 4px;
+}

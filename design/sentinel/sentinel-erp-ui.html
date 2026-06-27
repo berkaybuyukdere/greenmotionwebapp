@@ -1,0 +1,1941 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEXUS ERP — Enterprise Platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap" rel="stylesheet">
+<style>
+/* ─────────────────────────────────────────────
+   NEXUS ERP — Design Tokens
+   Inspired by Palantir Blueprint (dark) + Stripe Dashboard
+   ───────────────────────────────────────────── */
+:root {
+  /* ── Core Palettes ── */
+  --ink-950:   #080c10;
+  --ink-900:   #0d1117;
+  --ink-850:   #111820;
+  --ink-800:   #161d28;
+  --ink-750:   #1c2535;
+  --ink-700:   #202c3e;
+  --ink-600:   #2a3a52;
+  --ink-500:   #3a4f6a;
+  --ink-400:   #506180;
+  --ink-300:   #6e7f96;
+  --ink-200:   #8fa0b5;
+  --ink-100:   #b8c8d8;
+  --ink-050:   #dce6ef;
+
+  /* ── Blueprint Cobalt (primary accent) ── */
+  --cobalt-700: #0d47a1;
+  --cobalt-600: #1565c0;
+  --cobalt-500: #1976d2;
+  --cobalt-400: #2196f3;
+  --cobalt-300: #42a5f5;
+  --cobalt-200: #90caf9;
+  --cobalt-100: #bbdefb;
+
+  /* ── Palantir "Intent" Colors ── */
+  --intent-success:   #15b371;
+  --intent-success-bg: rgba(21, 179, 113, 0.08);
+  --intent-warning:   #d9822b;
+  --intent-warning-bg: rgba(217, 130, 43, 0.08);
+  --intent-danger:    #cd4246;
+  --intent-danger-bg: rgba(205, 66, 70, 0.08);
+  --intent-primary:   #2d72d2;
+  --intent-primary-bg: rgba(45, 114, 210, 0.1);
+
+  /* ── Stripe accent overlay ── */
+  --stripe-indigo:   #533afd;
+  --stripe-soft:     rgba(83, 58, 253, 0.12);
+  --stripe-glow:     rgba(83, 58, 253, 0.25);
+
+  /* ── Surface Layers ── */
+  --surface-base:    var(--ink-900);
+  --surface-raised:  var(--ink-800);
+  --surface-overlay: var(--ink-750);
+  --surface-panel:   var(--ink-700);
+  --surface-hover:   var(--ink-600);
+
+  /* ── Borders ── */
+  --border-subtle:   rgba(255,255,255,0.06);
+  --border-default:  rgba(255,255,255,0.10);
+  --border-strong:   rgba(255,255,255,0.18);
+  --border-focus:    rgba(45,114,210,0.7);
+
+  /* ── Typography ── */
+  --font-sans:  'IBM Plex Sans', -apple-system, system-ui, sans-serif;
+  --font-mono:  'IBM Plex Mono', 'Cascadia Code', monospace;
+
+  /* ── Text ── */
+  --text-primary:   #e8f0f8;
+  --text-secondary: #8fa0b5;
+  --text-muted:     #506180;
+  --text-disabled:  #3a4f6a;
+
+  /* ── Spacing (8px base) ── */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px;
+  --sp-4: 16px; --sp-5: 20px; --sp-6: 24px;
+  --sp-8: 32px; --sp-10: 40px; --sp-12: 48px;
+
+  /* ── Radii ── */
+  --radius-sm:  3px;
+  --radius-md:  5px;
+  --radius-lg:  8px;
+  --radius-xl:  12px;
+  --radius-pill: 100px;
+
+  /* ── Shadows ── */
+  --shadow-sm:  0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md:  0 4px 12px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.3);
+  --shadow-lg:  0 8px 24px rgba(0,0,0,0.6), 0 4px 8px rgba(0,0,0,0.4);
+  --shadow-glow: 0 0 0 1px var(--stripe-glow), 0 4px 16px rgba(83,58,253,0.15);
+}
+
+/* ─── Reset & Base ─── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; -webkit-font-smoothing: antialiased; }
+body {
+  font-family: var(--font-sans);
+  background: var(--surface-base);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+a { color: inherit; text-decoration: none; }
+button { cursor: pointer; border: none; background: none; font: inherit; color: inherit; }
+input, select { font: inherit; color: inherit; background: none; border: none; outline: none; }
+
+/* ─── App Layout ─── */
+.app {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  grid-template-rows: 48px 1fr;
+  grid-template-areas:
+    "topbar topbar"
+    "sidebar main";
+  min-height: 100vh;
+}
+
+/* ─────────────────────────────────────────────
+   TOP BAR
+   ───────────────────────────────────────────── */
+.topbar {
+  grid-area: topbar;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--sp-4);
+  background: var(--ink-850);
+  border-bottom: 1px solid var(--border-subtle);
+  gap: var(--sp-4);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.topbar-logo {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 188px;
+  flex-shrink: 0;
+}
+.logo-mark {
+  width: 22px;
+  height: 22px;
+  background: var(--stripe-indigo);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: white;
+  letter-spacing: -0.5px;
+}
+.logo-text {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--text-primary);
+  text-transform: uppercase;
+}
+.logo-sub {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+  margin-top: -2px;
+}
+.topbar-search {
+  flex: 1;
+  max-width: 400px;
+  margin: 0 var(--sp-4);
+  position: relative;
+}
+.topbar-search input {
+  width: 100%;
+  height: 28px;
+  background: var(--ink-800);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0 var(--sp-3) 0 30px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  transition: border-color 0.15s;
+}
+.topbar-search input::placeholder { color: var(--text-muted); }
+.topbar-search input:focus { border-color: var(--border-focus); color: var(--text-primary); }
+.topbar-search svg { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); opacity: 0.4; }
+.topbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.topbar-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  transition: background 0.1s, color 0.1s;
+  position: relative;
+}
+.topbar-btn:hover { background: var(--surface-hover); color: var(--text-primary); }
+.topbar-badge {
+  position: absolute;
+  top: 4px; right: 4px;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--intent-danger);
+  border: 1.5px solid var(--ink-850);
+}
+.topbar-env {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: 24px;
+  padding: 0 var(--sp-2);
+  background: var(--intent-success-bg);
+  border: 1px solid rgba(21,179,113,0.2);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--intent-success);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.env-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--intent-success);
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.topbar-user {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-2);
+  height: 32px;
+  border-radius: var(--radius-md);
+  transition: background 0.1s;
+  cursor: pointer;
+}
+.topbar-user:hover { background: var(--surface-hover); }
+.user-avatar {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--cobalt-600), var(--stripe-indigo));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 600;
+  color: white;
+  letter-spacing: 0.03em;
+}
+.user-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+/* ─────────────────────────────────────────────
+   SIDEBAR
+   ───────────────────────────────────────────── */
+.sidebar {
+  grid-area: sidebar;
+  background: var(--ink-850);
+  border-right: 1px solid var(--border-subtle);
+  overflow-y: auto;
+  padding: var(--sp-4) 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ink-600) transparent;
+}
+.sidebar-section {
+  margin-bottom: var(--sp-4);
+}
+.sidebar-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 0 var(--sp-4) var(--sp-2);
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 0 var(--sp-4);
+  height: 32px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 400;
+  transition: background 0.1s, color 0.1s;
+  cursor: pointer;
+  position: relative;
+  border-left: 2px solid transparent;
+}
+.nav-item:hover { background: var(--surface-hover); color: var(--text-primary); }
+.nav-item.active {
+  background: var(--intent-primary-bg);
+  color: var(--cobalt-300);
+  border-left-color: var(--intent-primary);
+}
+.nav-item svg { opacity: 0.7; flex-shrink: 0; }
+.nav-item.active svg { opacity: 1; }
+.nav-badge {
+  margin-left: auto;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background: var(--intent-primary-bg);
+  border: 1px solid rgba(45,114,210,0.3);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  color: var(--cobalt-300);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.nav-badge.danger {
+  background: var(--intent-danger-bg);
+  border-color: rgba(205,66,70,0.3);
+  color: #e05252;
+}
+.nav-badge.warning {
+  background: var(--intent-warning-bg);
+  border-color: rgba(217,130,43,0.3);
+  color: var(--intent-warning);
+}
+.sidebar-divider {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: var(--sp-2) 0;
+}
+
+/* ─────────────────────────────────────────────
+   MAIN CONTENT
+   ───────────────────────────────────────────── */
+.main {
+  grid-area: main;
+  overflow-y: auto;
+  background: var(--surface-base);
+}
+
+/* ─── Page Header ─── */
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: var(--sp-6) var(--sp-8) var(--sp-4);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--ink-850);
+}
+.page-title-group {}
+.page-breadcrumb {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: var(--sp-1);
+}
+.page-breadcrumb span { color: var(--text-secondary); }
+.page-title {
+  font-size: 20px;
+  font-weight: 300;
+  letter-spacing: -0.3px;
+  color: var(--text-primary);
+}
+.page-subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  font-family: var(--font-mono);
+}
+.page-actions {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: 30px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.1s;
+  white-space: nowrap;
+}
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+}
+.btn-ghost:hover { background: var(--surface-hover); color: var(--text-primary); border-color: var(--border-strong); }
+.btn-primary {
+  background: var(--intent-primary);
+  border: 1px solid rgba(45,114,210,0.5);
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(45,114,210,0.3);
+}
+.btn-primary:hover { background: var(--cobalt-500); }
+.btn-danger {
+  background: transparent;
+  border: 1px solid rgba(205,66,70,0.4);
+  color: var(--intent-danger);
+}
+.btn-danger:hover { background: var(--intent-danger-bg); }
+.btn-stripe {
+  background: var(--stripe-indigo);
+  border: 1px solid rgba(83,58,253,0.5);
+  color: #fff;
+  box-shadow: var(--shadow-glow);
+}
+.btn-stripe:hover { filter: brightness(1.1); }
+
+/* ─── Content Area ─── */
+.content {
+  padding: var(--sp-6) var(--sp-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+/* ─────────────────────────────────────────────
+   KPI CARDS
+   ───────────────────────────────────────────── */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--sp-4);
+}
+.kpi-card {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-5);
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+.kpi-card:hover { border-color: var(--border-default); }
+.kpi-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent);
+}
+.kpi-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: var(--sp-2);
+}
+.kpi-value {
+  font-size: 26px;
+  font-weight: 300;
+  letter-spacing: -0.8px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  line-height: 1;
+  margin-bottom: var(--sp-2);
+}
+.kpi-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+}
+.kpi-delta.up { color: var(--intent-success); }
+.kpi-delta.down { color: var(--intent-danger); }
+.kpi-delta svg { width: 11px; height: 11px; }
+.kpi-compare {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.kpi-sparkline {
+  position: absolute;
+  bottom: 0; right: 0;
+  opacity: 0.15;
+}
+.kpi-icon {
+  position: absolute;
+  top: var(--sp-5); right: var(--sp-5);
+  width: 28px; height: 28px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.kpi-icon.cobalt { background: var(--intent-primary-bg); color: var(--cobalt-300); }
+.kpi-icon.green  { background: var(--intent-success-bg); color: var(--intent-success); }
+.kpi-icon.amber  { background: var(--intent-warning-bg); color: var(--intent-warning); }
+.kpi-icon.red    { background: var(--intent-danger-bg); color: var(--intent-danger); }
+
+/* ─────────────────────────────────────────────
+   TWO-COLUMN LAYOUT
+   ───────────────────────────────────────────── */
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: var(--sp-4);
+}
+
+/* ─────────────────────────────────────────────
+   PANEL / CARD
+   ───────────────────────────────────────────── */
+.panel {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-4) var(--sp-5);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.panel-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.panel-title svg { color: var(--text-muted); }
+.panel-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.panel-body { padding: var(--sp-4) var(--sp-5); }
+
+/* ─────────────────────────────────────────────
+   DATA TABLE
+   ───────────────────────────────────────────── */
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-3) var(--sp-5);
+  border-bottom: 1px solid var(--border-subtle);
+  gap: var(--sp-3);
+}
+.table-filter {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.1s;
+}
+.filter-chip:hover, .filter-chip.active {
+  background: var(--intent-primary-bg);
+  border-color: rgba(45,114,210,0.4);
+  color: var(--cobalt-300);
+}
+.filter-chip .dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.table-search {
+  position: relative;
+  margin-left: auto;
+}
+.table-search input {
+  height: 26px;
+  width: 200px;
+  background: var(--ink-800);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0 var(--sp-3) 0 26px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  transition: all 0.15s;
+}
+.table-search input:focus {
+  border-color: var(--border-focus);
+  width: 260px;
+  color: var(--text-primary);
+}
+.table-search svg {
+  position: absolute;
+  left: 7px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0.4;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+thead th {
+  padding: var(--sp-2) var(--sp-5);
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--ink-800);
+  white-space: nowrap;
+  user-select: none;
+  cursor: pointer;
+}
+thead th:hover { color: var(--text-secondary); }
+thead th.sorted { color: var(--cobalt-300); }
+tbody tr {
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background 0.1s;
+  cursor: pointer;
+}
+tbody tr:hover { background: var(--surface-overlay); }
+tbody tr:last-child { border-bottom: none; }
+td {
+  padding: var(--sp-3) var(--sp-5);
+  font-size: 12px;
+  color: var(--text-secondary);
+  vertical-align: middle;
+}
+td.primary { color: var(--text-primary); font-weight: 500; }
+td.mono { font-family: var(--font-mono); font-size: 11px; }
+.td-entity {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.entity-icon {
+  width: 28px; height: 28px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 600;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+}
+.entity-name { font-size: 12px; font-weight: 500; color: var(--text-primary); }
+.entity-sub { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
+
+/* Status Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.badge-dot {
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.badge.success {
+  background: var(--intent-success-bg);
+  color: var(--intent-success);
+  border: 1px solid rgba(21,179,113,0.2);
+}
+.badge.warning {
+  background: var(--intent-warning-bg);
+  color: var(--intent-warning);
+  border: 1px solid rgba(217,130,43,0.2);
+}
+.badge.danger {
+  background: var(--intent-danger-bg);
+  color: var(--intent-danger);
+  border: 1px solid rgba(205,66,70,0.2);
+}
+.badge.primary {
+  background: var(--intent-primary-bg);
+  color: var(--cobalt-300);
+  border: 1px solid rgba(45,114,210,0.2);
+}
+.badge.neutral {
+  background: rgba(255,255,255,0.04);
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+}
+.badge.stripe {
+  background: var(--stripe-soft);
+  color: #a89aff;
+  border: 1px solid rgba(83,58,253,0.2);
+}
+
+/* Amount */
+.amount { font-family: var(--font-mono); font-size: 12px; }
+.amount.positive { color: var(--intent-success); }
+.amount.negative { color: var(--intent-danger); }
+
+/* ─────────────────────────────────────────────
+   ACTIVITY FEED
+   ───────────────────────────────────────────── */
+.activity-feed { display: flex; flex-direction: column; }
+.activity-item {
+  display: flex;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-5);
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background 0.1s;
+  cursor: pointer;
+}
+.activity-item:hover { background: var(--surface-overlay); }
+.activity-item:last-child { border-bottom: none; }
+.activity-dot-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 2px;
+  flex-shrink: 0;
+}
+.activity-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid;
+}
+.activity-dot.success { border-color: var(--intent-success); background: var(--intent-success-bg); }
+.activity-dot.primary { border-color: var(--intent-primary); background: var(--intent-primary-bg); }
+.activity-dot.warning { border-color: var(--intent-warning); background: var(--intent-warning-bg); }
+.activity-dot.danger  { border-color: var(--intent-danger);  background: var(--intent-danger-bg); }
+.activity-line {
+  flex: 1;
+  width: 1px;
+  background: var(--border-subtle);
+  margin-top: 4px;
+}
+.activity-content { flex: 1; }
+.activity-title {
+  font-size: 12px;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+.activity-title strong { font-weight: 500; }
+.activity-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.activity-meta-dot { opacity: 0.4; }
+
+/* ─────────────────────────────────────────────
+   MINI CHART (CSS-only sparklines)
+   ───────────────────────────────────────────── */
+.chart-area {
+  position: relative;
+  height: 160px;
+  margin: var(--sp-4) 0;
+}
+.chart-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  padding: 0 0 20px;
+}
+.chart-bar {
+  flex: 1;
+  border-radius: 2px 2px 0 0;
+  background: rgba(45,114,210,0.2);
+  transition: background 0.15s;
+  position: relative;
+  cursor: pointer;
+}
+.chart-bar:hover { background: rgba(45,114,210,0.4); }
+.chart-bar.highlight { background: var(--intent-primary); }
+.chart-bar.highlight::after {
+  content: attr(data-val);
+  position: absolute;
+  top: -18px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--cobalt-300);
+  white-space: nowrap;
+}
+.chart-axis {
+  display: flex;
+  justify-content: space-between;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--sp-2);
+}
+.chart-legend {
+  display: flex;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-3);
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.legend-swatch {
+  width: 10px; height: 3px;
+  border-radius: 2px;
+}
+
+/* ─────────────────────────────────────────────
+   STAT ROW
+   ───────────────────────────────────────────── */
+.stat-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.stat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.stat-name { font-size: 11px; color: var(--text-secondary); }
+.stat-pct {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.stat-bar-track {
+  height: 3px;
+  background: var(--border-subtle);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.stat-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--intent-primary);
+}
+.stat-bar-fill.success { background: var(--intent-success); }
+.stat-bar-fill.warning { background: var(--intent-warning); }
+.stat-bar-fill.danger  { background: var(--intent-danger); }
+.stat-bar-fill.stripe  { background: var(--stripe-indigo); }
+
+/* ─────────────────────────────────────────────
+   ORDER DETAIL PANEL
+   ───────────────────────────────────────────── */
+.detail-panel {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.detail-hero {
+  padding: var(--sp-5);
+  background: var(--ink-800);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.detail-id {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: var(--sp-1);
+}
+.detail-amount {
+  font-size: 28px;
+  font-weight: 300;
+  letter-spacing: -1px;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  margin-bottom: var(--sp-2);
+}
+.detail-meta-row {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+.detail-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.detail-field {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--sp-3) var(--sp-5);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.detail-field:last-child { border-bottom: none; }
+.detail-field-key {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+}
+.detail-field-val {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: right;
+  font-weight: 500;
+}
+.detail-field-val.mono { font-family: var(--font-mono); }
+.detail-field-val.primary { color: var(--text-primary); }
+
+/* ─────────────────────────────────────────────
+   TIMELINE STEPS
+   ───────────────────────────────────────────── */
+.timeline { padding: var(--sp-4) var(--sp-5); }
+.timeline-step {
+  display: flex;
+  gap: var(--sp-3);
+  padding-bottom: var(--sp-4);
+  position: relative;
+}
+.timeline-step:last-child { padding-bottom: 0; }
+.timeline-step::before {
+  content: '';
+  position: absolute;
+  left: 10px; top: 20px;
+  bottom: 0; width: 1px;
+  background: var(--border-subtle);
+}
+.timeline-step:last-child::before { display: none; }
+.step-icon {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  z-index: 1;
+  background: var(--surface-raised);
+}
+.step-icon.done {
+  border-color: var(--intent-success);
+  background: var(--intent-success-bg);
+  color: var(--intent-success);
+}
+.step-icon.active {
+  border-color: var(--intent-primary);
+  background: var(--intent-primary-bg);
+  color: var(--cobalt-300);
+}
+.step-icon.pending {
+  border-color: var(--border-default);
+  color: var(--text-muted);
+}
+.step-content { flex: 1; }
+.step-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 1px;
+}
+.step-title.muted { color: var(--text-muted); font-weight: 400; }
+.step-time {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* ─────────────────────────────────────────────
+   BOTTOM PANEL (3-col grid)
+   ───────────────────────────────────────────── */
+.three-col {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-4);
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--ink-600); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--ink-500); }
+
+/* ─── Tooltip tag ─── */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ══════════════════════════════════════════
+       TOP BAR
+       ══════════════════════════════════════════ -->
+  <header class="topbar">
+    <div class="topbar-logo">
+      <div class="logo-mark">NX</div>
+      <div>
+        <div class="logo-text">NEXUS</div>
+        <div class="logo-sub">Enterprise</div>
+      </div>
+    </div>
+
+    <div class="topbar-search">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+      </svg>
+      <input type="text" placeholder="Search orders, customers, SKUs... ⌘K" />
+    </div>
+
+    <div class="topbar-right">
+      <div class="topbar-env">
+        <span class="env-dot"></span>
+        PRODUCTION
+      </div>
+
+      <button class="topbar-btn" title="Notifications">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+        </svg>
+        <span class="topbar-badge"></span>
+      </button>
+
+      <button class="topbar-btn" title="Terminal">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>
+        </svg>
+      </button>
+
+      <button class="topbar-btn" title="Settings">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M12 1v4m0 14v4M4.22 4.22l2.83 2.83m9.9 9.9 2.83 2.83M1 12h4m14 0h4M4.22 19.78l2.83-2.83m9.9-9.9 2.83-2.83"/>
+        </svg>
+      </button>
+
+      <div class="topbar-user">
+        <div class="user-avatar">AK</div>
+        <span class="user-name">A. Kaya</span>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text-muted)">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </div>
+    </div>
+  </header>
+
+  <!-- ══════════════════════════════════════════
+       SIDEBAR
+       ══════════════════════════════════════════ -->
+  <nav class="sidebar">
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">Core</div>
+
+      <div class="nav-item active">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+          <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+        </svg>
+        Dashboard
+      </div>
+
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+          <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+        </svg>
+        Orders
+        <span class="nav-badge">247</span>
+      </div>
+
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M20 7H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
+          <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+        </svg>
+        Inventory
+        <span class="nav-badge warning">14</span>
+      </div>
+
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87m-4-12a4 4 0 0 1 0 7.75"/>
+        </svg>
+        Customers
+      </div>
+
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <rect x="2" y="5" width="20" height="14" rx="2"/>
+          <line x1="2" y1="10" x2="22" y2="10"/>
+        </svg>
+        Payments
+        <span class="nav-badge danger">3</span>
+      </div>
+    </div>
+
+    <div class="sidebar-divider"></div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">Operations</div>
+
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M1 3h15v13H1z"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/>
+          <circle cx="18.5" cy="18.5" r="2.5"/>
+        </svg>
+        Logistics
+      </div>
+
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+          <polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+        Warehouses
+      </div>
+
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
+          <line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/>
+          <line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+        </svg>
+        Suppliers
+      </div>
+
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+        Analytics
+      </div>
+    </div>
+
+    <div class="sidebar-divider"></div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">Finance</div>
+
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+        </svg>
+        General Ledger
+      </div>
+
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/>
+          <line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+        </svg>
+        Invoices
+      </div>
+
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>
+        </svg>
+        Reports
+      </div>
+    </div>
+
+    <div class="sidebar-divider"></div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">System</div>
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M12 1v4m0 14v4M4.22 4.22l2.83 2.83m9.9 9.9 2.83 2.83M1 12h4m14 0h4M4.22 19.78l2.83-2.83m9.9-9.9 2.83-2.83"/>
+        </svg>
+        Settings
+      </div>
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/>
+        </svg>
+        Audit Log
+      </div>
+    </div>
+
+  </nav>
+
+  <!-- ══════════════════════════════════════════
+       MAIN CONTENT
+       ══════════════════════════════════════════ -->
+  <main class="main">
+
+    <!-- Page Header -->
+    <div class="page-header">
+      <div class="page-title-group">
+        <div class="page-breadcrumb">Nexus / <span>Dashboard</span></div>
+        <div class="page-title">Operations Overview</div>
+        <div class="page-subtitle">Q2 2026 · Last synced 3m ago · UTC+03:00</div>
+      </div>
+      <div class="page-actions">
+        <button class="btn btn-ghost">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+          Sync
+        </button>
+        <button class="btn btn-ghost">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Export
+        </button>
+        <button class="btn btn-stripe">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          New Order
+        </button>
+      </div>
+    </div>
+
+    <div class="content">
+
+      <!-- ── KPI Grid ── -->
+      <div class="kpi-grid">
+
+        <div class="kpi-card">
+          <div class="kpi-icon cobalt">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="1" x2="12" y2="23"/>
+              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+            </svg>
+          </div>
+          <div class="kpi-label">Gross Revenue</div>
+          <div class="kpi-value">₺4.83M</div>
+          <div class="kpi-delta up">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="18 15 12 9 6 15"/></svg>
+            +12.4%
+          </div>
+          <div class="kpi-compare">vs ₺4.30M last quarter</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-icon green">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+          </div>
+          <div class="kpi-label">Orders Processed</div>
+          <div class="kpi-value">18,247</div>
+          <div class="kpi-delta up">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="18 15 12 9 6 15"/></svg>
+            +8.1%
+          </div>
+          <div class="kpi-compare">avg 198 / day</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-icon amber">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 7H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
+            </svg>
+          </div>
+          <div class="kpi-label">Inventory Value</div>
+          <div class="kpi-value">₺1.21M</div>
+          <div class="kpi-delta down">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6 9 12 15 18 9"/></svg>
+            −3.7%
+          </div>
+          <div class="kpi-compare">4,821 SKUs active</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-icon red">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+            </svg>
+          </div>
+          <div class="kpi-label">Open Disputes</div>
+          <div class="kpi-value">34</div>
+          <div class="kpi-delta down">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6 9 12 15 18 9"/></svg>
+            +6
+          </div>
+          <div class="kpi-compare">3 critical · SLA breach risk</div>
+        </div>
+
+      </div>
+
+      <!-- ── Main Two-Column ── -->
+      <div class="two-col">
+
+        <!-- Orders Table -->
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+                <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+              </svg>
+              Recent Orders
+            </div>
+            <span class="panel-meta">Showing 247 of 18,247 total</span>
+          </div>
+
+          <div class="table-toolbar">
+            <div class="table-filter">
+              <button class="filter-chip active"><span class="dot"></span> All</button>
+              <button class="filter-chip">Pending</button>
+              <button class="filter-chip">In Transit</button>
+              <button class="filter-chip">Fulfilled</button>
+              <button class="filter-chip danger">Disputed</button>
+            </div>
+            <div class="table-search">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+              </svg>
+              <input type="text" placeholder="Filter by ID, customer..." />
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th class="sorted">Order ID ↑</th>
+                <th>Customer</th>
+                <th>Items</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono primary">#ORD-091847</td>
+                <td>
+                  <div class="td-entity">
+                    <div class="entity-icon" style="background:rgba(45,114,210,0.12);color:var(--cobalt-300);">TK</div>
+                    <div>
+                      <div class="entity-name">Türk Kargo A.Ş.</div>
+                      <div class="entity-sub">IST-004 · Enterprise</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="mono">24 SKUs</td>
+                <td><span class="amount positive">+₺182,400</span></td>
+                <td><span class="badge success"><span class="badge-dot"></span>Fulfilled</span></td>
+                <td class="mono" style="color:var(--text-muted)">18 May 26</td>
+              </tr>
+              <tr>
+                <td class="mono primary">#ORD-091846</td>
+                <td>
+                  <div class="td-entity">
+                    <div class="entity-icon" style="background:rgba(217,130,43,0.1);color:var(--intent-warning);">AB</div>
+                    <div>
+                      <div class="entity-name">Anadolu Birlik Ltd.</div>
+                      <div class="entity-sub">ANK-012 · Business</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="mono">8 SKUs</td>
+                <td><span class="amount">₺47,250</span></td>
+                <td><span class="badge warning"><span class="badge-dot"></span>In Transit</span></td>
+                <td class="mono" style="color:var(--text-muted)">18 May 26</td>
+              </tr>
+              <tr>
+                <td class="mono primary">#ORD-091845</td>
+                <td>
+                  <div class="td-entity">
+                    <div class="entity-icon" style="background:var(--stripe-soft);color:#a89aff;">ME</div>
+                    <div>
+                      <div class="entity-name">Mert Elektronik</div>
+                      <div class="entity-sub">IZM-007 · SMB</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="mono">3 SKUs</td>
+                <td><span class="amount">₺9,800</span></td>
+                <td><span class="badge primary"><span class="badge-dot"></span>Processing</span></td>
+                <td class="mono" style="color:var(--text-muted)">17 May 26</td>
+              </tr>
+              <tr>
+                <td class="mono primary">#ORD-091844</td>
+                <td>
+                  <div class="td-entity">
+                    <div class="entity-icon" style="background:var(--intent-danger-bg);color:var(--intent-danger);">GS</div>
+                    <div>
+                      <div class="entity-name">Güneş Süpermarket</div>
+                      <div class="entity-sub">ADN-002 · Retail</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="mono">61 SKUs</td>
+                <td><span class="amount negative">−₺3,200</span></td>
+                <td><span class="badge danger"><span class="badge-dot"></span>Disputed</span></td>
+                <td class="mono" style="color:var(--text-muted)">17 May 26</td>
+              </tr>
+              <tr>
+                <td class="mono primary">#ORD-091843</td>
+                <td>
+                  <div class="td-entity">
+                    <div class="entity-icon" style="background:var(--intent-success-bg);color:var(--intent-success);">KO</div>
+                    <div>
+                      <div class="entity-name">Karaca Otomotiv</div>
+                      <div class="entity-sub">BRS-019 · Industrial</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="mono">12 SKUs</td>
+                <td><span class="amount positive">+₺341,000</span></td>
+                <td><span class="badge success"><span class="badge-dot"></span>Fulfilled</span></td>
+                <td class="mono" style="color:var(--text-muted)">16 May 26</td>
+              </tr>
+              <tr>
+                <td class="mono primary">#ORD-091842</td>
+                <td>
+                  <div class="td-entity">
+                    <div class="entity-icon" style="background:rgba(45,114,210,0.12);color:var(--cobalt-300);">BT</div>
+                    <div>
+                      <div class="entity-name">Batı Tekstil San.</div>
+                      <div class="entity-sub">TEK-031 · Manufacturing</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="mono">40 SKUs</td>
+                <td><span class="amount">₺228,500</span></td>
+                <td><span class="badge neutral">Scheduled</span></td>
+                <td class="mono" style="color:var(--text-muted)">16 May 26</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Right column -->
+        <div style="display:flex;flex-direction:column;gap:var(--sp-4)">
+
+          <!-- Order Detail -->
+          <div class="detail-panel">
+            <div class="detail-hero">
+              <div class="detail-id">#ORD-091847 · Türk Kargo A.Ş.</div>
+              <div class="detail-amount">₺182,400.00</div>
+              <div class="detail-meta-row">
+                <span class="badge success"><span class="badge-dot"></span>Fulfilled</span>
+                <span class="badge stripe">B2B</span>
+                <span class="tag">NET-30</span>
+              </div>
+            </div>
+            <div class="detail-fields">
+              <div class="detail-field">
+                <span class="detail-field-key">Payment method</span>
+                <span class="detail-field-val mono">Wire Transfer</span>
+              </div>
+              <div class="detail-field">
+                <span class="detail-field-key">Region</span>
+                <span class="detail-field-val primary">İstanbul · TR</span>
+              </div>
+              <div class="detail-field">
+                <span class="detail-field-key">Account manager</span>
+                <span class="detail-field-val primary">Elif Doğan</span>
+              </div>
+              <div class="detail-field">
+                <span class="detail-field-key">Invoice</span>
+                <span class="detail-field-val mono" style="color:var(--cobalt-300)">INV-2026-4821</span>
+              </div>
+              <div class="detail-field">
+                <span class="detail-field-key">Lead time</span>
+                <span class="detail-field-val">2.4 days avg</span>
+              </div>
+            </div>
+
+            <div class="timeline">
+              <div class="timeline-step">
+                <div class="step-icon done">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                </div>
+                <div class="step-content">
+                  <div class="step-title">Order Confirmed</div>
+                  <div class="step-time">18 May 26 · 09:14 UTC+3</div>
+                </div>
+              </div>
+              <div class="timeline-step">
+                <div class="step-icon done">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                </div>
+                <div class="step-content">
+                  <div class="step-title">Warehouse Picked</div>
+                  <div class="step-time">18 May 26 · 11:32 UTC+3</div>
+                </div>
+              </div>
+              <div class="timeline-step">
+                <div class="step-icon active">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <path d="M1 3h15v13H1z"/><path d="M16 8h4l3 3v5h-7V8z"/>
+                    <circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+                  </svg>
+                </div>
+                <div class="step-content">
+                  <div class="step-title">In Delivery</div>
+                  <div class="step-time">ETA: 18 May 26 · 18:00</div>
+                </div>
+              </div>
+              <div class="timeline-step">
+                <div class="step-icon pending">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                </div>
+                <div class="step-content">
+                  <div class="step-title muted">Customer Received</div>
+                  <div class="step-time">Pending</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ── Revenue Chart + Activity ── -->
+      <div class="two-col">
+
+        <!-- Revenue chart -->
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+              </svg>
+              Revenue Trend
+            </div>
+            <div style="display:flex;gap:var(--sp-2)">
+              <button class="filter-chip">7D</button>
+              <button class="filter-chip active">30D</button>
+              <button class="filter-chip">90D</button>
+              <button class="filter-chip">YTD</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="chart-legend">
+              <div class="legend-item">
+                <div class="legend-swatch" style="background:var(--intent-primary)"></div>
+                Revenue
+              </div>
+              <div class="legend-item">
+                <div class="legend-swatch" style="background:var(--intent-success)"></div>
+                Net Profit
+              </div>
+            </div>
+            <div class="chart-area">
+              <div class="chart-placeholder">
+                <div class="chart-bar" style="height:42%"></div>
+                <div class="chart-bar" style="height:55%"></div>
+                <div class="chart-bar" style="height:48%"></div>
+                <div class="chart-bar" style="height:61%"></div>
+                <div class="chart-bar" style="height:53%"></div>
+                <div class="chart-bar" style="height:70%"></div>
+                <div class="chart-bar" style="height:65%"></div>
+                <div class="chart-bar" style="height:78%"></div>
+                <div class="chart-bar" style="height:72%"></div>
+                <div class="chart-bar" style="height:85%"></div>
+                <div class="chart-bar" style="height:80%"></div>
+                <div class="chart-bar" style="height:88%"></div>
+                <div class="chart-bar" style="height:75%"></div>
+                <div class="chart-bar" style="height:92%"></div>
+                <div class="chart-bar" style="height:84%"></div>
+                <div class="chart-bar" style="height:96%"></div>
+                <div class="chart-bar highlight" data-val="₺183K" style="height:100%"></div>
+                <div class="chart-bar" style="height:89%"></div>
+                <div class="chart-bar" style="height:94%"></div>
+                <div class="chart-bar" style="height:87%"></div>
+                <div class="chart-bar" style="height:91%"></div>
+                <div class="chart-bar" style="height:76%"></div>
+                <div class="chart-bar" style="height:82%"></div>
+                <div class="chart-bar" style="height:79%"></div>
+                <div class="chart-bar" style="height:86%"></div>
+                <div class="chart-bar" style="height:88%"></div>
+                <div class="chart-bar" style="height:82%"></div>
+                <div class="chart-bar" style="height:77%"></div>
+                <div class="chart-bar" style="height:84%"></div>
+                <div class="chart-bar" style="height:90%"></div>
+              </div>
+            </div>
+            <div class="chart-axis">
+              <span>19 Apr</span><span>25 Apr</span><span>01 May</span>
+              <span>07 May</span><span>13 May</span><span>18 May</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Activity Feed -->
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+              </svg>
+              Live Activity
+            </div>
+            <span class="panel-meta" style="display:flex;align-items:center;gap:4px">
+              <span class="env-dot" style="background:var(--intent-success)"></span>
+              Live
+            </span>
+          </div>
+          <div class="activity-feed">
+            <div class="activity-item">
+              <div class="activity-dot-wrap">
+                <div class="activity-dot success"></div>
+                <div class="activity-line"></div>
+              </div>
+              <div class="activity-content">
+                <div class="activity-title"><strong>ORD-091847</strong> marked as fulfilled</div>
+                <div class="activity-meta">
+                  <span>Elif Doğan</span><span class="activity-meta-dot">·</span><span>2m ago</span>
+                </div>
+              </div>
+            </div>
+            <div class="activity-item">
+              <div class="activity-dot-wrap">
+                <div class="activity-dot primary"></div>
+                <div class="activity-line"></div>
+              </div>
+              <div class="activity-content">
+                <div class="activity-title">New purchase order <strong>PO-4821</strong> submitted</div>
+                <div class="activity-meta">
+                  <span>System</span><span class="activity-meta-dot">·</span><span>7m ago</span>
+                </div>
+              </div>
+            </div>
+            <div class="activity-item">
+              <div class="activity-dot-wrap">
+                <div class="activity-dot warning"></div>
+                <div class="activity-line"></div>
+              </div>
+              <div class="activity-content">
+                <div class="activity-title"><strong>SKU-8821</strong> stock below reorder threshold</div>
+                <div class="activity-meta">
+                  <span>Inventory Monitor</span><span class="activity-meta-dot">·</span><span>14m ago</span>
+                </div>
+              </div>
+            </div>
+            <div class="activity-item">
+              <div class="activity-dot-wrap">
+                <div class="activity-dot danger"></div>
+                <div class="activity-line"></div>
+              </div>
+              <div class="activity-content">
+                <div class="activity-title">Dispute opened on <strong>ORD-091844</strong> — ₺3,200</div>
+                <div class="activity-meta">
+                  <span>Finance</span><span class="activity-meta-dot">·</span><span>22m ago</span>
+                </div>
+              </div>
+            </div>
+            <div class="activity-item">
+              <div class="activity-dot-wrap">
+                <div class="activity-dot success"></div>
+                <div class="activity-line"></div>
+              </div>
+              <div class="activity-content">
+                <div class="activity-title">Payment <strong>₺341,000</strong> received — Karaca Otomotiv</div>
+                <div class="activity-meta">
+                  <span>Payments</span><span class="activity-meta-dot">·</span><span>38m ago</span>
+                </div>
+              </div>
+            </div>
+            <div class="activity-item">
+              <div class="activity-dot-wrap">
+                <div class="activity-dot primary"></div>
+              </div>
+              <div class="activity-content">
+                <div class="activity-title">Supplier <strong>Çelik Donanım</strong> onboarded</div>
+                <div class="activity-meta">
+                  <span>Procurement</span><span class="activity-meta-dot">·</span><span>1h ago</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Bottom Three-Col ── -->
+      <div class="three-col">
+
+        <!-- Inventory health -->
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M20 7H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
+              </svg>
+              Inventory Health
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="stat-row">
+              <div class="stat-item">
+                <div class="stat-header">
+                  <span class="stat-name">Electronics</span>
+                  <span class="stat-pct">84%</span>
+                </div>
+                <div class="stat-bar-track">
+                  <div class="stat-bar-fill" style="width:84%"></div>
+                </div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-header">
+                  <span class="stat-name">Textile & Apparel</span>
+                  <span class="stat-pct">67%</span>
+                </div>
+                <div class="stat-bar-track">
+                  <div class="stat-bar-fill stripe" style="width:67%"></div>
+                </div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-header">
+                  <span class="stat-name">Industrial Parts</span>
+                  <span class="stat-pct">92%</span>
+                </div>
+                <div class="stat-bar-track">
+                  <div class="stat-bar-fill success" style="width:92%"></div>
+                </div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-header">
+                  <span class="stat-name">Food & FMCG</span>
+                  <span class="stat-pct">23%</span>
+                </div>
+                <div class="stat-bar-track">
+                  <div class="stat-bar-fill warning" style="width:23%"></div>
+                </div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-header">
+                  <span class="stat-name">Automotive</span>
+                  <span class="stat-pct">11%</span>
+                </div>
+                <div class="stat-bar-track">
+                  <div class="stat-bar-fill danger" style="width:11%"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Top Customers -->
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87m-4-12a4 4 0 0 1 0 7.75"/>
+              </svg>
+              Top Customers
+            </div>
+          </div>
+          <div class="activity-feed">
+            <div class="activity-item" style="gap:var(--sp-3)">
+              <div class="entity-icon" style="background:rgba(45,114,210,0.12);color:var(--cobalt-300);font-size:9px;width:26px;height:26px;flex-shrink:0;">TK</div>
+              <div style="flex:1">
+                <div style="font-size:12px;font-weight:500;color:var(--text-primary)">Türk Kargo A.Ş.</div>
+                <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono)">₺1.24M · 84 orders</div>
+              </div>
+              <span class="badge success">Tier 1</span>
+            </div>
+            <div class="activity-item" style="gap:var(--sp-3)">
+              <div class="entity-icon" style="background:var(--intent-success-bg);color:var(--intent-success);font-size:9px;width:26px;height:26px;flex-shrink:0;">KO</div>
+              <div style="flex:1">
+                <div style="font-size:12px;font-weight:500;color:var(--text-primary)">Karaca Otomotiv</div>
+                <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono)">₺890K · 42 orders</div>
+              </div>
+              <span class="badge success">Tier 1</span>
+            </div>
+            <div class="activity-item" style="gap:var(--sp-3)">
+              <div class="entity-icon" style="background:rgba(217,130,43,0.1);color:var(--intent-warning);font-size:9px;width:26px;height:26px;flex-shrink:0;">AB</div>
+              <div style="flex:1">
+                <div style="font-size:12px;font-weight:500;color:var(--text-primary)">Anadolu Birlik Ltd.</div>
+                <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono)">₺541K · 118 orders</div>
+              </div>
+              <span class="badge primary">Tier 2</span>
+            </div>
+            <div class="activity-item" style="gap:var(--sp-3)">
+              <div class="entity-icon" style="background:var(--stripe-soft);color:#a89aff;font-size:9px;width:26px;height:26px;flex-shrink:0;">BT</div>
+              <div style="flex:1">
+                <div style="font-size:12px;font-weight:500;color:var(--text-primary)">Batı Tekstil San.</div>
+                <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono)">₺418K · 61 orders</div>
+              </div>
+              <span class="badge primary">Tier 2</span>
+            </div>
+            <div class="activity-item" style="gap:var(--sp-3);border:none">
+              <div class="entity-icon" style="background:rgba(255,255,255,0.04);color:var(--text-muted);font-size:9px;width:26px;height:26px;flex-shrink:0;">GS</div>
+              <div style="flex:1">
+                <div style="font-size:12px;font-weight:500;color:var(--text-primary)">Güneş Süpermarket</div>
+                <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono)">₺214K · 203 orders</div>
+              </div>
+              <span class="badge neutral">Tier 3</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- System Status -->
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                <line x1="8" y1="21" x2="16" y2="21"/>
+                <line x1="12" y1="17" x2="12" y2="21"/>
+              </svg>
+              System Status
+            </div>
+            <span class="badge success"><span class="badge-dot"></span>All Systems Nominal</span>
+          </div>
+          <div class="detail-fields">
+            <div class="detail-field">
+              <span class="detail-field-key">API Gateway</span>
+              <span class="badge success" style="font-size:9px">Operational</span>
+            </div>
+            <div class="detail-field">
+              <span class="detail-field-key">Payment Processor</span>
+              <span class="badge success" style="font-size:9px">Operational</span>
+            </div>
+            <div class="detail-field">
+              <span class="detail-field-key">WMS Sync</span>
+              <span class="badge success" style="font-size:9px">Operational</span>
+            </div>
+            <div class="detail-field">
+              <span class="detail-field-key">ERP Core</span>
+              <span class="badge success" style="font-size:9px">Operational</span>
+            </div>
+            <div class="detail-field">
+              <span class="detail-field-key">Analytics Pipeline</span>
+              <span class="badge warning" style="font-size:9px">Degraded</span>
+            </div>
+            <div class="detail-field">
+              <span class="detail-field-key">EDI Connector</span>
+              <span class="badge success" style="font-size:9px">Operational</span>
+            </div>
+            <div class="detail-field">
+              <span class="detail-field-key">Last incident</span>
+              <span class="detail-field-val mono" style="font-size:11px">14 May 26 · P3</span>
+            </div>
+          </div>
+          <div class="panel-body" style="padding-top:var(--sp-3)">
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);margin-bottom:var(--sp-2);letter-spacing:0.06em;">UPTIME · 30 DAYS</div>
+            <div style="display:flex;gap:2px;align-items:flex-end">
+              <!-- uptime bars -->
+              <script>
+                (function(){
+                  var cont = document.currentScript.parentNode;
+                  var vals = [1,1,1,1,1,1,1,1,1,1,1,1,0.6,1,1,1,1,1,0.9,1,1,1,1,1,1,1,1,1,1,1];
+                  vals.forEach(function(v){
+                    var d = document.createElement('div');
+                    d.style.cssText = 'width:7px;height:24px;border-radius:2px;background:'+(v===1?'var(--intent-success)':v>0.7?'var(--intent-warning)':'var(--intent-danger)')+';opacity:'+(0.4+v*0.6);
+                    cont.appendChild(d);
+                  });
+                })();
+              </script>
+            </div>
+            <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-muted);margin-top:var(--sp-2)">99.83% uptime</div>
+          </div>
+        </div>
+
+      </div>
+
+    </div><!-- /content -->
+  </main>
+
+</div><!-- /app -->
+
+</body>
+</html>

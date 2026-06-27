@@ -1,0 +1,528 @@
+/**
+ * Palantir fleet UI — Vehicles list, expand rows, vehicle detail modal, operation records.
+ */
+
+.pal-fleet-scope {
+  --pal-fleet-radius: 6px;
+}
+
+/* Search */
+.pal-fleet-search-box {
+  background: var(--erpx-surface);
+  border: 1px solid var(--erpx-border);
+  border-radius: var(--pal-fleet-radius);
+  padding: 10px 12px;
+}
+
+.pal-fleet-search-box input {
+  width: 100%;
+  padding: 8px 10px 8px 32px;
+  font-size: 13px;
+  border: 1px solid var(--erpx-border);
+  border-radius: 4px;
+  background: var(--erpx-subtle);
+  color: var(--erpx-ink);
+}
+
+.pal-fleet-search-box input:focus {
+  outline: none;
+  border-color: var(--erpx-brand);
+  box-shadow: var(--erpx-shadow-focus);
+  background: var(--erpx-surface);
+}
+
+.pal-fleet-search-wrap {
+  position: relative;
+}
+
+.pal-fleet-search-wrap svg {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--erpx-ink-muted);
+  pointer-events: none;
+}
+
+/* Category accordion */
+.pal-fleet-category {
+  background: var(--erpx-surface);
+  border: 1px solid var(--erpx-border);
+  border-radius: var(--pal-fleet-radius);
+  overflow: hidden;
+  box-shadow: none;
+}
+
+.pal-fleet-category-header {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+}
+
+.pal-fleet-category-toggle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+  transition: background 0.12s;
+}
+
+.pal-fleet-category-toggle:hover {
+  background: var(--erpx-row-hover);
+}
+
+.pal-fleet-category-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--pal-fleet-radius);
+  border: 1px solid var(--erpx-border);
+  background: var(--erpx-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--erpx-ink-secondary);
+}
+
+.pal-fleet-category-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--erpx-ink);
+}
+
+.pal-fleet-count-pill {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--erpx-border);
+  background: var(--erpx-subtle);
+  color: var(--erpx-ink-secondary);
+}
+
+.pal-fleet-metric-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.pal-fleet-chip {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--erpx-border);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pal-fleet-chip-warn {
+  background: var(--erpx-amber-bg);
+  border-color: var(--erpx-amber-border);
+  color: var(--erpx-amber);
+}
+
+.pal-fleet-chip-ok {
+  background: var(--erpx-green-bg);
+  border-color: var(--erpx-green-border);
+  color: var(--erpx-green);
+}
+
+.pal-fleet-chip-info {
+  background: var(--erpx-info-bg);
+  border-color: var(--erpx-info-border);
+  color: var(--erpx-brand);
+}
+
+.pal-fleet-category-actions {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 10px 8px 0;
+  border-left: 1px solid var(--erpx-border);
+}
+
+.pal-fleet-category-body {
+  border-top: 1px solid var(--erpx-border);
+}
+
+.pal-fleet-vehicle-row {
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background 0.12s;
+  border-bottom: 1px solid var(--erpx-row-divider);
+}
+
+.pal-fleet-vehicle-row:last-child {
+  border-bottom: none;
+}
+
+.pal-fleet-vehicle-row:hover {
+  background: var(--erpx-row-hover);
+}
+
+.pal-fleet-plate {
+  font-family: var(--erpx-font-data);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--erpx-ink);
+}
+
+.pal-fleet-sub {
+  font-size: 12px;
+  color: var(--erpx-ink-muted);
+  margin-top: 2px;
+}
+
+.pal-fleet-stat-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--erpx-ink-muted);
+}
+
+.pal-fleet-stat-value {
+  font-family: var(--erpx-font-data);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pal-fleet-empty {
+  text-align: center;
+  padding: 48px 16px;
+  background: var(--erpx-surface);
+  border: 1px solid var(--erpx-border);
+  border-radius: var(--pal-fleet-radius);
+  color: var(--erpx-ink-muted);
+}
+
+/* Vehicle detail modal */
+.pal-fleet-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+}
+
+.pal-fleet-modal {
+  width: 100%;
+  max-width: min(96vw, 1120px);
+  max-height: 95vh;
+  overflow-y: auto;
+  background: var(--erpx-surface);
+  border: 1px solid var(--erpx-border);
+  border-radius: 8px;
+  padding: 16px 18px;
+  box-shadow: none;
+}
+
+.pal-fleet-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 12px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--erpx-border);
+}
+
+.pal-fleet-modal-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--erpx-ink);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pal-fleet-hero {
+  background: var(--erpx-subtle);
+  border: 1px solid var(--erpx-border);
+  border-radius: var(--pal-fleet-radius);
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.pal-fleet-hero-plate {
+  font-family: var(--erpx-font-data);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--erpx-ink);
+}
+
+.pal-fleet-hero-sub {
+  font-size: 13px;
+  color: var(--erpx-ink-muted);
+  margin-top: 2px;
+}
+
+.pal-fleet-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+
+@media (min-width: 768px) {
+  .pal-fleet-kpi-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.pal-fleet-kpi-cell {
+  padding: 8px 10px;
+  background: var(--erpx-surface);
+  border: 1px solid var(--erpx-border);
+  border-radius: 4px;
+}
+
+.pal-fleet-kpi-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--erpx-ink-muted);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pal-fleet-kpi-value {
+  font-family: var(--erpx-font-data);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--erpx-ink);
+}
+
+.pal-fleet-kpi-value.ok {
+  color: var(--erpx-green);
+}
+
+.pal-fleet-kpi-value.bad {
+  color: var(--erpx-red);
+}
+
+/* Expandable records (damage / checkout / return) */
+.pal-fleet-record {
+  background: var(--erpx-surface);
+  border: 1px solid var(--erpx-border);
+  border-radius: var(--pal-fleet-radius);
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.pal-fleet-record:hover {
+  border-color: var(--erpx-brand);
+  background: var(--erpx-row-hover);
+}
+
+.pal-fleet-record.expanded {
+  border-color: var(--erpx-brand);
+}
+
+.pal-fleet-record-title {
+  font-family: var(--erpx-font-data);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--erpx-ink);
+}
+
+.pal-fleet-record-meta {
+  font-size: 12px;
+  color: var(--erpx-ink-muted);
+}
+
+.pal-fleet-record-expanded {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--erpx-border);
+  background: var(--erpx-subtle);
+  border-radius: 0 0 4px 4px;
+  margin-left: -14px;
+  margin-right: -14px;
+  margin-bottom: -12px;
+  padding-left: 14px;
+  padding-right: 14px;
+  padding-bottom: 14px;
+}
+
+.pal-fleet-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.pal-fleet-field {
+  padding: 8px 10px;
+  background: var(--erpx-surface);
+  border: 1px solid var(--erpx-border);
+  border-radius: 4px;
+}
+
+.pal-fleet-field-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--erpx-ink-muted);
+  margin-bottom: 4px;
+}
+
+.pal-fleet-field-value {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--erpx-ink);
+}
+
+.pal-fleet-field-value.mono {
+  font-family: var(--erpx-font-data);
+}
+
+.pal-fleet-status {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.pal-fleet-status.done {
+  background: var(--erpx-green-bg);
+  color: var(--erpx-green);
+  border: 1px solid var(--erpx-green-border);
+}
+
+.pal-fleet-status.open {
+  background: var(--erpx-amber-bg);
+  color: var(--erpx-amber);
+  border: 1px solid var(--erpx-amber-border);
+}
+
+.pal-fleet-op-card {
+  padding: 12px 14px;
+  background: var(--erpx-subtle);
+  border: 1px solid var(--erpx-border);
+  border-radius: var(--pal-fleet-radius);
+}
+
+.pal-fleet-op-title {
+  font-family: var(--erpx-font-data);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--erpx-ink);
+}
+
+.pal-fleet-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--erpx-ink-muted);
+}
+
+/* Fleet table workbench (Palantir list pane) */
+.pal-fleet-filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--erpx-surface);
+    border: 1px solid var(--erpx-border);
+    border-radius: var(--pal-fleet-radius);
+}
+
+.pal-fleet-filter-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--erpx-ink-muted);
+}
+
+.pal-fleet-category-select {
+    flex: 1;
+    min-width: 200px;
+    max-width: 420px;
+    padding: 8px 10px;
+    font-size: 13px;
+    border: 1px solid var(--erpx-border);
+    border-radius: 4px;
+    background: var(--erpx-subtle);
+    color: var(--erpx-ink);
+}
+
+.pal-fleet-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.pal-fleet-chip-btn {
+  padding: 4px 10px;
+  font-size: 11.5px;
+  font-weight: 500;
+  border-radius: 10px;
+  border: 1px solid var(--erpx-border);
+  background: var(--erpx-surface);
+  color: var(--erpx-ink-secondary);
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+}
+
+.pal-fleet-chip-btn:hover {
+  border-color: var(--erpx-brand);
+  color: var(--erpx-brand);
+}
+
+.pal-fleet-chip-btn.active {
+  background: var(--erpx-brand-muted);
+  border-color: var(--erpx-brand);
+  color: var(--erpx-brand);
+}
+
+.pal-fleet-table-panel {
+  background: var(--erpx-surface);
+  border: 1px solid var(--erpx-border);
+  border-radius: var(--pal-fleet-radius);
+  overflow: hidden;
+}
+
+.pal-fleet-table tbody tr.pal-fleet-table-row {
+  cursor: pointer;
+}
+
+.pal-fleet-table tbody tr.pal-fleet-table-row:hover td {
+  background: var(--erpx-row-hover);
+}
+
+.pal-fleet-doc-chips {
+  display: flex;
+  gap: 4px;
+}
+
+.pal-fleet-muted {
+  font-size: 12px;
+  color: var(--erpx-ink-muted);
+}

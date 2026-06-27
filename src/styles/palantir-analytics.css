@@ -1,0 +1,444 @@
+/**
+ * Palantir analytics layout — dense grids, signal panels, CSS mini charts
+ * No AppleStockChart dependency; use PalantirMiniChart.jsx for bar/sparkline data.
+ */
+
+/* ─── Dense metric grid ─── */
+.pal-metric-grid-dense {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 6px;
+}
+
+.pal-metric-cell {
+    padding: 8px 10px;
+    border: 1px solid var(--erpx-border);
+    border-radius: var(--erpx-radius-sm);
+    background: var(--erpx-surface);
+    min-height: 56px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+}
+
+.pal-metric-cell-label {
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--erpx-ink-muted);
+    margin-bottom: 2px;
+}
+
+.pal-metric-cell-value {
+    font-size: 15px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--erpx-ink);
+    letter-spacing: -0.02em;
+}
+
+.pal-metric-cell-sub {
+    font-size: 10px;
+    color: var(--erpx-ink-muted);
+    margin-top: 2px;
+}
+
+/* ─── Signal panels (demo .signal) ─── */
+.pal-signal-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.pal-signal {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    margin: 0;
+}
+
+.pal-signal-icon {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+    margin-top: 1px;
+}
+
+.pal-signal-text {
+    font-size: 11.5px;
+    color: var(--erpx-ink-secondary);
+    line-height: 1.5;
+    margin: 0;
+}
+
+.pal-signal-text strong {
+    color: var(--erpx-ink);
+    font-weight: 600;
+}
+
+.pal-signal-warning {
+    background: rgba(240, 160, 48, 0.1);
+    border: 1px solid rgba(240, 160, 48, 0.25);
+}
+
+.pal-signal-warning .pal-signal-icon {
+    color: var(--erpx-amber);
+}
+
+.pal-signal-danger {
+    background: rgba(224, 85, 85, 0.1);
+    border: 1px solid rgba(224, 85, 85, 0.25);
+}
+
+.pal-signal-danger .pal-signal-icon {
+    color: var(--erpx-red);
+}
+
+.pal-signal-info {
+    background: rgba(90, 180, 247, 0.1);
+    border: 1px solid rgba(90, 180, 247, 0.25);
+}
+
+.pal-signal-info .pal-signal-icon {
+    color: var(--erpx-info);
+}
+
+.pal-signal-success {
+    background: var(--erpx-green-bg);
+    border: 1px solid var(--erpx-green-border);
+}
+
+.pal-signal-success .pal-signal-icon {
+    color: var(--erpx-green);
+}
+
+/* ─── Mini chart container (demo .mini-chart) ─── */
+.pal-mini-chart {
+    position: relative;
+    width: 100%;
+    min-height: 40px;
+    height: var(--pal-mini-chart-h, 50px);
+}
+
+.pal-mini-chart-bars {
+    display: flex;
+    align-items: flex-end;
+    justify-content: stretch;
+    gap: 2px;
+    width: 100%;
+    height: 100%;
+    padding: 0 1px;
+}
+
+.pal-mini-chart-bar {
+    flex: 1 1 0;
+    min-width: 2px;
+    max-width: 24px;
+    border-radius: 2px 2px 0 0;
+    background: var(--pal-demo-brand, var(--erpx-brand));
+    opacity: 0.85;
+    transition: height 0.2s ease, opacity 0.15s ease;
+}
+
+.pal-mini-chart-bar:hover {
+    opacity: 1;
+}
+
+.pal-mini-chart-bar.muted {
+    background: var(--erpx-ink-muted);
+    opacity: 0.35;
+}
+
+.pal-mini-chart-bar.positive {
+    background: var(--erpx-green);
+}
+
+.pal-mini-chart-bar.negative {
+    background: var(--erpx-red);
+}
+
+/* Sparkline — SVG or CSS polyline wrapper */
+.pal-sparkline {
+    position: relative;
+    width: 100%;
+    height: var(--pal-mini-chart-h, 50px);
+    overflow: hidden;
+}
+
+.pal-sparkline svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.pal-sparkline-line {
+    fill: none;
+    stroke: var(--pal-demo-brand, var(--erpx-brand));
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+}
+
+.pal-sparkline-area {
+    fill: var(--erpx-brand-light);
+    opacity: 0.5;
+}
+
+.pal-sparkline-dot {
+    fill: var(--pal-demo-brand, var(--erpx-brand));
+}
+
+/* Inline sparkline using CSS gradient bars (no SVG) */
+.pal-sparkline-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 1px;
+    height: 100%;
+    width: 100%;
+}
+
+.pal-sparkline-bars .pal-mini-chart-bar {
+    border-radius: 1px 1px 0 0;
+    min-width: 1px;
+}
+
+.pal-analytics-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.pal-analytics-layout-split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 260px;
+    gap: 12px;
+    align-items: start;
+}
+
+@media (max-width: 1024px) {
+    .pal-analytics-layout-split {
+        grid-template-columns: 1fr;
+    }
+}
+
+.pal-analytics-chart-slot {
+    border: 1px solid var(--erpx-border);
+    border-radius: var(--erpx-radius);
+    background: var(--erpx-surface);
+    padding: 12px 14px;
+    min-height: 120px;
+}
+
+.pal-analytics-section-title {
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--erpx-ink-muted);
+    margin: 0 0 8px;
+}
+
+.pal-analytics-grid-2 {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 10px;
+}
+
+@media (max-width: 900px) {
+    .pal-analytics-grid-2 {
+        grid-template-columns: 1fr;
+    }
+}
+
+.pal-analytics-data-panel {
+    border: 1px solid var(--erpx-border);
+    border-radius: var(--erpx-radius);
+    background: var(--erpx-surface);
+    padding: 12px 14px;
+    min-height: 0;
+}
+
+.pal-analytics-table-wrap {
+    max-height: 220px;
+    overflow: auto;
+    border: 1px solid var(--erpx-border);
+    border-radius: var(--erpx-radius-sm);
+}
+
+.pal-analytics-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11.5px;
+}
+
+.pal-analytics-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    text-align: left;
+    padding: 6px 10px;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--erpx-ink-muted);
+    background: var(--erpx-subtle);
+    border-bottom: 1px solid var(--erpx-border);
+}
+
+.pal-analytics-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--erpx-border);
+    color: var(--erpx-ink-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+.pal-analytics-table tr:last-child td {
+    border-bottom: none;
+}
+
+.pal-analytics-table td.num,
+.pal-analytics-table th.num {
+    text-align: right;
+}
+
+.pal-analytics-table .cat-label {
+    font-weight: 600;
+    color: var(--erpx-ink);
+    font-family: var(--erpx-font-data);
+}
+
+.pal-analytics-assumptions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.pal-analytics-assumption {
+    padding: 8px 10px;
+    border: 1px solid var(--erpx-border);
+    border-radius: var(--erpx-radius-sm);
+    background: var(--erpx-subtle);
+}
+
+.pal-analytics-assumption-label {
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--erpx-ink-muted);
+    margin-bottom: 2px;
+}
+
+.pal-analytics-assumption-value {
+    font-size: 11px;
+    color: var(--erpx-ink-secondary);
+    line-height: 1.45;
+}
+
+.pal-analytics-fleet-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.pal-analytics-fleet-stat {
+    flex: 1 1 100px;
+    min-width: 88px;
+    padding: 8px 10px;
+    border: 1px solid var(--erpx-border);
+    border-radius: var(--erpx-radius-sm);
+    background: var(--erpx-subtle);
+}
+
+.pal-analytics-fleet-stat-value {
+    font-size: 18px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--erpx-ink);
+}
+
+.pal-analytics-fleet-stat-label {
+    font-size: 9.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--erpx-ink-muted);
+    margin-top: 2px;
+}
+
+/* Table pagination (checkout / returns) */
+.pal-table-pager {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 12px;
+    border-top: 1px solid var(--erpx-border);
+    background: var(--erpx-subtle);
+    font-size: 11.5px;
+    color: var(--erpx-ink-muted);
+}
+
+.pal-table-pager-count strong {
+    color: var(--erpx-ink);
+    font-weight: 600;
+}
+
+.pal-table-pager-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pal-table-pager-size select {
+    padding: 4px 8px;
+    border-radius: var(--erpx-radius-sm);
+    border: 1px solid var(--erpx-border);
+    background: var(--erpx-surface);
+    color: var(--erpx-ink);
+    font-size: 11px;
+}
+
+.pal-table-pager-page {
+    font-size: 11px;
+    min-width: 72px;
+    text-align: center;
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.pal-analytics-chart-slot-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.pal-analytics-chart-slot-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--erpx-ink);
+}
+
+.pal-analytics-chart-slot-meta {
+    font-size: 10px;
+    color: var(--erpx-ink-muted);
+    font-family: var(--erpx-font-data);
+}

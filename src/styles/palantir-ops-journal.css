@@ -1,0 +1,343 @@
+/**
+ * Switzerland OPS journal — day planner (checkout / return / fleet)
+ */
+
+.pal-ops-journal-page .erpx-page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.pal-ops-journal-shell {
+    border: 1px solid var(--erpx-border);
+    background: var(--erpx-surface);
+    overflow: hidden;
+}
+
+.pal-ops-journal-date-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--erpx-border);
+    background: var(--erpx-subtle);
+}
+
+.pal-ops-journal-date-input--center {
+    text-align: center;
+    font-weight: 600;
+    font-size: 14px;
+    min-width: 148px;
+}
+
+.pal-ops-journal-today-btn {
+    padding: 8px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--vs-violet);
+    border: 1px solid var(--erpx-border);
+    background: var(--erpx-surface);
+    cursor: pointer;
+}
+
+.pal-ops-journal-today-btn:hover {
+    background: var(--erpx-row-hover);
+}
+
+.pal-ops-journal-segments {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+    border-bottom: 1px solid var(--erpx-border);
+}
+
+.pal-ops-journal-segment {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--erpx-ink-muted);
+    background: var(--erpx-surface);
+    border: none;
+    border-right: 1px solid var(--erpx-border);
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+}
+
+.pal-ops-journal-segment:last-child {
+    border-right: none;
+}
+
+.pal-ops-journal-segment:hover {
+    background: var(--erpx-subtle);
+    color: var(--erpx-ink);
+}
+
+.pal-ops-journal-segment.is-active {
+    background: var(--vs-violet-soft, rgba(109, 92, 231, 0.12));
+    color: var(--vs-violet);
+    box-shadow: inset 0 -2px 0 var(--vs-violet);
+}
+
+.pal-ops-journal-segment-count {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: var(--erpx-neutral-bg);
+    color: var(--erpx-ink-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+.pal-ops-journal-segment.is-active .pal-ops-journal-segment-count {
+    background: var(--vs-violet);
+    color: #fff;
+}
+
+.pal-ops-journal-search {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--erpx-border);
+    background: var(--erpx-surface);
+}
+
+.pal-ops-journal-search-icon {
+    color: var(--erpx-ink-muted);
+    flex-shrink: 0;
+}
+
+.pal-ops-journal-search input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    font-size: 14px;
+    color: var(--erpx-ink);
+    outline: none;
+}
+
+.pal-ops-journal-search input::placeholder {
+    color: var(--erpx-ink-muted);
+}
+
+.pal-ops-journal-list-head,
+.pal-ops-journal-row {
+    display: grid;
+    grid-template-columns: 64px 108px 100px 48px minmax(0, 1fr);
+    gap: 8px;
+    align-items: center;
+    padding: 10px 16px;
+}
+
+.pal-ops-journal-list-head {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--erpx-ink-muted);
+    background: var(--erpx-subtle);
+    border-bottom: 1px solid var(--erpx-border);
+}
+
+.pal-ops-journal-row {
+    border-bottom: 1px solid var(--erpx-border);
+    font-size: 13px;
+    transition: background 0.1s;
+}
+
+.pal-ops-journal-row:hover {
+    background: var(--erpx-row-hover);
+}
+
+.pal-ops-journal-row--unassigned {
+    background: rgba(109, 92, 231, 0.14);
+}
+
+.pal-ops-journal-row--unassigned:hover {
+    background: rgba(109, 92, 231, 0.2);
+}
+
+.pal-ops-journal-time {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--erpx-ink-secondary);
+}
+
+.pal-ops-journal-res,
+.pal-ops-journal-plate {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--erpx-ink);
+    letter-spacing: 0.02em;
+}
+
+.pal-ops-journal-group {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--vs-violet);
+}
+
+.pal-ops-journal-customer {
+    color: var(--erpx-ink-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pal-ops-journal-empty {
+    padding: 32px 18px;
+    text-align: center;
+    font-size: 14px;
+    color: var(--erpx-ink-muted);
+}
+
+.pal-ops-journal-fleet-group {
+    border-bottom: 1px solid var(--erpx-border);
+}
+
+.pal-ops-journal-fleet-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 12px 16px;
+    background: var(--erpx-subtle);
+    border: none;
+    cursor: pointer;
+    text-align: left;
+}
+
+.pal-ops-journal-fleet-head:hover {
+    background: var(--erpx-row-hover);
+}
+
+.pal-ops-journal-fleet-cat {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--erpx-ink);
+}
+
+.pal-ops-journal-fleet-count {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--vs-violet);
+    color: #fff;
+}
+
+.pal-ops-journal-fleet-chevron {
+    margin-left: auto;
+    font-size: 16px;
+    color: var(--erpx-ink-muted);
+}
+
+.pal-ops-journal-fleet-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 8px;
+    padding: 12px 16px 16px;
+}
+
+.pal-ops-journal-fleet-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 12px;
+    border: 1px solid var(--erpx-border);
+    background: var(--erpx-surface);
+}
+
+.pal-ops-journal-fleet-meta {
+    font-size: 12px;
+    color: var(--erpx-ink-muted);
+}
+
+.pal-ops-journal-fleet-station {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--vs-violet);
+}
+
+.pal-ops-journal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    font-size: 11px;
+    color: var(--erpx-ink-muted);
+    background: var(--erpx-subtle);
+    border-top: 1px solid var(--erpx-border);
+}
+
+.pal-ops-journal-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--erpx-border);
+    background: var(--erpx-surface);
+    color: var(--erpx-ink-secondary);
+    cursor: pointer;
+}
+
+.pal-ops-journal-icon-btn:hover {
+    border-color: var(--erpx-border-strong);
+    background: var(--erpx-row-hover);
+}
+
+.pal-ops-journal-date-input {
+    padding: 8px 12px;
+    border: 1px solid var(--erpx-border);
+    background: var(--erpx-surface);
+    font-size: 13px;
+    color: var(--erpx-ink);
+}
+
+@media (max-width: 900px) {
+    .pal-ops-journal-list-head {
+        display: none;
+    }
+
+    .pal-ops-journal-row {
+        grid-template-columns: 1fr;
+        gap: 4px;
+        padding: 12px 16px;
+    }
+
+    .pal-ops-journal-customer {
+        white-space: normal;
+    }
+
+    .pal-ops-journal-segments {
+        grid-template-columns: 1fr;
+    }
+
+    .pal-ops-journal-segment {
+        border-right: none;
+        border-bottom: 1px solid var(--erpx-border);
+    }
+}
+
+@media print {
+    .erpx-sidebar,
+    .erpx-topbar,
+    .pal-ops-journal-search,
+    .pal-ops-journal-segments,
+    .pal-ops-journal-icon-btn,
+    .pal-ops-journal-today-btn {
+        display: none !important;
+    }
+
+    .pal-ops-journal-shell {
+        border: none;
+    }
+}

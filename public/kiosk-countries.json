@@ -1,0 +1,374 @@
+[
+  {
+    "cca2": "CH",
+    "name": "Switzerland",
+    "dial": "+41",
+    "flagUrl": "https://flagcdn.com/w40/ch.png"
+  },
+  {
+    "cca2": "DE",
+    "name": "Germany",
+    "dial": "+49",
+    "flagUrl": "https://flagcdn.com/w40/de.png"
+  },
+  {
+    "cca2": "FR",
+    "name": "France",
+    "dial": "+33",
+    "flagUrl": "https://flagcdn.com/w40/fr.png"
+  },
+  {
+    "cca2": "IT",
+    "name": "Italy",
+    "dial": "+39",
+    "flagUrl": "https://flagcdn.com/w40/it.png"
+  },
+  {
+    "cca2": "AT",
+    "name": "Austria",
+    "dial": "+43",
+    "flagUrl": "https://flagcdn.com/w40/at.png"
+  },
+  {
+    "cca2": "LI",
+    "name": "Liechtenstein",
+    "dial": "+423",
+    "flagUrl": "https://flagcdn.com/w40/li.png"
+  },
+  {
+    "cca2": "BE",
+    "name": "Belgium",
+    "dial": "+32",
+    "flagUrl": "https://flagcdn.com/w40/be.png"
+  },
+  {
+    "cca2": "NL",
+    "name": "Netherlands",
+    "dial": "+31",
+    "flagUrl": "https://flagcdn.com/w40/nl.png"
+  },
+  {
+    "cca2": "LU",
+    "name": "Luxembourg",
+    "dial": "+352",
+    "flagUrl": "https://flagcdn.com/w40/lu.png"
+  },
+  {
+    "cca2": "GB",
+    "name": "United Kingdom",
+    "dial": "+44",
+    "flagUrl": "https://flagcdn.com/w40/gb.png"
+  },
+  {
+    "cca2": "IE",
+    "name": "Ireland",
+    "dial": "+353",
+    "flagUrl": "https://flagcdn.com/w40/ie.png"
+  },
+  {
+    "cca2": "ES",
+    "name": "Spain",
+    "dial": "+34",
+    "flagUrl": "https://flagcdn.com/w40/es.png"
+  },
+  {
+    "cca2": "PT",
+    "name": "Portugal",
+    "dial": "+351",
+    "flagUrl": "https://flagcdn.com/w40/pt.png"
+  },
+  {
+    "cca2": "GR",
+    "name": "Greece",
+    "dial": "+30",
+    "flagUrl": "https://flagcdn.com/w40/gr.png"
+  },
+  {
+    "cca2": "PL",
+    "name": "Poland",
+    "dial": "+48",
+    "flagUrl": "https://flagcdn.com/w40/pl.png"
+  },
+  {
+    "cca2": "CZ",
+    "name": "Czech Republic",
+    "dial": "+420",
+    "flagUrl": "https://flagcdn.com/w40/cz.png"
+  },
+  {
+    "cca2": "SK",
+    "name": "Slovakia",
+    "dial": "+421",
+    "flagUrl": "https://flagcdn.com/w40/sk.png"
+  },
+  {
+    "cca2": "HU",
+    "name": "Hungary",
+    "dial": "+36",
+    "flagUrl": "https://flagcdn.com/w40/hu.png"
+  },
+  {
+    "cca2": "RO",
+    "name": "Romania",
+    "dial": "+40",
+    "flagUrl": "https://flagcdn.com/w40/ro.png"
+  },
+  {
+    "cca2": "BG",
+    "name": "Bulgaria",
+    "dial": "+359",
+    "flagUrl": "https://flagcdn.com/w40/bg.png"
+  },
+  {
+    "cca2": "HR",
+    "name": "Croatia",
+    "dial": "+385",
+    "flagUrl": "https://flagcdn.com/w40/hr.png"
+  },
+  {
+    "cca2": "SI",
+    "name": "Slovenia",
+    "dial": "+386",
+    "flagUrl": "https://flagcdn.com/w40/si.png"
+  },
+  {
+    "cca2": "RS",
+    "name": "Serbia",
+    "dial": "+381",
+    "flagUrl": "https://flagcdn.com/w40/rs.png"
+  },
+  {
+    "cca2": "BA",
+    "name": "Bosnia and Herzegovina",
+    "dial": "+387",
+    "flagUrl": "https://flagcdn.com/w40/ba.png"
+  },
+  {
+    "cca2": "ME",
+    "name": "Montenegro",
+    "dial": "+382",
+    "flagUrl": "https://flagcdn.com/w40/me.png"
+  },
+  {
+    "cca2": "MK",
+    "name": "North Macedonia",
+    "dial": "+389",
+    "flagUrl": "https://flagcdn.com/w40/mk.png"
+  },
+  {
+    "cca2": "AL",
+    "name": "Albania",
+    "dial": "+355",
+    "flagUrl": "https://flagcdn.com/w40/al.png"
+  },
+  {
+    "cca2": "DK",
+    "name": "Denmark",
+    "dial": "+45",
+    "flagUrl": "https://flagcdn.com/w40/dk.png"
+  },
+  {
+    "cca2": "SE",
+    "name": "Sweden",
+    "dial": "+46",
+    "flagUrl": "https://flagcdn.com/w40/se.png"
+  },
+  {
+    "cca2": "NO",
+    "name": "Norway",
+    "dial": "+47",
+    "flagUrl": "https://flagcdn.com/w40/no.png"
+  },
+  {
+    "cca2": "FI",
+    "name": "Finland",
+    "dial": "+358",
+    "flagUrl": "https://flagcdn.com/w40/fi.png"
+  },
+  {
+    "cca2": "IS",
+    "name": "Iceland",
+    "dial": "+354",
+    "flagUrl": "https://flagcdn.com/w40/is.png"
+  },
+  {
+    "cca2": "EE",
+    "name": "Estonia",
+    "dial": "+372",
+    "flagUrl": "https://flagcdn.com/w40/ee.png"
+  },
+  {
+    "cca2": "LV",
+    "name": "Latvia",
+    "dial": "+371",
+    "flagUrl": "https://flagcdn.com/w40/lv.png"
+  },
+  {
+    "cca2": "LT",
+    "name": "Lithuania",
+    "dial": "+370",
+    "flagUrl": "https://flagcdn.com/w40/lt.png"
+  },
+  {
+    "cca2": "UA",
+    "name": "Ukraine",
+    "dial": "+380",
+    "flagUrl": "https://flagcdn.com/w40/ua.png"
+  },
+  {
+    "cca2": "MD",
+    "name": "Moldova",
+    "dial": "+373",
+    "flagUrl": "https://flagcdn.com/w40/md.png"
+  },
+  {
+    "cca2": "TR",
+    "name": "Turkey",
+    "dial": "+90",
+    "flagUrl": "https://flagcdn.com/w40/tr.png"
+  },
+  {
+    "cca2": "RU",
+    "name": "Russia",
+    "dial": "+7",
+    "flagUrl": "https://flagcdn.com/w40/ru.png"
+  },
+  {
+    "cca2": "US",
+    "name": "United States",
+    "dial": "+1",
+    "flagUrl": "https://flagcdn.com/w40/us.png"
+  },
+  {
+    "cca2": "CA",
+    "name": "Canada",
+    "dial": "+1",
+    "flagUrl": "https://flagcdn.com/w40/ca.png"
+  },
+  {
+    "cca2": "MX",
+    "name": "Mexico",
+    "dial": "+52",
+    "flagUrl": "https://flagcdn.com/w40/mx.png"
+  },
+  {
+    "cca2": "BR",
+    "name": "Brazil",
+    "dial": "+55",
+    "flagUrl": "https://flagcdn.com/w40/br.png"
+  },
+  {
+    "cca2": "AR",
+    "name": "Argentina",
+    "dial": "+54",
+    "flagUrl": "https://flagcdn.com/w40/ar.png"
+  },
+  {
+    "cca2": "CN",
+    "name": "China",
+    "dial": "+86",
+    "flagUrl": "https://flagcdn.com/w40/cn.png"
+  },
+  {
+    "cca2": "JP",
+    "name": "Japan",
+    "dial": "+81",
+    "flagUrl": "https://flagcdn.com/w40/jp.png"
+  },
+  {
+    "cca2": "KR",
+    "name": "South Korea",
+    "dial": "+82",
+    "flagUrl": "https://flagcdn.com/w40/kr.png"
+  },
+  {
+    "cca2": "IN",
+    "name": "India",
+    "dial": "+91",
+    "flagUrl": "https://flagcdn.com/w40/in.png"
+  },
+  {
+    "cca2": "PK",
+    "name": "Pakistan",
+    "dial": "+92",
+    "flagUrl": "https://flagcdn.com/w40/pk.png"
+  },
+  {
+    "cca2": "AE",
+    "name": "United Arab Emirates",
+    "dial": "+971",
+    "flagUrl": "https://flagcdn.com/w40/ae.png"
+  },
+  {
+    "cca2": "SA",
+    "name": "Saudi Arabia",
+    "dial": "+966",
+    "flagUrl": "https://flagcdn.com/w40/sa.png"
+  },
+  {
+    "cca2": "IL",
+    "name": "Israel",
+    "dial": "+972",
+    "flagUrl": "https://flagcdn.com/w40/il.png"
+  },
+  {
+    "cca2": "EG",
+    "name": "Egypt",
+    "dial": "+20",
+    "flagUrl": "https://flagcdn.com/w40/eg.png"
+  },
+  {
+    "cca2": "ZA",
+    "name": "South Africa",
+    "dial": "+27",
+    "flagUrl": "https://flagcdn.com/w40/za.png"
+  },
+  {
+    "cca2": "AU",
+    "name": "Australia",
+    "dial": "+61",
+    "flagUrl": "https://flagcdn.com/w40/au.png"
+  },
+  {
+    "cca2": "NZ",
+    "name": "New Zealand",
+    "dial": "+64",
+    "flagUrl": "https://flagcdn.com/w40/nz.png"
+  },
+  {
+    "cca2": "SG",
+    "name": "Singapore",
+    "dial": "+65",
+    "flagUrl": "https://flagcdn.com/w40/sg.png"
+  },
+  {
+    "cca2": "MY",
+    "name": "Malaysia",
+    "dial": "+60",
+    "flagUrl": "https://flagcdn.com/w40/my.png"
+  },
+  {
+    "cca2": "TH",
+    "name": "Thailand",
+    "dial": "+66",
+    "flagUrl": "https://flagcdn.com/w40/th.png"
+  },
+  {
+    "cca2": "VN",
+    "name": "Vietnam",
+    "dial": "+84",
+    "flagUrl": "https://flagcdn.com/w40/vn.png"
+  },
+  {
+    "cca2": "PH",
+    "name": "Philippines",
+    "dial": "+63",
+    "flagUrl": "https://flagcdn.com/w40/ph.png"
+  },
+  {
+    "cca2": "ID",
+    "name": "Indonesia",
+    "dial": "+62",
+    "flagUrl": "https://flagcdn.com/w40/id.png"
+  }
+]

@@ -1,0 +1,77 @@
+{
+  "name": "green-motion-web",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=18 <=22"
+  },
+  "dependencies": {
+    "@corbe30/fortune-excel": "^2.3.2",
+    "@fortune-sheet/react": "^1.0.4",
+    "@microsoft/signalr": "^9.0.6",
+    "@stripe/terminal-js": "^0.24.0",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^13.5.0",
+    "chart.js": "^4.5.1",
+    "date-fns": "^4.1.0",
+    "docx": "^9.5.1",
+    "docx-preview": "^0.3.7",
+    "dompurify": "^3.3.3",
+    "firebase": "^12.4.0",
+    "framer-motion": "^11.11.17",
+    "fuse.js": "^7.0.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^3.0.3",
+    "jspdf-autotable": "^5.0.2",
+    "jszip": "^3.10.1",
+    "lucide-react": "^0.545.0",
+    "mammoth": "^1.11.0",
+    "pdf-lib": "^1.17.1",
+    "pizzip": "^3.2.0",
+    "react": "^19.2.0",
+    "react-chartjs-2": "^5.3.0",
+    "react-dom": "^19.2.0",
+    "react-scripts": "5.0.1",
+    "recharts": "^2.15.0",
+    "tesseract.js": "^6.0.1",
+    "web-vitals": "^2.1.4",
+    "xlsx": "^0.18.5"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "DISABLE_ESLINT_PLUGIN=true react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "deploy": "npm run build && firebase deploy --only hosting",
+    "deploy:full": "npm run build && firebase deploy --only hosting,firestore,functions:greenmotion_web",
+    "deploy:preview": "npm run build && firebase hosting:channel:deploy staging",
+    "deploy:rules": "firebase deploy --only firestore:rules && firebase deploy --only storage",
+    "check:deprecated-imports": "node scripts/check-deprecated-imports.mjs"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.6",
+    "postcss-reduce-transforms": "^7.0.1",
+    "tailwindcss": "^3.4.14"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "projects": {
+    "default": "greenmotionapp-33413"
+  },
+  "targets": {},
+  "etags": {
+    "greenmotionapp-33413": {
+      "extensionInstances": {
+        "firestore-accidentcodes-bq": "dd34019780d287e1512e5bb70c154dda2708f0df37034c69679bfdad12d4c43f",
+        "firestore-accidents-bq": "cad8dbae732117dcb54c3480d0180381066e6508f74eda817892f5469c02092d",
+        "firestore-activities-bq": "6ea7ec5975ab2707fb031373c2a54d7a163a470ab747642fcf67ab7b70f2a248",
+        "firestore-araclar-bq": "513bf5f3d5f1f73886b8e42aa0ead84fcb62423042122535bd261c477eea3608",
+        "firestore-customers-bq": "f01efb6ac42a58b996d8087c047fd822c9fd78e528e135aafcc6c5e6b1f6a13c",
+        "firestore-franchises-bq": "ca1029f17a6ac4084caf8d722485ce289b33c656ccc708d845ef0c33e5a0bfa8",
+        "firestore-iadeislemleri-bq": "fa4029d32bb3fa9e0f3eae35ae148cdbdb2badd97db8f0828a7dd5e73654b016",
+        "firestore-officeops-bq": "9121731374fe23ed5316d56c014e56cd32323a0febd3bb07f5d4aa200a758436",
+        "firestore-protocols-bq": "aa28017071c434005b1531c28ec5d5cc55267bb5de07c2487c439fdcadf6f2ee",
+        "firestore-servisfirmalari-bq": "f08d4c6dd133f29e995f455c580035efaf3a17acc077d9b145ba4cedb14d6834",
+        "firestore-serviskayitlari-bq": "74db931f9d44b832e2f071a755d212a8c90aac4803f0e41791a5427b48dfc9c1",
+        "firestore-transactions-bq": "db1e456d1ba33c4ca304a9856632a993dff90ad5bd51926c6f5bf0753ed80467",
+        "firestore-users-bq": "d2b208bcc63f80c7031a5b7a861ea460271baf069fc28f4a0839a0b6d445b9e9"
+      }
+    }
+  }
+}

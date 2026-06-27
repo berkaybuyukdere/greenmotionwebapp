@@ -1,0 +1,176 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import './styles/erpx-stripe.css';
+@import './styles/palantir-global.css';
+@import './styles/palantir-sidebar.css';
+@import './styles/palantir-dashboard.css';
+@import './styles/palantir-analytics.css';
+@import './styles/palantir-fleet.css';
+@import './styles/palantir-frontdesk.css';
+@import './styles/palantir-charts.css';
+@import './styles/palantir-datepicker.css';
+@import './styles/palantir-legacy-bridge.css';
+@import './styles/palantir-modals.css';
+@import './styles/stripe-financial-palantir.css';
+@import './styles/palantir-ops.css';
+@import './styles/palantir-ops-journal.css';
+@import './styles/palantir-pdf-transfer.css';
+@import './styles/palantir-toast.css';
+@import './styles/work-time-timetable-palantir.css';
+@import './styles/vehicle-sentinel-theme.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: var(--erpx-font);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    color: var(--erpx-ink);
+    background-color: var(--erpx-canvas);
+}
+
+.dark body {
+    color: var(--erpx-ink);
+    background-color: var(--erpx-canvas);
+}
+
+code {
+    font-family: var(--erpx-font-mono);
+}
+
+@layer components {
+    /* Stripe sidebar — white (light) / gray panel (dark) */
+    .erpx-sidebar {
+        background-color: var(--erpx-sidebar-bg);
+        border-right: 1px solid var(--erpx-sidebar-divider);
+        color: var(--erpx-sidebar-text);
+    }
+
+    .erpx-sidebar .gm-nav-item {
+        min-height: 2rem;
+        margin: 1px 8px;
+        padding: 7px 12px;
+        border-radius: var(--erpx-radius);
+        font-size: 13.5px;
+        font-weight: 500;
+        color: var(--erpx-sidebar-text);
+        gap: 10px;
+    }
+
+    .erpx-sidebar .gm-nav-item:hover {
+        background-color: var(--erpx-sidebar-hover);
+        color: var(--erpx-ink);
+    }
+
+    .erpx-sidebar .gm-nav-item svg {
+        color: var(--erpx-ink-muted);
+        flex-shrink: 0;
+    }
+
+    .erpx-sidebar .gm-nav-item:hover svg {
+        color: var(--erpx-ink-secondary);
+    }
+
+    .erpx-sidebar .gm-nav-item-active {
+        background-color: var(--erpx-sidebar-active);
+        color: var(--erpx-sidebar-active-text);
+        font-weight: 600;
+    }
+
+    .erpx-sidebar .gm-nav-item-active svg {
+        color: var(--erpx-sidebar-active-text);
+    }
+
+    .erpx-sidebar-header {
+        border-bottom: 1px solid var(--erpx-sidebar-divider);
+    }
+
+    .erpx-sidebar-footer {
+        border-top: 1px solid var(--erpx-sidebar-divider);
+    }
+
+    .erpx-sidebar .gm-nav-section-label,
+    .erpx-sidebar .gm-nav-section-toggle {
+        font-size: 10.5px;
+        font-weight: 600;
+        color: var(--erpx-sidebar-label);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+
+    .erpx-sidebar .gm-nav-section-toggle:hover {
+        background-color: var(--erpx-sidebar-hover);
+        color: var(--erpx-ink-secondary);
+    }
+
+    .erpx-sidebar-logo {
+        width: 28px;
+        height: 28px;
+        background: var(--erpx-brand);
+        border-radius: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-weight: 800;
+        font-size: 14px;
+        flex-shrink: 0;
+    }
+
+    .erpx-sidebar-brand {
+        font-size: 13.5px;
+        font-weight: 600;
+        color: var(--erpx-ink);
+    }
+
+    .dark .erpx-sidebar-brand {
+        color: var(--erpx-ink);
+    }
+
+    .erpx-sidebar-collapse-btn {
+        color: var(--erpx-ink-muted);
+    }
+
+    .erpx-sidebar-collapse-btn:hover {
+        background-color: var(--erpx-sidebar-hover);
+        color: var(--erpx-ink);
+    }
+
+    .erpx-topbar {
+        height: 56px;
+        background: var(--erpx-surface);
+        border-bottom: 1px solid var(--erpx-border);
+        flex-shrink: 0;
+    }
+
+    .erpx-topbar h1 {
+        color: var(--erpx-ink);
+        font-weight: 600;
+        letter-spacing: -0.02em;
+    }
+
+    /* Fallback nav outside sidebar */
+    .gm-nav-item {
+        @apply w-full flex items-center rounded-md text-sm font-medium transition-colors;
+        min-height: 2.25rem;
+        color: var(--erpx-ink-secondary);
+    }
+
+    .gm-nav-item:hover {
+        background-color: var(--erpx-subtle);
+        color: var(--erpx-ink);
+    }
+
+    .gm-nav-item-active {
+        background-color: var(--erpx-brand-light);
+        color: var(--erpx-brand);
+        font-weight: 600;
+    }
+}

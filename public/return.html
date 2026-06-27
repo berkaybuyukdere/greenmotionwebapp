@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="/domain-redirect.js"></script>
+  <meta charset="UTF-8" />
+  <link rel="canonical" href="https://vehiclesentinel.com/return.html" />
+  <link rel="icon" href="/logowebsite.svg" type="image/svg+xml" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Vehicle Return — Customer Details</title>
+  <link rel="stylesheet" href="/customer-self-fill.css" />
+</head>
+<body>
+  <div class="csf-shell">
+    <header class="csf-header">
+      <p class="csf-kicker" id="kicker">Green Motion</p>
+      <h1 class="csf-title" id="title">Vehicle Return</h1>
+      <p class="csf-subtitle" id="subtitle">Customer self-fill form</p>
+    </header>
+
+    <div id="panel-loading" class="csf-panel csf-state">
+      <p class="csf-subtitle">Loading form…</p>
+    </div>
+
+    <div id="panel-invalid" class="csf-panel csf-state csf-hidden">
+      <h2>Invalid link</h2>
+      <p>This QR code is not valid or has expired.<br />Please ask the rental office for a new code.</p>
+    </div>
+
+    <div id="panel-success" class="csf-panel csf-state csf-hidden">
+      <div class="csf-check">✓</div>
+      <h2>Thank you</h2>
+      <p>Your details were sent to the rental team.<br />You may close this page.</p>
+    </div>
+
+    <div id="panel-form" class="csf-panel csf-hidden">
+      <form id="customerForm" class="csf-panel-body" novalidate>
+        <p class="csf-note">Used only for return processing. Your signature confirms the handover details.</p>
+
+        <div class="csf-field">
+          <p class="csf-micro">First name</p>
+          <input class="csf-input" id="firstName" type="text" autocomplete="given-name" placeholder="John" required />
+          <p class="csf-error" id="err-firstName">First name is required.</p>
+        </div>
+
+        <div class="csf-field">
+          <p class="csf-micro">Last name</p>
+          <input class="csf-input" id="lastName" type="text" autocomplete="family-name" placeholder="Smith" required />
+          <p class="csf-error" id="err-lastName">Last name is required.</p>
+        </div>
+
+        <div class="csf-field">
+          <p class="csf-micro">Email</p>
+          <input class="csf-input" id="email" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" required />
+          <p class="csf-error" id="err-email">A valid email is required.</p>
+        </div>
+
+        <div class="csf-field">
+          <p class="csf-micro">Signature</p>
+          <div class="csf-sig-wrap">
+            <canvas id="sigCanvas" class="csf-sig-canvas" aria-label="Signature pad"></canvas>
+            <div class="csf-sig-bar">
+              <span class="csf-sig-hint">Sign with finger or stylus</span>
+              <button type="button" class="csf-btn-ghost" id="sigClear">Clear</button>
+            </div>
+          </div>
+          <p class="csf-error" id="err-signature">Please sign before submitting.</p>
+        </div>
+
+        <button type="submit" class="csf-btn-primary" id="submitBtn">Submit details</button>
+      </form>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initCustomerSelfFillForm } from '/customer-self-fill.js';
+
+    initCustomerSelfFillForm({
+      formKind: 'return',
+      hashRoute: 'return',
+      els: {
+        kicker: document.getElementById('kicker'),
+        title: document.getElementById('title'),
+        subtitle: document.getElementById('subtitle'),
+        panels: {
+          loading: document.getElementById('panel-loading'),
+          form: document.getElementById('panel-form'),
+          invalid: document.getElementById('panel-invalid'),
+          success: document.getElementById('panel-success'),
+        },
+        form: document.getElementById('customerForm'),
+        submitBtn: document.getElementById('submitBtn'),
+        sigCanvas: document.getElementById('sigCanvas'),
+        sigClear: document.getElementById('sigClear'),
+        inputs: {
+          firstName: document.getElementById('firstName'),
+          lastName: document.getElementById('lastName'),
+          email: document.getElementById('email'),
+        },
+        errors: {
+          firstName: document.getElementById('err-firstName'),
+          lastName: document.getElementById('err-lastName'),
+          email: document.getElementById('err-email'),
+          signature: document.getElementById('err-signature'),
+        },
+      },
+    });
+  </script>
+</body>
+</html>

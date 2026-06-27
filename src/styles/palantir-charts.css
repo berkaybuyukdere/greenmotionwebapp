@@ -1,0 +1,306 @@
+/* Palantir interactive charts — iOS-symmetric, fit containers */
+
+.pal-chart-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px dashed var(--erpx-border);
+    border-radius: var(--erpx-radius-sm);
+    color: var(--erpx-ink-muted);
+    font-size: 12px;
+    background: var(--erpx-subtle);
+}
+
+/* ─── Pie ─── */
+.pal-pie-chart {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+.pal-pie-chart-visual {
+    position: relative;
+    flex-shrink: 0;
+    margin: 0 auto;
+}
+
+.pal-pie-chart-svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.pal-pie-chart-svg path {
+    transition: opacity 0.12s ease, filter 0.12s ease;
+    cursor: pointer;
+}
+
+.pal-pie-chart-svg path.is-hover {
+    filter: brightness(1.08);
+}
+
+.pal-pie-chart-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    text-align: center;
+}
+
+.pal-pie-chart-center-value {
+    font-size: 18px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--erpx-ink);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+}
+
+.pal-pie-chart-center-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--erpx-ink-muted);
+    margin-top: 2px;
+}
+
+.pal-pie-legend {
+    flex: 1;
+    min-width: 140px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.pal-pie-legend li {
+    display: grid;
+    grid-template-columns: 10px 1fr auto auto;
+    gap: 6px;
+    align-items: center;
+    padding: 4px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: default;
+    transition: background 0.12s;
+}
+
+.pal-pie-legend li.is-hover {
+    background: var(--erpx-subtle);
+}
+
+.pal-pie-legend-swatch {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+}
+
+.pal-pie-legend-label {
+    color: var(--erpx-ink);
+    font-weight: 600;
+    font-family: var(--erpx-font-data);
+}
+
+.pal-pie-legend-value {
+    color: var(--erpx-ink-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+.pal-pie-legend-pct {
+    color: var(--erpx-ink-muted);
+    font-variant-numeric: tabular-nums;
+    min-width: 2.5rem;
+    text-align: right;
+}
+
+/* ─── Bar chart ─── */
+.pal-bar-chart {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-height: 80px;
+    padding: 8px 4px 4px;
+    border-radius: var(--erpx-radius-sm);
+    background: linear-gradient(180deg, var(--erpx-subtle) 0%, transparent 100%);
+}
+
+.pal-bar-chart-tooltip {
+    position: absolute;
+    top: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--erpx-border);
+    background: var(--erpx-surface);
+    box-shadow: var(--erpx-shadow-sm);
+    pointer-events: none;
+}
+
+.pal-bar-chart-tooltip-value {
+    font-size: 14px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--erpx-ink);
+}
+
+.pal-bar-chart-tooltip-label {
+    font-size: 10px;
+    color: var(--erpx-ink-muted);
+}
+
+.pal-bar-chart-grid {
+    position: absolute;
+    inset: 8px 4px 4px;
+    pointer-events: none;
+}
+
+.pal-bar-chart-gridline {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--erpx-border);
+    opacity: 0.45;
+}
+
+.pal-bar-chart-bars {
+    position: relative;
+    flex: 1;
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    min-height: 0;
+    padding-top: 28px;
+}
+
+.pal-bar-chart-col {
+    flex: 1 1 0;
+    min-width: 4px;
+    max-width: 28px;
+    height: 100%;
+    display: flex;
+    align-items: flex-end;
+    cursor: crosshair;
+}
+
+.pal-bar-chart-bar-track {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+}
+
+.pal-bar-chart-bar-fill {
+    width: 100%;
+    max-width: 20px;
+    border-radius: 3px 3px 1px 1px;
+    background: var(--pal-brand, var(--erpx-brand));
+    opacity: 0.88;
+    transition: height 0.2s ease, opacity 0.12s, filter 0.12s;
+}
+
+.pal-bar-chart-col.is-hover .pal-bar-chart-bar-fill {
+    opacity: 1;
+    filter: brightness(1.1);
+}
+
+.pal-bar-chart-success .pal-bar-chart-bar-fill {
+    background: var(--pal-success, var(--erpx-green));
+}
+
+.pal-bar-chart-danger .pal-bar-chart-bar-fill {
+    background: var(--pal-danger, var(--erpx-red));
+}
+
+.pal-bar-chart-warning .pal-bar-chart-bar-fill {
+    background: var(--pal-warning, var(--erpx-amber));
+}
+
+.pal-time-range-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 10px;
+}
+
+.pal-time-range-btn {
+    padding: 4px 10px;
+    border-radius: 5px;
+    border: 1px solid var(--erpx-border);
+    background: var(--erpx-subtle);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--erpx-ink-muted);
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.pal-time-range-btn:hover {
+    background: var(--erpx-surface);
+    color: var(--erpx-ink);
+}
+
+.pal-time-range-btn.active {
+    background: var(--pal-tag-bg, var(--erpx-brand-light));
+    border-color: var(--pal-brand, var(--erpx-brand));
+    color: var(--pal-brand, var(--erpx-brand));
+}
+
+.pal-analytics-damage-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.pal-analytics-damage-row {
+    display: grid;
+    grid-template-columns: 3rem 1fr 2.5rem;
+    gap: 8px;
+    align-items: center;
+    font-size: 11px;
+}
+
+.pal-analytics-damage-row .cat {
+    font-weight: 600;
+    font-family: var(--erpx-font-data);
+    color: var(--erpx-ink);
+}
+
+.pal-analytics-damage-track {
+    height: 6px;
+    border-radius: 3px;
+    background: var(--erpx-muted);
+    overflow: hidden;
+}
+
+.pal-analytics-damage-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--pal-danger, var(--erpx-red));
+    transition: width 0.2s ease;
+}
+
+.pal-analytics-damage-pct {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: var(--erpx-ink-secondary);
+    font-weight: 600;
+}

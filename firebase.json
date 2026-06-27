@@ -1,0 +1,108 @@
+{
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "greenmotion_web",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ]
+    }
+  ],
+  "hosting": {
+    "site": "greenmotionapp-33413",
+    "public": "build",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/return.html",
+        "destination": "/return.html"
+      },
+      {
+        "source": "/return.html/**",
+        "destination": "/return.html"
+      },
+      {
+        "source": "/return",
+        "destination": "/return.html"
+      },
+      {
+        "source": "/return/**",
+        "destination": "/return.html"
+      },
+      {
+        "source": "/checkout.html",
+        "destination": "/checkout.html"
+      },
+      {
+        "source": "/checkout.html/**",
+        "destination": "/checkout.html"
+      },
+      {
+        "source": "/checkout",
+        "destination": "/checkout.html"
+      },
+      {
+        "source": "/checkout/**",
+        "destination": "/checkout.html"
+      },
+      {
+        "source": "/customer-self-fill.css",
+        "destination": "/customer-self-fill.css"
+      },
+      {
+        "source": "/customer-self-fill.js",
+        "destination": "/customer-self-fill.js"
+      },
+      {
+        "source": "/kiosk-countries.json",
+        "destination": "/kiosk-countries.json"
+      },
+      {
+        "source": "/front-desk",
+        "destination": "/index.html"
+      },
+      {
+        "source": "/front-desk/**",
+        "destination": "/index.html"
+      },
+      {
+        "source": "/domain-redirect.js",
+        "destination": "/domain-redirect.js"
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "extensions": {
+    "firestore-users-bq": "firebase/firestore-bigquery-export@0.2.10",
+    "firestore-franchises-bq": "firebase/firestore-bigquery-export@0.2.10",
+    "firestore-customers-bq": "firebase/firestore-bigquery-export@0.2.10",
+    "firestore-transactions-bq": "firebase/firestore-bigquery-export@0.2.10",
+    "firestore-accidents-bq": "firebase/firestore-bigquery-export@0.2.10",
+    "firestore-protocols-bq": "firebase/firestore-bigquery-export@0.2.10",
+    "firestore-accidentcodes-bq": "firebase/firestore-bigquery-export@0.2.10",
+    "firestore-araclar-bq": "firebase/firestore-bigquery-export@0.2.10",
+    "firestore-serviskayitlari-bq": "firebase/firestore-bigquery-export@0.2.10",
+    "firestore-iadeislemleri-bq": "firebase/firestore-bigquery-export@0.2.10",
+    "firestore-officeops-bq": "firebase/firestore-bigquery-export@0.2.10",
+    "firestore-servisfirmalari-bq": "firebase/firestore-bigquery-export@0.2.10",
+    "firestore-activities-bq": "firebase/firestore-bigquery-export@0.2.10"
+  }
+}

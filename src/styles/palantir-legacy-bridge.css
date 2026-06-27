@@ -1,0 +1,131 @@
+/**
+ * Maps legacy SAP/gm/light Tailwind classes to Palantir tokens sitewide.
+ * Ensures no white iOS islands remain in admin / ops / forms.
+ */
+
+.pal-form-field,
+.erpx-page input:not([type='checkbox']):not([type='radio']):not([type='file']),
+.erpx-page select,
+.erpx-page textarea,
+.pal-dash-panel input:not([type='checkbox']):not([type='radio']):not([type='file']),
+.pal-dash-panel select,
+.pal-dash-panel textarea,
+.pal-modal input:not([type='checkbox']):not([type='radio']):not([type='file']),
+.pal-modal select,
+.pal-modal textarea {
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: var(--erpx-radius-sm);
+    border: 1px solid var(--erpx-border);
+    background: var(--erpx-subtle);
+    color: var(--erpx-ink);
+    font-size: 13px;
+    font-family: inherit;
+}
+
+.pal-form-field:focus,
+.erpx-page input:focus,
+.erpx-page select:focus,
+.erpx-page textarea:focus,
+.pal-dash-panel input:focus,
+.pal-dash-panel select:focus,
+.pal-dash-panel textarea:focus {
+    outline: none;
+    border-color: var(--erpx-brand);
+    box-shadow: var(--erpx-shadow-focus);
+}
+
+.pal-form-field::placeholder,
+.erpx-page input::placeholder,
+.erpx-page textarea::placeholder {
+    color: var(--erpx-ink-muted);
+}
+
+/* Legacy SAP typography → ERP tokens */
+.text-sap-text-primary,
+.dark .dark\:text-sap-textDark-primary {
+    color: var(--erpx-ink) !important;
+}
+
+.text-sap-text-secondary,
+.dark .dark\:text-sap-textDark-secondary {
+    color: var(--erpx-ink-secondary) !important;
+}
+
+.text-sap-text-tertiary,
+.dark .dark\:text-sap-textDark-tertiary {
+    color: var(--erpx-ink-muted) !important;
+}
+
+.text-sap-xs {
+    font-size: 11px;
+}
+
+.text-sap-sm {
+    font-size: 12px;
+}
+
+.text-sap-base {
+    font-size: 13px;
+}
+
+/* Legacy panel title inside Palantir panels */
+.gm-panel-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--erpx-ink-secondary);
+}
+
+/* Neutralize light SAP surfaces inside app shell */
+.erpx-view-stage .bg-sap-bg-light,
+.erpx-view-stage .dark\:bg-sap-bgDark-darkAlt,
+.erpx-main-shell .bg-sap-bg-light,
+.erpx-main-shell .dark\:bg-sap-bgDark-darkAlt {
+    background: var(--erpx-surface) !important;
+}
+
+.erpx-view-stage .border-sap-border-light,
+.erpx-view-stage .dark\:border-sap-borderDark-light,
+.erpx-main-shell .border-sap-border-light,
+.erpx-main-shell .dark\:border-sap-borderDark-light {
+    border-color: var(--erpx-border) !important;
+}
+
+/* Force white form controls to ERP subtle in dark app */
+.dark input.bg-white,
+.dark textarea.bg-white,
+.dark select.bg-white,
+.dark .bg-white.dark\:bg-sap-bgDark-input,
+input.bg-white.dark\:bg-sap-bgDark-input,
+textarea.bg-white.dark\:bg-sap-bgDark-input,
+select.bg-white.dark\:bg-sap-bgDark-input {
+    background: var(--erpx-subtle) !important;
+    border-color: var(--erpx-border) !important;
+    color: var(--erpx-ink) !important;
+}
+
+.pal-ops-overlay-card {
+    width: 100%;
+    max-width: 280px;
+    border-radius: var(--erpx-radius-lg);
+    border: 1px solid var(--erpx-border);
+    background: var(--erpx-surface);
+    box-shadow: var(--erpx-shadow-lg, 0 24px 64px rgba(0, 0, 0, 0.35));
+    padding: 1.5rem 1.25rem;
+    text-align: center;
+    color: var(--erpx-ink);
+}
+
+.pal-ops-overlay-icon {
+    margin: 0 auto 0.75rem;
+    display: flex;
+    height: 3.5rem;
+    width: 3.5rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    border: 1px solid var(--erpx-border);
+    background: var(--erpx-subtle);
+}

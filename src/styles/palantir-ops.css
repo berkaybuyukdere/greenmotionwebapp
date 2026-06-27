@@ -1,0 +1,321 @@
+/**
+ * Palantir office operations, analytics KPIs, list micro-typography
+ */
+
+/* Symmetric KPI grid — 4×2 for 8 office operation types */
+.pal-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+@media (max-width: 1100px) {
+    .pal-kpi-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 560px) {
+    .pal-kpi-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.pal-kpi-grid .gm-stripe-metric-tile {
+    flex: none;
+    min-width: 0;
+    min-height: 104px;
+    padding: 14px 16px;
+    border-radius: 0;
+}
+
+.pal-kpi-grid .gm-stripe-metric-tile-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.pal-kpi-grid .gm-stripe-metric-tile-value {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+.pal-kpi-grid .gm-stripe-metric-tile-count {
+    font-size: 11px;
+    margin-top: auto;
+}
+
+/* Office operation list — Palantir micro text */
+.gm-op-item {
+    border-bottom: 1px solid var(--erpx-border);
+}
+
+.gm-op-row-header {
+    padding: 10px 14px;
+    gap: 12px;
+}
+
+.gm-op-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--erpx-radius);
+    border: 1px solid var(--erpx-border);
+}
+
+.gm-op-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--erpx-ink);
+}
+
+.gm-op-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--erpx-ink-muted);
+    letter-spacing: 0.01em;
+}
+
+.gm-op-meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.gm-op-chevron {
+    color: var(--erpx-ink-muted);
+    flex-shrink: 0;
+}
+
+/* Analytics dashboard */
+.pal-analytics-page {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.pal-analytics-kpi-revenue .pal-dash-kpi-value {
+    color: var(--erpx-brand);
+}
+
+.pal-analytics-kpi-expense .pal-dash-kpi-value {
+    color: var(--erpx-ink-muted);
+}
+
+.pal-analytics-kpi-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+}
+
+@media (max-width: 1024px) {
+    .pal-analytics-kpi-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 768px) {
+    .pal-analytics-kpi-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+.pal-analytics-kpi {
+    padding: 14px 16px;
+    border: 1px solid var(--erpx-border);
+    border-radius: var(--erpx-radius);
+    background: var(--erpx-surface);
+}
+
+.pal-analytics-kpi-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--erpx-ink-muted);
+    margin-bottom: 6px;
+}
+
+.pal-analytics-kpi-value {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
+    color: var(--erpx-ink);
+}
+
+.pal-analytics-kpi-sub {
+    font-size: 11px;
+    color: var(--erpx-ink-muted);
+    margin-top: 4px;
+}
+
+.pal-analytics-chart-panel {
+    border: 1px solid var(--erpx-border);
+    border-radius: var(--erpx-radius);
+    background: var(--erpx-surface);
+    padding: 16px;
+    min-height: 280px;
+}
+
+.pal-analytics-chart-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.pal-analytics-chart-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--erpx-ink);
+}
+
+.pal-analytics-chart-range {
+    font-size: 11px;
+    color: var(--erpx-ink-muted);
+    font-family: var(--erpx-font-data);
+}
+
+.pal-analytics-split,
+.pal-analytics-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 280px;
+    gap: 12px;
+    align-items: start;
+}
+
+@media (max-width: 1100px) {
+    .pal-analytics-split,
+    .pal-analytics-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+.pal-analytics-metric-inline {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    text-align: right;
+}
+
+.pal-analytics-metric-inline-value {
+    font-size: 22px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--erpx-ink);
+    letter-spacing: -0.02em;
+}
+
+.pal-analytics-metric-inline-label {
+    font-size: 10px;
+    color: var(--erpx-ink-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.pal-analytics-stat-row {
+    margin-top: 12px;
+}
+
+.pal-analytics-main {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.pal-analytics-foot {
+    font-size: 11px;
+    color: var(--erpx-ink-muted);
+    margin-top: 8px;
+}
+
+.pal-analytics-rail {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    position: sticky;
+    top: 12px;
+}
+
+.pal-analytics-signal {
+    padding: 12px 14px;
+    border: 1px solid var(--erpx-border);
+    border-radius: var(--erpx-radius);
+    background: var(--erpx-subtle);
+}
+
+.pal-analytics-signal-label {
+    display: block;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--erpx-ink-muted);
+    margin-bottom: 4px;
+}
+
+.pal-analytics-signal-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--erpx-ink);
+    font-variant-numeric: tabular-nums;
+}
+
+.pal-analytics-insights {
+    padding: 14px;
+    border: 1px solid var(--erpx-border);
+    border-radius: var(--erpx-radius);
+    background: var(--erpx-surface);
+}
+
+.pal-analytics-insights-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--erpx-ink-muted);
+    margin-bottom: 10px;
+}
+
+.pal-analytics-insights ul {
+    margin: 0;
+    padding-left: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.pal-analytics-insights li {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--erpx-ink-secondary);
+}
+
+/* Files full-width */
+.pal-files-page {
+    width: 100%;
+    max-width: none;
+    padding-bottom: 24px;
+}
+
+.pal-files-page .pal-files-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.pal-files-page .pal-files-list {
+    border: 1px solid var(--erpx-border);
+    border-radius: var(--erpx-radius);
+    background: var(--erpx-surface);
+    overflow: hidden;
+}

@@ -1,0 +1,625 @@
+/**
+ * Vehicle Sentinel — Zürich Digital ops theme
+ * Light + dark · sharp edges · muted purple/grey (no pink/green/red UI chrome)
+ */
+
+/* ─── Shared tokens ─── */
+:root,
+.dark {
+    --vs-violet: #6d5dfc;
+    --vs-violet-dim: rgba(109, 93, 252, 0.12);
+    --vs-violet-border: rgba(109, 93, 252, 0.35);
+    --vs-radius: 0;
+
+    --pal-demo-brand: var(--vs-violet);
+    --pal-demo-brand2: #8577ff;
+    --pal-brand: var(--vs-violet);
+    --pal-tag-bg: var(--vs-violet-dim);
+
+    --erpx-radius-sm: 0;
+    --erpx-radius: 0;
+    --erpx-radius-lg: 0;
+    --erpx-radius-xl: 0;
+    --erpx-shadow-focus: 0 0 0 2px var(--vs-violet-border);
+
+    /* Muted semantics — no traffic-light colors in chrome */
+    --erpx-green: var(--vs-ink-muted);
+    --erpx-green-bg: var(--vs-surface-high);
+    --erpx-green-border: var(--vs-border-strong);
+    --erpx-amber: var(--vs-ink-muted);
+    --erpx-amber-bg: var(--vs-surface-high);
+    --erpx-amber-border: var(--vs-border-strong);
+    --erpx-red: var(--vs-ink-muted);
+    --erpx-red-bg: var(--vs-surface-high);
+    --erpx-red-border: var(--vs-border-strong);
+    --erpx-info: var(--vs-ink-muted);
+    --erpx-info-bg: var(--vs-surface-high);
+    --erpx-info-border: var(--vs-border-strong);
+}
+
+/* ─── Light theme ─── */
+:root {
+    color-scheme: light;
+
+    --vs-canvas: #f4f4f5;
+    --vs-surface: #ffffff;
+    --vs-surface-high: #fafafa;
+    --vs-border: #e4e4e7;
+    --vs-border-strong: #d4d4d8;
+    --vs-ink: #18181b;
+    --vs-ink-secondary: #3f3f46;
+    --vs-ink-muted: #71717a;
+    --vs-ink-disabled: #a1a1aa;
+
+    --pal-bg: var(--vs-canvas);
+    --pal-surface: var(--vs-surface);
+    --pal-surface-high: var(--vs-surface-high);
+    --pal-border: var(--vs-border);
+    --pal-text: var(--vs-ink);
+    --pal-muted: var(--vs-ink-muted);
+    --pal-accent: var(--vs-violet);
+    --pal-accent-hover: #8577ff;
+
+    --erpx-canvas: var(--vs-canvas);
+    --erpx-surface: var(--vs-surface);
+    --erpx-subtle: #f0f0f2;
+    --erpx-muted: #ececee;
+    --erpx-border: var(--vs-border);
+    --erpx-border-strong: var(--vs-border-strong);
+    --erpx-ink: var(--vs-ink);
+    --erpx-ink-secondary: var(--vs-ink-secondary);
+    --erpx-ink-muted: var(--vs-ink-muted);
+    --erpx-ink-disabled: var(--vs-ink-disabled);
+    --erpx-brand: var(--vs-violet);
+    --erpx-brand-dark: #5b4de0;
+    --erpx-brand-light: var(--vs-violet-dim);
+    --erpx-row-hover: #f0f0f2;
+    --erpx-sidebar-bg: #ffffff;
+    --erpx-sidebar-hover: #f4f4f5;
+    --erpx-sidebar-active: var(--vs-violet-dim);
+    --erpx-sidebar-active-text: #5b4de0;
+    --erpx-sidebar-divider: var(--vs-border);
+    --erpx-sidebar-text: var(--vs-ink-muted);
+}
+
+/* ─── Dark theme ─── */
+.dark {
+    color-scheme: dark;
+
+    --vs-violet-dim: rgba(109, 93, 252, 0.14);
+
+    --vs-canvas: #09090b;
+    --vs-surface: #0f0f12;
+    --vs-surface-high: #18181b;
+    --vs-border: #27272a;
+    --vs-border-strong: #3f3f46;
+    --vs-ink: #f4f4f5;
+    --vs-ink-secondary: #d4d4d8;
+    --vs-ink-muted: #a1a1aa;
+    --vs-ink-disabled: #71717a;
+
+    --pal-bg: var(--vs-canvas);
+    --pal-surface: var(--vs-surface);
+    --pal-surface-high: var(--vs-surface-high);
+    --pal-border: var(--vs-border);
+    --pal-text: var(--vs-ink);
+    --pal-muted: var(--vs-ink-muted);
+    --pal-accent: var(--vs-violet);
+    --pal-accent-hover: #8577ff;
+
+    --erpx-canvas: var(--vs-canvas);
+    --erpx-surface: var(--vs-surface);
+    --erpx-subtle: var(--vs-surface-high);
+    --erpx-muted: var(--vs-border);
+    --erpx-border: var(--vs-border);
+    --erpx-border-strong: var(--vs-border-strong);
+    --erpx-ink: var(--vs-ink);
+    --erpx-ink-secondary: var(--vs-ink-secondary);
+    --erpx-ink-muted: var(--vs-ink-muted);
+    --erpx-ink-disabled: var(--vs-ink-disabled);
+    --erpx-brand: var(--vs-violet);
+    --erpx-brand-dark: #8577ff;
+    --erpx-brand-light: var(--vs-violet-dim);
+    --erpx-row-hover: var(--vs-surface-high);
+    --erpx-sidebar-bg: var(--vs-surface);
+    --erpx-sidebar-hover: var(--vs-surface-high);
+    --erpx-sidebar-active: var(--vs-violet-dim);
+    --erpx-sidebar-active-text: #c4b5fd;
+    --erpx-sidebar-divider: var(--vs-border);
+    --erpx-sidebar-text: var(--vs-ink-muted);
+}
+
+/* ─── Sharp chrome ─── */
+.pal-dash-kpi,
+.pal-dash-panel,
+.pal-dash-summary,
+.gm-stripe-metric-tile,
+.gm-op-list,
+.gm-op-icon,
+.pal-btn,
+.erpx-sidebar .gm-nav-item,
+.erpx-sidebar-logo,
+.gm-badge,
+.gm-filter-chip,
+.pal-analytics-kpi,
+.pal-analytics-data-panel,
+.pal-analytics-chart-panel {
+    border-radius: var(--vs-radius) !important;
+}
+
+/* ─── Buttons — solid violet, no gradients ─── */
+.pal-btn-primary,
+.pal-login-submit {
+    background: var(--vs-violet) !important;
+    border: 1px solid var(--vs-violet-border) !important;
+    color: #fff !important;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-size: 11px;
+    box-shadow: none !important;
+    filter: none !important;
+}
+
+.pal-btn-primary:hover:not(:disabled),
+.pal-login-submit:not(:disabled):hover {
+    background: var(--pal-accent-hover) !important;
+    border-color: var(--pal-accent-hover) !important;
+}
+
+.pal-btn {
+    background: var(--erpx-subtle);
+    border-color: var(--erpx-border);
+    color: var(--erpx-ink);
+}
+
+.pal-btn:hover:not(:disabled) {
+    background: var(--erpx-muted);
+    border-color: var(--erpx-border-strong);
+}
+
+/* ─── Neutral badges & filter dots ─── */
+.gm-badge-success,
+.gm-badge-warning,
+.gm-badge-danger,
+.gm-badge-failed,
+.gm-badge-info,
+.gm-badge-purple,
+.gm-badge-neutral {
+    color: var(--erpx-ink) !important;
+    background: var(--erpx-subtle) !important;
+    border-color: var(--erpx-border-strong) !important;
+}
+
+.gm-badge-dot,
+.gm-filter-dot,
+.gm-filter-dot[style] {
+    background: var(--erpx-ink-muted) !important;
+}
+
+.gm-stripe-metric-tile-delta,
+.pal-dash-kpi-trend .tone-up,
+.pal-dash-kpi-trend .tone-down,
+.pal-dash-kpi-sub.up,
+.pal-dash-kpi-sub.down,
+.pal-dash-kpi-prev strong {
+    color: var(--erpx-ink-muted) !important;
+}
+
+.gm-op-icon-info,
+.gm-op-icon-success,
+.gm-op-icon-warning,
+.gm-op-icon-danger,
+.gm-op-icon-purple,
+.gm-op-icon {
+    background: var(--erpx-subtle) !important;
+    color: var(--erpx-ink-muted) !important;
+    border-color: var(--erpx-border-strong) !important;
+}
+
+.gm-filter-chip-active {
+    background: var(--vs-violet-dim) !important;
+    border-color: var(--vs-violet-border) !important;
+    color: var(--erpx-ink) !important;
+}
+
+.gm-filter-chip {
+    background: var(--erpx-surface);
+    border: 1px solid var(--erpx-border);
+    color: var(--erpx-ink-muted);
+}
+
+/* ─── Sidebar & topbar ─── */
+.pal-sidebar .pal-nav-item.pal-nav-item-active,
+.erpx-sidebar .gm-nav-item-active {
+    border-left: 2px solid var(--vs-violet) !important;
+    background: var(--vs-violet-dim) !important;
+    color: var(--erpx-ink) !important;
+}
+
+.erpx-sidebar-logo {
+    background: var(--erpx-border-strong) !important;
+    border: 1px solid var(--erpx-border);
+}
+
+.erpx-page-header {
+    border-bottom: 1px solid var(--erpx-border);
+}
+
+.erpx-topbar {
+    background: var(--erpx-surface);
+    border-bottom: 1px solid var(--erpx-border);
+}
+
+/* ─── Dashboard / office KPI tiles ─── */
+.pal-dash-kpi,
+.pal-dash-panel,
+.pal-kpi-grid .gm-stripe-metric-tile {
+    background: var(--erpx-surface);
+    border: 1px solid var(--erpx-border);
+    box-shadow: none;
+}
+
+.pal-dash-kpi:hover,
+.pal-kpi-grid .gm-stripe-metric-tile:hover {
+    border-color: var(--erpx-border-strong);
+    background: var(--erpx-subtle);
+}
+
+.gm-stripe-metric-tile-selected {
+    border-color: var(--vs-violet) !important;
+    background: var(--vs-violet-dim) !important;
+    box-shadow: inset 0 0 0 1px var(--vs-violet-border) !important;
+}
+
+.pal-dash-panel-header {
+    background: var(--erpx-subtle);
+    border-bottom: 1px solid var(--erpx-border);
+}
+
+.pal-dash-kpi-label,
+.pal-dash-panel-title,
+.pal-dash-summary-label,
+.pal-kpi-grid .gm-stripe-metric-tile-label {
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--erpx-ink-muted);
+}
+
+.pal-dash-list-row .rounded-full {
+    border-radius: 0 !important;
+}
+
+/* ═══════════════════════════════════════════
+   Analytics — Palantir muted KPIs & charts
+   ═══════════════════════════════════════════ */
+.pal-analytics-page .pal-analytics-kpi-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+}
+
+@media (max-width: 1200px) {
+    .pal-analytics-page .pal-analytics-kpi-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 640px) {
+    .pal-analytics-page .pal-analytics-kpi-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+.pal-analytics-page .pal-analytics-kpi {
+    padding: 14px 16px;
+    background: var(--erpx-surface);
+    border: 1px solid var(--erpx-border);
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.pal-analytics-page .pal-analytics-kpi:hover {
+    border-color: var(--erpx-border-strong);
+    background: var(--erpx-subtle);
+}
+
+.pal-analytics-page .pal-analytics-kpi-label {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--erpx-ink-muted);
+    margin-bottom: 8px;
+}
+
+.pal-analytics-page .pal-dash-kpi-value,
+.pal-analytics-page .pal-analytics-kpi-value {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
+    color: var(--erpx-ink);
+    line-height: 1.1;
+}
+
+.pal-analytics-page .pal-analytics-kpi-sub {
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    color: var(--erpx-ink-muted);
+    margin-top: 6px;
+}
+
+/* Revenue accent — violet only */
+.pal-analytics-page .pal-analytics-kpi-revenue .pal-dash-kpi-value,
+.pal-analytics-page .pal-analytics-kpi-revenue .pal-analytics-kpi-value {
+    color: var(--vs-violet) !important;
+}
+
+/* Expense — muted grey, not red */
+.pal-analytics-page .pal-analytics-kpi-expense .pal-dash-kpi-value,
+.pal-analytics-page .pal-analytics-kpi-expense .pal-analytics-kpi-value {
+    color: var(--erpx-ink-muted) !important;
+}
+
+.pal-analytics-page .pal-analytics-data-panel,
+.pal-analytics-page .pal-analytics-chart-panel {
+    background: var(--erpx-surface);
+    border: 1px solid var(--erpx-border);
+}
+
+.pal-analytics-page .pal-analytics-section-title {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--erpx-ink-muted);
+}
+
+.pal-analytics-page .pal-analytics-rail {
+    background: var(--erpx-surface);
+    border: 1px solid var(--erpx-border);
+}
+
+.pal-analytics-page .pal-analytics-signal {
+    border-bottom: 1px solid var(--erpx-border);
+}
+
+.pal-analytics-page .pal-analytics-signal-value {
+    color: var(--erpx-ink);
+    font-weight: 700;
+}
+
+.pal-analytics-page .pal-analytics-fleet-stat {
+    background: var(--erpx-subtle);
+    border: 1px solid var(--erpx-border);
+}
+
+.pal-analytics-page .pal-analytics-fleet-stat-value {
+    color: var(--erpx-ink);
+}
+
+/* Charts — violet/grey only inside analytics */
+.pal-analytics-page .pal-bar-chart-success .pal-bar-chart-bar-fill,
+.pal-analytics-page .pal-bar-chart-danger .pal-bar-chart-bar-fill,
+.pal-analytics-page .pal-bar-chart-warning .pal-bar-chart-bar-fill,
+.pal-analytics-page .pal-bar-chart-brand .pal-bar-chart-bar-fill {
+    background: var(--vs-violet) !important;
+    opacity: 0.82;
+}
+
+.pal-analytics-page .pal-bar-chart-col.is-hover .pal-bar-chart-bar-fill {
+    opacity: 1;
+    filter: brightness(1.08);
+}
+
+.pal-analytics-page .pal-analytics-damage-fill {
+    background: var(--vs-violet) !important;
+    opacity: 0.7;
+}
+
+.pal-analytics-page .pal-analytics-damage-track {
+    background: var(--erpx-muted);
+    border-radius: 0;
+}
+
+.pal-analytics-page .pal-time-range-btn {
+    border-radius: 0;
+    background: var(--erpx-subtle);
+    border-color: var(--erpx-border);
+    color: var(--erpx-ink-muted);
+}
+
+.pal-analytics-page .pal-time-range-btn.active {
+    background: var(--vs-violet-dim);
+    border-color: var(--vs-violet);
+    color: var(--vs-violet);
+}
+
+.pal-analytics-page .pal-fleet-chip-btn.active {
+    background: var(--vs-violet-dim);
+    border-color: var(--vs-violet);
+    color: var(--vs-violet);
+}
+
+.pal-analytics-page .pal-metric-cell {
+    border-radius: 0;
+    background: var(--erpx-subtle);
+}
+
+/* ─── Login — always dark (independent of theme toggle) ─── */
+.pal-login-root {
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    color-scheme: dark;
+    --pal-login-border: #27272a;
+    --pal-login-surface: #0f0f12;
+    --pal-login-ink: #f4f4f5;
+    --pal-login-muted: #a1a1aa;
+    --pal-login-accent: var(--vs-violet);
+    background: #09090b;
+    min-height: 100vh;
+}
+
+.pal-login-root--ready {
+    opacity: 1;
+}
+
+.pal-login-shell {
+    max-width: 420px;
+}
+
+.pal-login-card {
+    border: 1px solid #27272a;
+    background: #0f0f12;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+    padding: 0;
+    overflow: hidden;
+}
+
+.pal-login-brand {
+    padding: 28px 28px 12px;
+    text-align: center;
+}
+
+.pal-login-mark {
+    display: inline-flex;
+    padding: 12px 16px;
+    margin-bottom: 14px;
+    border: 1px solid #27272a;
+    background: #18181b;
+}
+
+.pal-login-logo {
+    height: 48px;
+    width: auto;
+    max-width: 220px;
+    object-fit: contain;
+}
+
+.pal-login-brand h1 {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: #f4f4f5;
+}
+
+.pal-login-brand p {
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: #71717a;
+}
+
+.pal-login-card-head {
+    padding: 14px 28px;
+    background: #18181b;
+    border-bottom: 1px solid #27272a;
+}
+
+.pal-login-card-head-icon {
+    border-radius: 0;
+    border: 1px solid var(--vs-violet-border);
+    background: var(--vs-violet-dim);
+    color: var(--vs-violet);
+}
+
+.pal-login-card-eyebrow {
+    color: #71717a !important;
+}
+
+.pal-login-form {
+    padding: 20px 28px 24px;
+}
+
+.pal-login-field-label,
+.pal-login-card label.pal-login-field-label {
+    color: #71717a !important;
+}
+
+.pal-login-field,
+.pal-login-card input.pal-login-field,
+.pal-login-card select.pal-login-field,
+.pal-login-franchise-pill {
+    background: #09090b !important;
+    border: 1px solid #27272a !important;
+    color: #f4f4f5 !important;
+    border-radius: 0 !important;
+}
+
+.pal-login-franchise-pill {
+    height: 38px;
+    margin-bottom: 14px;
+}
+
+.pal-login-field:focus,
+.pal-login-card input.pal-login-field:focus,
+.pal-login-card select.pal-login-field:focus {
+    border-color: var(--vs-violet) !important;
+    box-shadow: 0 0 0 1px var(--vs-violet-border) !important;
+    outline: none;
+}
+
+.pal-login-card select option {
+    background: #0f0f12;
+    color: #f4f4f5;
+}
+
+.pal-login-forgot-btn {
+    border: 1px solid #27272a;
+    background: transparent;
+    color: #a1a1aa;
+}
+
+.pal-login-forgot-btn:hover {
+    border-color: #3f3f46;
+    color: #f4f4f5;
+}
+
+.pal-login-footnote {
+    padding: 0 28px 20px;
+    color: #71717a;
+}
+
+/* ─── Page toolbar (single title in topbar) ─── */
+.erpx-page-toolbar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding-bottom: 18px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--erpx-border);
+}
+
+.erpx-page-toolbar .erpx-page-subtitle {
+    margin-top: 0;
+    max-width: 42rem;
+    line-height: 1.5;
+}
+
+.pal-form-stack > div + div {
+    margin-top: 2px;
+}
+
+.pal-form-stack .gm-label {
+    display: block;
+    margin-bottom: 8px;
+}
+
+.pal-form-stack .gm-field {
+    width: 100%;
+}
+
+.gm-dash-stat {
+    padding: 18px 20px !important;
+}
+
+.pal-login-brand-text--solo h1 {
+    font-size: 1.65rem;
+    letter-spacing: -0.02em;
+}
+
+.pal-login-brand-text--solo {
+    text-align: center;
+    width: 100%;
+}

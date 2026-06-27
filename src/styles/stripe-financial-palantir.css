@@ -1,0 +1,1430 @@
+/* Stripe Financial — Palantir workbench layout (mail order + chargebacks) */
+
+.pal-fin-root {
+  display: flex;
+  flex-direction: column;
+  min-height: min(72vh, 900px);
+  background: var(--erpx-canvas);
+  border: 1px solid var(--erpx-border);
+  border-radius: var(--erpx-radius-lg);
+  overflow: hidden;
+  box-shadow: var(--erpx-shadow-md);
+}
+
+.pal-fin-command {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--erpx-border);
+  background: linear-gradient(180deg, var(--erpx-surface) 0%, var(--erpx-subtle) 100%);
+}
+
+.pal-fin-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--erpx-brand);
+  margin: 0 0 4px;
+}
+
+.pal-fin-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  font-family: var(--erpx-font-data, ui-monospace, monospace);
+  margin: 0;
+  color: var(--erpx-ink);
+}
+
+.pal-fin-subtitle {
+  font-size: 12px;
+  color: var(--erpx-ink-muted);
+  margin: 6px 0 0;
+  max-width: 52ch;
+}
+
+.pal-fin-command-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.pal-fin-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--erpx-border);
+  background: var(--erpx-surface);
+}
+
+.pal-fin-search {
+  flex: 1;
+  min-width: 200px;
+  max-width: 360px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--erpx-border);
+  border-radius: 4px;
+  background: var(--erpx-canvas);
+}
+
+.pal-fin-search input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--erpx-ink);
+  outline: none;
+}
+
+.pal-fin-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pal-fin-chip {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 5px 10px;
+  border-radius: 3px;
+  border: 1px solid var(--erpx-border);
+  background: var(--erpx-canvas);
+  color: var(--erpx-ink-secondary);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.pal-fin-chip:hover {
+  border-color: var(--erpx-brand);
+  color: var(--erpx-brand);
+}
+
+.pal-fin-chip-active {
+  border-color: var(--erpx-brand);
+  background: var(--erpx-info-bg);
+  color: var(--erpx-brand);
+}
+
+.pal-fin-chip-count {
+  margin-left: 6px;
+  opacity: 0.65;
+  font-variant-numeric: tabular-nums;
+}
+
+.pal-fin-grid-single {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.pal-fin-mode-live {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: rgba(34, 197, 94, 0.12);
+  color: #16a34a;
+  border: 1px solid rgba(34, 197, 94, 0.25);
+}
+
+.pal-fin-mode-test {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.pal-fin-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+}
+
+@media (max-width: 1100px) {
+  .pal-fin-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pal-fin-main {
+  min-height: 0;
+  overflow: auto;
+  border-right: 1px solid var(--erpx-border);
+}
+
+.pal-fin-main-full {
+  border-right: none;
+}
+
+.pal-fin-table-wrap {
+  width: 100%;
+}
+
+.pal-fin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.pal-fin-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--erpx-subtle);
+}
+
+.pal-fin-table th {
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--erpx-ink-muted);
+  border-bottom: 1px solid var(--erpx-border);
+}
+
+.pal-fin-table td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--erpx-border);
+  vertical-align: middle;
+  color: var(--erpx-ink);
+}
+
+.pal-fin-table tbody tr {
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.pal-fin-table tbody tr:hover {
+  background: rgba(9, 105, 218, 0.04);
+}
+
+.pal-fin-table tbody tr.pal-fin-row-selected {
+  background: rgba(9, 105, 218, 0.08);
+  box-shadow: inset 3px 0 0 var(--erpx-brand);
+}
+
+.pal-fin-product-name {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.pal-fin-product-desc {
+  font-size: 11px;
+  color: var(--erpx-ink-muted);
+  margin-top: 2px;
+  max-width: 280px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pal-fin-mono {
+  font-family: var(--erpx-font-data, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--erpx-ink-secondary);
+}
+
+.pal-fin-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 3px;
+  border: 1px solid var(--erpx-border);
+}
+
+.pal-fin-status-active {
+  border-color: var(--erpx-green-border);
+  color: var(--erpx-green);
+  background: var(--erpx-green-bg);
+}
+
+.pal-fin-status-archived {
+  color: var(--erpx-ink-muted);
+  background: var(--erpx-subtle);
+}
+
+.pal-fin-status-paid {
+  border-color: var(--erpx-green-border);
+  color: var(--erpx-green);
+  background: var(--erpx-green-bg);
+}
+
+.pal-fin-status-unpaid {
+  border-color: var(--erpx-amber-border);
+  color: var(--erpx-amber);
+  background: var(--erpx-amber-bg);
+}
+
+.pal-fin-status-neutral {
+  color: var(--erpx-ink-muted);
+  background: var(--erpx-subtle);
+}
+
+.pal-fin-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.pal-fin-row-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.pal-fin-inspector {
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--erpx-surface);
+}
+
+.pal-fin-inspector-head {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--erpx-border);
+}
+
+.pal-fin-inspector-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--erpx-ink-muted);
+  margin: 0 0 8px;
+}
+
+.pal-fin-inspector-body {
+  padding: 14px 16px;
+  flex: 1;
+}
+
+.pal-fin-field {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--erpx-border);
+  font-size: 12px;
+}
+
+.pal-fin-field-label {
+  color: var(--erpx-ink-muted);
+  font-weight: 500;
+}
+
+.pal-fin-field-value {
+  color: var(--erpx-ink);
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.pal-fin-field-value.mono {
+  font-family: var(--erpx-font-data, ui-monospace, monospace);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.pal-fin-inspector-footer {
+  padding: 14px 16px;
+  border-top: 1px solid var(--erpx-border);
+  background: var(--erpx-subtle);
+}
+
+.pal-fin-input {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 13px;
+  border: 1px solid var(--erpx-border);
+  border-radius: 4px;
+  background: var(--erpx-canvas);
+  color: var(--erpx-ink);
+  margin-top: 4px;
+}
+
+.pal-fin-input:focus {
+  outline: none;
+  border-color: var(--erpx-brand);
+  box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.15);
+}
+
+.pal-fin-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 12px 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--erpx-ink-secondary);
+  cursor: pointer;
+}
+
+.pal-fin-check input {
+  margin-top: 3px;
+  accent-color: var(--erpx-brand);
+}
+
+.pal-fin-link-box {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--erpx-border);
+  border-radius: 4px;
+  background: var(--erpx-canvas);
+}
+
+.pal-fin-link-url {
+  font-family: var(--erpx-font-data, ui-monospace, monospace);
+  font-size: 11px;
+  word-break: break-all;
+  color: var(--erpx-brand);
+}
+
+.pal-fin-pay-button-preview {
+  display: flex;
+  justify-content: center;
+  padding: 16px 12px;
+  margin-bottom: 12px;
+  border: 1px dashed var(--erpx-border);
+  border-radius: 6px;
+  background: var(--erpx-surface);
+}
+
+.pal-fin-pay-button-anchor {
+  display: inline-block;
+  padding: 14px 28px;
+  border-radius: 8px;
+  background: #0f766e;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-decoration: none;
+  text-align: center;
+}
+
+.pal-fin-pay-button-anchor:hover {
+  background: #0d9488;
+  color: #fff;
+}
+
+.pal-fin-summary-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--erpx-border);
+  background: var(--erpx-surface);
+}
+
+.pal-fin-summary-row-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 960px) {
+  .pal-fin-summary-row-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.pal-fin-summary-card {
+  padding: 12px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--erpx-border);
+  background: var(--erpx-canvas);
+}
+
+.pal-fin-summary-success {
+  border-color: var(--erpx-green-border);
+}
+
+.pal-fin-summary-pending {
+  border-color: var(--erpx-amber-border);
+}
+
+.pal-fin-summary-cancelled {
+  border-color: var(--erpx-red-border);
+}
+
+.pal-fin-summary-hold {
+  border-color: #93c5fd;
+  background: rgba(37, 99, 235, 0.04);
+}
+
+.pal-fin-summary-label {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--erpx-ink-muted);
+}
+
+.pal-fin-summary-count {
+  margin: 6px 0 0;
+  font-size: 22px;
+  font-weight: 700;
+  font-family: var(--erpx-font-data, ui-monospace, monospace);
+}
+
+.pal-fin-summary-total {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--erpx-ink-secondary);
+}
+
+.pal-fin-date-input {
+  width: auto;
+  min-width: 140px;
+  padding: 6px 10px;
+}
+
+.pal-fin-check-inline {
+  margin: 0;
+  font-size: 12px;
+}
+
+.pal-fin-link-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pal-fin-fusemetrix-guide {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--erpx-info-border, #bfdbfe);
+  border-radius: 6px;
+  background: var(--erpx-info-bg, #eff6ff);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--erpx-ink-secondary);
+}
+
+.pal-fin-fusemetrix-guide-title {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--erpx-brand);
+}
+
+.pal-fin-fusemetrix-steps {
+  margin: 0 0 8px;
+  padding-left: 18px;
+}
+
+.pal-fin-fusemetrix-steps li {
+  margin-bottom: 4px;
+}
+
+.pal-fin-fusemetrix-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--erpx-ink-muted);
+}
+
+.pal-fin-copy-error {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--erpx-red);
+}
+
+.pal-fin-source-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--erpx-brand);
+  cursor: pointer;
+}
+
+.pal-fin-html-source {
+  display: block;
+  width: 100%;
+  min-height: 72px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--erpx-border);
+  border-radius: 4px;
+  background: var(--erpx-canvas);
+  font-family: var(--erpx-font-data, ui-monospace, monospace);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--erpx-ink);
+  resize: vertical;
+}
+
+.pal-fin-alert {
+  margin: 0 18px 12px;
+  padding: 10px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  border: 1px solid var(--erpx-red-border);
+  background: var(--erpx-red-bg);
+  color: var(--erpx-red);
+}
+
+.pal-fin-empty {
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--erpx-ink-muted);
+  font-size: 13px;
+}
+
+/* Payment method badges */
+.pal-pay-strip {
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--erpx-border);
+}
+
+.pal-pay-strip-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--erpx-ink-muted);
+  margin: 0 0 10px;
+}
+
+.pal-pay-strip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pal-pay-strip-compact .pal-pay-strip-row {
+  gap: 6px;
+}
+
+.pal-pay-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--erpx-border);
+  background: var(--erpx-canvas);
+  min-height: 32px;
+}
+
+.pal-pay-chip-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.pal-pay-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.pal-pay-text-logo {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.pal-pay-visa-text {
+  color: #1a1f71;
+  font-style: italic;
+}
+
+.pal-pay-amex-text {
+  color: #006fcf;
+}
+
+.pal-pay-twint-text {
+  color: #000;
+  font-weight: 900;
+}
+
+.pal-pay-klarna {
+  background: #ffb3c7;
+  border-color: #f0a0b8;
+}
+
+.pal-pay-klarna .pal-pay-text-logo {
+  color: #17120f;
+}
+
+.pal-pay-apple {
+  background: #000;
+  border-color: #333;
+  color: #fff;
+}
+
+.pal-pay-google {
+  background: #fff;
+}
+
+.pal-pay-mc-circles {
+  display: flex;
+  align-items: center;
+}
+
+.pal-pay-mc-red,
+.pal-pay-mc-yellow {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.pal-pay-mc-red {
+  background: #eb001b;
+  margin-right: -6px;
+}
+
+.pal-pay-mc-yellow {
+  background: #f79e1b;
+  opacity: 0.95;
+}
+
+.pal-fin-audit {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--erpx-border);
+}
+
+.pal-fin-audit-item {
+  font-size: 11px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--erpx-border);
+  color: var(--erpx-ink-secondary);
+}
+
+.pal-fin-table .pal-pay-strip-row {
+  margin-top: 4px;
+}
+
+.pal-fin-table-pay-cell .pal-pay-chip {
+  padding: 4px 6px;
+  min-height: 26px;
+}
+
+.pal-fin-table-pay-cell .pal-pay-chip-label {
+  display: none;
+}
+
+.pal-fin-table-pay-cell .pal-pay-icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* Dense Stripe-dashboard table rows */
+.pal-fin-table-dense {
+  font-size: 12px;
+}
+
+.pal-fin-table-dense th {
+  padding: 5px 10px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+.pal-fin-table-dense td {
+  padding: 4px 10px;
+  line-height: 1.25;
+}
+
+.pal-fin-table-dense .pal-fin-product-name {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pal-fin-table-dense .pal-fin-product-desc {
+  font-size: 10px;
+  margin-top: 0;
+  max-width: 220px;
+}
+
+.pal-fin-table-dense .gm-badge {
+  padding: 2px 7px;
+  font-size: 10px;
+  gap: 4px;
+}
+
+.pal-fin-table-dense .gm-badge-dot {
+  width: 5px;
+  height: 5px;
+}
+
+.stripe-pay-amount {
+  font-weight: 700;
+  font-size: 12px;
+  font-family: var(--erpx-font-data, ui-monospace, monospace);
+  white-space: nowrap;
+}
+
+.stripe-pay-currency {
+  font-size: 11px;
+  color: var(--erpx-ink-muted);
+  text-transform: uppercase;
+}
+
+.stripe-pay-desc {
+  font-size: 11px;
+  max-width: 140px;
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.stripe-pay-customer {
+  font-size: 11px;
+  color: var(--erpx-ink-secondary);
+  max-width: 160px;
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stripe-pay-date {
+  font-size: 11px;
+  color: var(--erpx-ink-secondary);
+  white-space: nowrap;
+}
+
+.stripe-pay-method-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.stripe-pay-brand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+.stripe-pay-brand-visa {
+  background: #1a1f71;
+  color: #fff;
+}
+
+.stripe-pay-brand-mc {
+  position: relative;
+  width: 26px;
+  background: transparent;
+}
+
+.stripe-pay-mc-red,
+.stripe-pay-mc-yellow {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  top: 2px;
+}
+
+.stripe-pay-mc-red {
+  left: 4px;
+  background: #eb001b;
+}
+
+.stripe-pay-mc-yellow {
+  left: 12px;
+  background: #f79e1b;
+  opacity: 0.95;
+}
+
+.stripe-pay-brand-amex {
+  background: #006fcf;
+  color: #fff;
+}
+
+.stripe-pay-brand-link {
+  background: #00d66f;
+  color: #0a2540;
+  font-size: 7px;
+}
+
+.stripe-pay-brand-twint {
+  background: #000;
+  color: #fff;
+  font-size: 7px;
+}
+
+.stripe-pay-brand-terminal {
+  background: var(--erpx-subtle);
+  color: var(--erpx-ink-secondary);
+  border: 1px solid var(--erpx-border);
+}
+
+.stripe-pay-brand-card {
+  background: var(--erpx-subtle);
+  color: var(--erpx-ink-muted);
+  border: 1px solid var(--erpx-border);
+}
+
+.stripe-pay-last4 {
+  font-size: 11px;
+  color: var(--erpx-ink-secondary);
+  font-family: var(--erpx-font-data, ui-monospace, monospace);
+}
+
+.stripe-pay-last4-empty {
+  color: var(--erpx-ink-muted);
+}
+
+.stripe-pay-customer-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.stripe-pay-customer-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--erpx-ink);
+}
+
+.stripe-pay-customer-sub {
+  font-size: 10px;
+  color: var(--erpx-ink-muted);
+}
+
+.stripe-pay-status-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.stripe-pay-ref {
+  font-size: 11px;
+  color: var(--erpx-ink-secondary);
+}
+
+.pal-fin-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.pal-fin-modal {
+  width: min(520px, 100%);
+  background: var(--erpx-surface);
+  border: 1px solid var(--erpx-border);
+  border-radius: var(--erpx-radius-lg);
+  box-shadow: var(--erpx-shadow-lg);
+  overflow: hidden;
+}
+
+.pal-fin-modal-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--erpx-border);
+}
+
+.pal-fin-modal-title {
+  margin: 4px 0 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.pal-fin-modal-sub {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--erpx-ink-muted);
+  max-width: 40ch;
+}
+
+.pal-fin-modal-close {
+  border: none;
+  background: transparent;
+  color: var(--erpx-ink-muted);
+  cursor: pointer;
+  padding: 4px;
+}
+
+.pal-fin-modal-body {
+  padding: 16px 18px;
+}
+
+.pal-fin-modal-center {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 28px 18px;
+}
+
+.pal-fin-modal-status {
+  font-weight: 600;
+  margin: 0;
+}
+
+.pal-fin-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--erpx-border);
+}
+
+.pal-fin-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.pal-fin-form-grid-settings {
+  max-width: 640px;
+}
+
+.pal-fin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--erpx-ink-secondary);
+}
+
+.pal-fin-field-full {
+  grid-column: 1 / -1;
+}
+
+.pal-fin-field input {
+  padding: 8px 10px;
+  border: 1px solid var(--erpx-border);
+  border-radius: 4px;
+  background: var(--erpx-canvas);
+  font-size: 13px;
+}
+
+.pal-fin-field small {
+  font-size: 10px;
+  color: var(--erpx-ink-muted);
+}
+
+.pal-fin-hint {
+  font-size: 11px;
+  margin-top: 12px;
+  color: var(--erpx-ink-muted);
+}
+
+.pal-fin-alert-warn {
+  border-color: var(--erpx-amber-border);
+  background: var(--erpx-amber-bg);
+  color: var(--erpx-amber);
+}
+
+.pal-fin-deposits-banner {
+  margin: 0 18px 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  color: var(--erpx-ink);
+}
+
+.pal-fin-deposit-panel {
+  margin: 0 18px 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--erpx-border);
+  border-radius: 8px;
+  background: var(--erpx-subtle);
+}
+
+.pal-fin-deposit-panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.stripe-deposit-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stripe-deposit-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.pal-fin-input-sm {
+  max-width: 140px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.pal-fin-terminal-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.settings-card {
+  padding: 16px;
+  border: 1px solid var(--sap-border-light, var(--erpx-border));
+  border-radius: 8px;
+  background: var(--sap-bg-light, var(--erpx-surface));
+}
+
+.pal-fin-terminal-security-note {
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--erpx-amber);
+  max-width: 36ch;
+}
+
+.pal-fin-table-row-clickable {
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.pal-fin-table-row-clickable:hover {
+  background: rgba(37, 99, 235, 0.06);
+}
+
+.pal-pay-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: rgba(15, 23, 42, 0.35);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.pal-pay-drawer {
+  width: min(420px, 100%);
+  height: 100%;
+  background: var(--erpx-surface);
+  border-left: 1px solid var(--erpx-border);
+  box-shadow: var(--erpx-shadow-lg);
+  display: flex;
+  flex-direction: column;
+  animation: pal-pay-drawer-in 0.2s ease;
+}
+
+@keyframes pal-pay-drawer-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.pal-pay-drawer-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--erpx-border);
+}
+
+.pal-pay-drawer-amount {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 4px 0 8px;
+  font-family: var(--erpx-font-data, ui-monospace, monospace);
+}
+
+.pal-pay-drawer-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pal-pay-drawer-body {
+  padding: 16px 18px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.pal-pay-detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--erpx-border);
+  font-size: 12px;
+}
+
+.pal-pay-detail-label {
+  color: var(--erpx-ink-muted);
+  flex-shrink: 0;
+}
+
+.pal-pay-detail-value {
+  text-align: right;
+  color: var(--erpx-ink);
+  word-break: break-word;
+}
+
+.pal-pay-drawer-section {
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid var(--erpx-border);
+}
+
+.pal-pay-drawer-cancel textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--erpx-border);
+  border-radius: 4px;
+  font-size: 13px;
+  resize: vertical;
+  min-height: 72px;
+  background: var(--erpx-canvas);
+}
+
+.pal-fin-field textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--erpx-border);
+  border-radius: 0;
+  background: var(--erpx-canvas);
+  font-size: 13px;
+  resize: vertical;
+}
+
+/* Sharp Palantir status badges (Stripe-like colors) */
+.pal-fin-root .pal-fin-badge-sharp,
+.pal-pay-drawer .pal-fin-badge-sharp {
+  border-radius: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  line-height: 1.3;
+}
+
+.pal-fin-root .gm-badge-dot,
+.pal-pay-drawer .gm-badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 0;
+}
+
+.stripe-pay-status-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.gm-badge-deposit {
+  color: #1d4ed8;
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+
+.gm-badge-wheelsys {
+  color: #6d28d9;
+  background: #f5f3ff;
+  border-color: #c4b5fd;
+}
+
+.gm-badge-deposit .gm-badge-dot { background: #2563eb; }
+.gm-badge-wheelsys .gm-badge-dot { background: #7c3aed; }
+
+.pal-pay-drawer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.pal-pay-increase-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pal-pay-increase-delta {
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.pal-pay-increase-delta-ok {
+  color: var(--erpx-green);
+}
+
+.pal-pay-increase-delta-warn {
+  color: var(--erpx-amber);
+}
+
+.pal-fin-period-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.pal-fin-period-chip {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: #cbd5e1;
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.pal-fin-period-chip.is-active {
+  background: rgba(99, 102, 241, 0.2);
+  border-color: rgba(99, 102, 241, 0.55);
+  color: #e0e7ff;
+}
+
+.pal-fin-range-caption {
+  font-size: 12px;
+  color: #94a3b8;
+  margin: 0 0 12px;
+}
+
+.pal-fin-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.pal-fin-kpi-card {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.pal-fin-kpi-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #94a3b8;
+  margin-bottom: 6px;
+}
+
+.pal-fin-kpi-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.pal-fin-kpi-sub {
+  font-size: 13px;
+  color: #cbd5e1;
+  margin-top: 2px;
+}
+
+.pal-fin-chart-section {
+  margin-bottom: 24px;
+}
+
+.pal-fin-chart-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e2e8f0;
+  margin: 0 0 8px;
+}
+
+.pal-fin-chart-wrap {
+  width: 100%;
+  min-height: 200px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.pal-fin-category-breakdown {
+  margin-bottom: 16px;
+}
+
+.pal-fin-category-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.pal-fin-category-cell {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.pal-fin-category-label {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.pal-fin-category-count {
+  font-size: 18px;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin-top: 4px;
+}
+
+.pal-fin-category-vol {
+  font-size: 12px;
+  color: #cbd5e1;
+}

@@ -1,0 +1,1352 @@
+rules_version = '2';
+
+// ============================================================================
+// FIRESTORE SECURITY RULES - FRANCHISE DATA ISOLATION + RBAC + TRIAL USERS
+// ============================================================================
+// Access control layers:
+//   1. FRANCHISE ISOLATION: Production users can only access documents
+//      matching their franchiseId (e.g. "ch" for Switzerland, "tr" for Turkey)
+//   2. RBAC: Only `globaladmin` bypasses franchise filtering (cross-franchise). Superadmin is scoped to users.franchiseId.
+// ALL roles (manager, staff, viewer, admin) have FULL access to their franchise.
+// Elevated admins (superadmin, globaladmin) have access to admin panel collections (adminTests, adminTestLogs).
+//
+// SAFETY: exists() checks prevent errors when user document is missing.
+//         Trial users are normal franchise users with time-limited login.
+//
+// DEPLOYMENT ORDER: (1) Run migration, (2) Deploy app code, (3) Deploy rules
+// ============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===== HELPER FUNCTIONS =====
+    
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Get user document (returns null if not found)
+    function getUserDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+    
+    // Check if user is admin (you can expand this)
+    function isAdmin() {
+      let ud = getUserDoc();
+      return isAuthenticated() && ud != null && ud.data.role == 'admin';
+    }
+    
+    // Check if user owns the document
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isProductionUser() {
+      return isAuthenticated();
+    }
+    
+    // Validate required fields for Arac (Vehicle)
+    function isValidArac() {
+      return request.resource.data.keys().hasAll([
+        'plaka', 'marka', 'model', 'kategori', 'vignetteVar', 
+        'kayitTarihi', 'hasarKayitlari', 'qrCode', 'spareKeyCount'
+      ]) &&
+      request.resource.data.plaka is string &&
+      request.resource.data.marka is string &&
+      request.resource.data.model is string &&
+      request.resource.data.kategori is string &&
+      request.resource.data.vignetteVar is bool &&
+      request.resource.data.kayitTarihi is timestamp &&
+      request.resource.data.hasarKayitlari is list &&
+      request.resource.data.qrCode is string &&
+      request.resource.data.spareKeyCount is int;
+    }
+    
+    // ===== HELPER: ELEVATED ADMIN (superadmin OR globaladmin) =====
+
+    function userRoleLower() {
+      let ud = getUserDoc();
+      return ud != null && ud.data.keys().hasAny(['role']) && ud.data.role is string
+        ? ud.data.role.lower()
+        : '';
+    }
+
+    function isGlobalAdminRole() {
+      let ud = getUserDoc();
+      return userRoleLower() == 'globaladmin' || (
+        ud != null &&
+        ud.data.keys().hasAny(['roleScope']) &&
+        ud.data.roleScope is map &&
+        ud.data.roleScope.keys().hasAny(['level']) &&
+        ud.data.roleScope.level == 'global'
+      );
+    }
+
+    function isSuperAdminRole() {
+      return userRoleLower() == 'superadmin';
+    }
+    
+    function isElevatedAdmin() {
+      return isAuthenticated() && getUserDoc() != null && (isSuperAdminRole() || isGlobalAdminRole());
+    }
+    
+    function isGlobalAdminOnly() {
+      return isAuthenticated() && getUserDoc() != null && isGlobalAdminRole();
+    }
+    
+    function isSuperAdminOnly() {
+      return isAuthenticated() && getUserDoc() != null && isSuperAdminRole();
+    }
+    
+    // Franchise manager: operational lead (work-hour visibility for whole team)
+    function isFranchiseManagerRole() {
+      let ud = getUserDoc();
+      return isAuthenticated() && ud != null && ud.data.role == 'manager';
+    }
+
+    // Front-desk customer row delete (web): franchise team roles, not only platform admins.
+    function isFranchiseFrontDeskCustomerDeleteRole() {
+      let ud = getUserDoc();
+      return isAuthenticated() && ud != null &&
+        ud.data.keys().hasAny(['role']) &&
+        ud.data.role is string &&
+        ud.data.role.lower() in ['staff', 'shuttle', 'manager', 'admin', 'viewer'];
+    }
+
+    // Garage portal: dedicated external-facing accounts (see GaragePortalView.js).
+    function isGaragePortalRole() {
+      let ud = getUserDoc();
+      return isAuthenticated() && ud != null &&
+        ud.data.keys().hasAny(['role']) &&
+        ud.data.role is string &&
+        ud.data.role.lower() == 'garage';
+    }
+
+    function userLinkedGarageIdStr() {
+      let ud = getUserDoc();
+      return ud == null ? '' : (
+        (ud.data.keys().hasAny(['garageId']) && ud.data.garageId is string && ud.data.garageId.size() > 0)
+          ? ud.data.garageId
+          : (
+            (ud.data.keys().hasAny(['linkedGarageId']) && ud.data.linkedGarageId is string && ud.data.linkedGarageId.size() > 0)
+              ? ud.data.linkedGarageId
+              : ''
+          )
+      );
+    }
+
+    function garageJobCompletionUpdate() {
+      let diff = request.resource.data.diff(resource.data).affectedKeys();
+      return (
+          (
+            diff.hasOnly(['status', 'completedAt', 'updatedAt']) ||
+            diff.hasOnly(['status', 'completedAt', 'updatedAt', 'completionNotes']) ||
+            diff.hasOnly(['status', 'completedAt', 'updatedAt', 'completionPhotoURLs']) ||
+            diff.hasOnly(['status', 'completedAt', 'updatedAt', 'completionNotes', 'completionPhotoURLs']) ||
+            diff.hasOnly(['status', 'completedAt', 'updatedAt', 'notes']) ||
+            diff.hasOnly(['status', 'completedAt', 'updatedAt', 'notes', 'completionNotes']) ||
+            diff.hasOnly(['status', 'completedAt', 'updatedAt', 'notes', 'completionPhotoURLs']) ||
+            diff.hasOnly(['status', 'completedAt', 'updatedAt', 'notes', 'completionNotes', 'completionPhotoURLs'])
+          ) &&
+          request.resource.data.status == 'completed' &&
+          request.resource.data.completedAt is timestamp
+        );
+    }
+
+    function garageJobNotesOnlyUpdate() {
+      let diff = request.resource.data.diff(resource.data).affectedKeys();
+      return (
+        diff.hasOnly(['notes', 'updatedAt']) &&
+        request.resource.data.status == resource.data.status
+      );
+    }
+    
+    // ===== UNIFIED roleScope HELPERS =====
+    // `users/{uid}.roleScope = { level: 'global'|'country'|'franchise', countryCode, franchiseIds: [] }`
+    // Backward compat: when roleScope is missing we derive from legacy
+    //   `role`/`franchiseId`/`scopeLevel`/`franchiseMemberships`/`countryCode`.
+
+    function userRoleScopeLevel() {
+      let ud = getUserDoc();
+      return ud != null &&
+        ud.data.keys().hasAny(['roleScope']) &&
+        ud.data.roleScope is map &&
+        ud.data.roleScope.keys().hasAny(['level']) &&
+        ud.data.roleScope.level is string
+        ? ud.data.roleScope.level.lower()
+        : '';
+    }
+
+    function userRoleScopeCountry() {
+      let ud = getUserDoc();
+      return ud != null &&
+        ud.data.keys().hasAny(['roleScope']) &&
+        ud.data.roleScope is map &&
+        ud.data.roleScope.keys().hasAny(['countryCode']) &&
+        ud.data.roleScope.countryCode is string
+        ? ud.data.roleScope.countryCode.lower()
+        : (
+          ud != null && ud.data.keys().hasAny(['countryCode']) && ud.data.countryCode is string
+            ? ud.data.countryCode.lower()
+            : ''
+        );
+    }
+
+    function userRoleScopeFranchiseIds() {
+      let ud = getUserDoc();
+      return ud != null &&
+        ud.data.keys().hasAny(['roleScope']) &&
+        ud.data.roleScope is map &&
+        ud.data.roleScope.keys().hasAny(['franchiseIds']) &&
+        ud.data.roleScope.franchiseIds is list
+        ? ud.data.roleScope.franchiseIds
+        : [];
+    }
+
+    function userIsGlobalScope() {
+      return userRoleScopeLevel() == 'global' || isGlobalAdminRole();
+    }
+
+    function franchiseDocCountryMatchesUser(franchisePathId) {
+      let ud = getUserDoc();
+      let fr = get(/databases/$(database)/documents/franchises/$(franchisePathId));
+      let userCountry = userRoleScopeCountry();
+      return ud != null &&
+        fr != null &&
+        fr.data.keys().hasAny(['countryCode']) &&
+        userCountry != '' &&
+        fr.data.countryCode.lower() == userCountry;
+    }
+
+    // Legacy `franchiseMemberships` lookup.
+    function userHasMembershipForFranchise(franchisePathId) {
+      let ud = getUserDoc();
+      return ud != null &&
+        ud.data.keys().hasAny(['franchiseMemberships']) &&
+        ud.data.franchiseMemberships[franchisePathId] == true;
+    }
+
+    // Legacy `scopeLevel == country_all`.
+    function userHasCountryWideScope() {
+      let ud = getUserDoc();
+      return ud != null &&
+        ud.data.keys().hasAny(['scopeLevel']) &&
+        ud.data.scopeLevel == 'country_all';
+    }
+
+    // Profile franchiseId may be a 2-letter country root (e.g. TR) while data lives under TR_BRANCH.
+    function isBranchUnderTwoLetterFranchiseRoot(primary, pathFranchise) {
+      return primary is string &&
+        pathFranchise is string &&
+        primary.size() == 2 &&
+        pathFranchise.size() > 3 &&
+        pathFranchise.lower().matches('^' + primary.lower() + '_.*');
+    }
+
+    // Country-wide scope: roleScope.level == 'country' AND franchiseIds empty
+    // (or legacy scopeLevel == 'country_all').
+    function userCountryWideForFranchise(franchisePathId) {
+      return (
+        (userRoleScopeLevel() == 'country' && userRoleScopeFranchiseIds().size() == 0)
+        || userHasCountryWideScope()
+      ) && franchiseDocCountryMatchesUser(franchisePathId);
+    }
+
+    // Explicit list check (covers roleScope.franchiseIds + legacy franchiseMemberships).
+    function userHasExplicitFranchiseAccess(franchisePathId) {
+      return userRoleScopeFranchiseIds().hasAny([franchisePathId])
+        || userHasMembershipForFranchise(franchisePathId);
+    }
+
+    function userMatchesFranchiseId(franchiseFieldValue) {
+      let ud = getUserDoc();
+      return ud != null && franchiseFieldValue is string && (
+        userIsGlobalScope() ||
+        userHasExplicitFranchiseAccess(franchiseFieldValue) ||
+        userCountryWideForFranchise(franchiseFieldValue) ||
+        // Legacy primary franchise on profile (single-franchise users).
+        (
+          ud.data.keys().hasAny(['franchiseId']) &&
+          ud.data.franchiseId is string &&
+          franchiseFieldValue.lower() == ud.data.franchiseId.lower()
+        ) ||
+        // Legacy: 2-letter country root profile → branch fid (TR → TR_SAW).
+        (
+          ud.data.keys().hasAny(['franchiseId']) &&
+          ud.data.franchiseId is string &&
+          isBranchUnderTwoLetterFranchiseRoot(ud.data.franchiseId, franchiseFieldValue) &&
+          franchiseDocCountryMatchesUser(franchiseFieldValue)
+        )
+      );
+    }
+
+    function canAccessFranchise(fid) {
+      return userIsGlobalScope() || userMatchesFranchiseId(fid);
+    }
+
+    // Check if user belongs to a franchise
+    function belongsToFranchise(franchiseId) {
+      let ud = getUserDoc();
+      return isAuthenticated() && ud != null &&
+        userMatchesFranchiseId(franchiseId);
+    }
+    
+    // Check if user is active
+    function isActiveUser() {
+      let ud = getUserDoc();
+      return isAuthenticated() && ud != null && (
+        ud.data.isActive == true ||
+        ud.data.isActive == 1 ||
+        ud.data.isActive == "1" ||
+        !ud.data.keys().hasAny(["isActive"])
+      );
+    }
+    
+    // ===== FRANCHISE DATA ISOLATION HELPERS =====
+    // Single get() per function using let + null check pattern
+    // ALL roles (manager, staff, viewer, admin) get FULL franchise access
+    // ONLY globaladmin bypasses franchise filtering (cross-franchise)
+    // Trial users are NOT isolated by path; all active users use franchise paths.
+    
+    // Check if user has franchise access to read a document
+    // NOTE: Documents WITHOUT a franchiseId field are denied for non-elevated users
+    // to prevent legacy/malformed data from bypassing franchise isolation.
+    function hasFranchiseReadAccess() {
+      let ud = getUserDoc();
+      return isAuthenticated() && ud != null && (
+        isGlobalAdminRole() ||
+        (
+          (ud.data.isActive == true ||
+           ud.data.isActive == 1 ||
+           ud.data.isActive == "1" ||
+           !ud.data.keys().hasAny(["isActive"])) &&
+          resource.data.keys().hasAny(["franchiseId"]) &&
+          userMatchesFranchiseId(resource.data.franchiseId)
+        )
+      );
+    }
+    
+    // Check if user has franchise access to write a document
+    // NOTE: Writes must include franchiseId matching the user's franchise.
+    function hasFranchiseWriteAccess() {
+      let ud = getUserDoc();
+      return isAuthenticated() && ud != null && (
+        isGlobalAdminRole() ||
+        (
+          (ud.data.isActive == true ||
+           ud.data.isActive == 1 ||
+           ud.data.isActive == "1" ||
+           !ud.data.keys().hasAny(["isActive"])) &&
+          request.resource.data.keys().hasAny(["franchiseId"]) &&
+          userMatchesFranchiseId(request.resource.data.franchiseId)
+        )
+      );
+    }
+    
+    // Check if user has franchise access to delete a document
+    // NOTE: Documents WITHOUT franchiseId are only deletable by elevated admin.
+    function hasFranchiseDeleteAccess() {
+      let ud = getUserDoc();
+      return isAuthenticated() && ud != null && (
+        isGlobalAdminRole() ||
+        (
+          (ud.data.isActive == true ||
+           ud.data.isActive == 1 ||
+           ud.data.isActive == "1" ||
+           !ud.data.keys().hasAny(["isActive"])) &&
+          resource.data.keys().hasAny(["franchiseId"]) &&
+          userMatchesFranchiseId(resource.data.franchiseId)
+        )
+      );
+    }
+    
+    // Scoped-path access helper: franchises/{franchiseId}/{collection}/{doc}
+    function hasScopedFranchiseAccess(franchiseId) {
+      let ud = getUserDoc();
+      return isAuthenticated() && ud != null && (
+        ud.data.isActive == true ||
+        ud.data.isActive == 1 ||
+        ud.data.isActive == "1" ||
+        !ud.data.keys().hasAny(["isActive"])
+      ) &&
+        (isGlobalAdminRole() ||
+         userMatchesFranchiseId(franchiseId));
+    }
+
+    // Checkout / return tombstone (iOS + web Operations). Path franchiseId is authoritative.
+    // globaladmin: any franchise path. Branch staff: only their franchise (via hasScopedFranchiseAccess).
+    function isScopedExitReturnSoftDeleteUpdate(collectionName) {
+      return (collectionName == 'exitIslemleri' || collectionName == 'iadeIslemleri') &&
+        (request.resource.data.isDeleted == true || request.resource.data.isDeleted == 1);
+    }
+
+    function canSoftDeleteScopedExitOrReturn(collectionName, pathFranchiseId) {
+      return isScopedExitReturnSoftDeleteUpdate(collectionName) &&
+        hasScopedFranchiseAccess(pathFranchiseId) &&
+        isActiveUser() &&
+        (
+          isGlobalAdminRole() ||
+          userMatchesFranchiseId(pathFranchiseId)
+        );
+    }
+
+    // Hard block protocol/invoice email jobs in outgoing email queue.
+    function isBlockedProtocolMailJob() {
+      let d = request.resource.data;
+      return (
+          d.keys().hasAny(['tags']) &&
+          d.tags is list &&
+          d.tags.hasAny(['protocol', 'protocol_reminder', 'payment_reminder', 'customer_invoice', 'invoice'])
+        ) ||
+        (
+          d.keys().hasAny(['category']) &&
+          d.category is string &&
+          d.category.lower().matches('.*(protocol|reminder|invoice).*')
+        ) ||
+        (
+          d.keys().hasAny(['type']) &&
+          d.type is string &&
+          d.type.lower().matches('.*(protocol|reminder|invoice).*')
+        ) ||
+        (
+          d.keys().hasAny(['subject']) &&
+          d.subject is string &&
+          d.subject.lower().matches('.*(protocol|reminder|outstanding|invoice).*')
+        ) ||
+        (
+          d.keys().hasAny(['text']) &&
+          d.text is string &&
+          d.text.lower().matches('.*(protocol|reminder|outstanding|invoice).*')
+        ) ||
+        (
+          d.keys().hasAny(['html']) &&
+          d.html is string &&
+          d.html.lower().matches('.*(protocol|reminder|outstanding|invoice).*')
+        );
+    }
+
+    // Public customer QR forms (return.html / checkout.html) — no auth required.
+    function publicCustomerSelfFillPayloadValid(token, franchiseId) {
+      return request.resource.data.keys().hasAll([
+        'token', 'firstName', 'lastName', 'email', 'franchiseId', 'signatureBase64'
+      ])
+      && request.resource.data.token == token
+      && request.resource.data.franchiseId == franchiseId
+      && request.resource.data.firstName is string
+      && request.resource.data.lastName is string
+      && request.resource.data.email is string
+      && request.resource.data.signatureBase64 is string
+      && request.resource.data.firstName.size() > 0
+      && request.resource.data.lastName.size() > 0
+      && request.resource.data.email.size() > 0
+      && request.resource.data.signatureBase64.size() > 0
+      && request.resource.data.signatureBase64.size() < 900000;
+    }
+
+    function publicCustomerSelfFillNotSubmittedYet() {
+      return !('submittedAt' in resource.data)
+        && !('signatureBase64' in resource.data);
+    }
+
+    // Front-desk customer intakes (web kiosk): admin SDK creates; staff completes RES + plate only.
+    function isFrontDeskStaffCompletionUpdate() {
+      let affected = request.resource.data.diff(resource.data).affectedKeys();
+      return affected.hasOnly(['resCode', 'vehiclePlate', 'status', 'completedAt'])
+        && request.resource.data.status == 'completed'
+        && request.resource.data.resCode is string
+        && request.resource.data.vehiclePlate is string
+        && request.resource.data.resCode.size() > 0
+        && request.resource.data.vehiclePlate.size() > 0
+        && request.resource.data.completedAt is timestamp
+        && resource.data.status == 'awaiting_staff';
+    }
+
+    // Web staff quick status toggle (Pending / Done)
+    function isFrontDeskStatusQuickUpdate() {
+      let affected = request.resource.data.diff(resource.data).affectedKeys();
+      return affected.hasOnly(['status', 'completedAt']);
+    }
+
+    // Web staff full edit of customer contact / address (FrontDeskCustomersView)
+    function isFrontDeskWebStaffFullUpdate() {
+      let affected = request.resource.data.diff(resource.data).affectedKeys();
+      return affected.hasOnly([
+        'firstName', 'middleName', 'lastName', 'familyName', 'fullName', 'phone', 'email',
+        'addressLine', 'city', 'postalCode', 'country', 'status', 'completedAt',
+        'resCode', 'vehiclePlate',
+        'handoverAracId', 'handoverPlaka', 'handoverKategori', 'handoverMarka', 'handoverModel', 'handoverKm',
+        'handoverNavKodu', 'handoverFuelEighths', 'handoverExitBranch', 'handoverPickupBranch', 'handoverDropoffBranch', 'plannedCheckoutAt', 'plannedCheckinAt', 'iosPrefillStatus',
+        'linkedExitId', 'linkedIadeId',
+        'customerDocuments',
+        'vehicleDepositAmount',
+        'tcKimlikNo',
+        'passportNumber'
+      ]);
+    }
+
+    // iOS: attach scanned IDs / PDFs to a front desk row (no PII edit beyond document URLs)
+    function isFrontDeskIOSCustomerDocumentsUpdate() {
+      let affected = request.resource.data.diff(resource.data).affectedKeys();
+      return affected.hasOnly(['customerDocuments', 'lastHandoverUpdatedAt']);
+    }
+
+    // iOS staff: sync TR handover lifecycle (checkout/return) without editing PII
+    function isFrontDeskIOSHandoverLifecycleUpdate() {
+      let affected = request.resource.data.diff(resource.data).affectedKeys();
+      return affected.hasOnly([
+        'iosPrefillStatus', 'linkedExitId', 'linkedIadeId', 'lastHandoverUpdatedAt'
+      ]);
+    }
+
+    // Web staff manual intake (FrontDeskCustomersView "Add customer record") — kiosk uses Cloud Function.
+    function isFrontDeskStaffWebCreate() {
+      let d = request.resource.data;
+      return d.franchiseId == franchiseId &&
+        d.entrySource == 'staff_web' &&
+        d.keys().hasAll(['phone', 'email', 'addressLine', 'city', 'postalCode', 'country', 'status']) &&
+        d.phone is string &&
+        d.phone.size() >= 6 &&
+        d.email is string &&
+        d.email.size() >= 5 &&
+        d.addressLine is string &&
+        d.addressLine.size() >= 2 &&
+        d.city is string &&
+        d.city.size() >= 1 &&
+        d.postalCode is string &&
+        d.postalCode.size() >= 2 &&
+        d.country is string &&
+        d.country.size() >= 2 &&
+        (d.status == 'awaiting_staff' || d.status == 'completed');
+    }
+
+    function isFranchiseOperationalStaffRole() {
+      let ud = getUserDoc();
+      return ud != null && ud.data.keys().hasAny(['role']) && ud.data.role is string &&
+        ud.data.role.lower() in ['staff', 'shuttle', 'manager', 'admin', 'viewer', 'superadmin', 'globaladmin'];
+    }
+
+    // Staff / manager / franchise admin: may update only kiosk Terms & Privacy on franchise root.
+    function isFranchiseStaffManagerOrAdminForKioskLegal() {
+      let ud = getUserDoc();
+      return isAuthenticated() && ud != null && ud.data.keys().hasAny(['role']) && ud.data.role is string &&
+        ud.data.role.lower() in ['staff', 'shuttle', 'manager', 'admin'];
+    }
+
+    function isFranchiseKioskLegalTextsOnlyUpdate() {
+      let affected = request.resource.data.diff(resource.data).affectedKeys();
+      return affected.hasOnly([
+        'termsConditionsTr',
+        'termsConditionsEn',
+        'privacyPolicyTr',
+        'privacyPolicyEn',
+        'updatedAt',
+        'updatedBy'
+      ]);
+    }
+    
+    // ===== FRANCHISES COLLECTION (NEW) =====
+    // Only super admin can manage franchises
+    
+    match /franchises/{franchiseId} {
+      // Global admin: all franchise documents
+      allow read, write, delete: if isGlobalAdminOnly();
+      
+      // Login screen (before auth): read active franchise root metadata for country/franchise picker
+      allow read: if resource.data.keys().hasAll(['countryCode', 'franchiseId'])
+        && resource.data.countryCode is string
+        && resource.data.franchiseId is string
+        && resource.data.isActive != false;
+      
+      // Authenticated users can read their own franchise
+      allow read: if isAuthenticated() && belongsToFranchise(franchiseId);
+      
+      // Franchise superadmin or admin may manage their own franchise doc only
+      allow write, delete: if belongsToFranchise(franchiseId) && (isAdmin() || isSuperAdminOnly());
+
+      allow update: if belongsToFranchise(franchiseId) &&
+        isFranchiseStaffManagerOrAdminForKioskLegal() &&
+        isFranchiseKioskLegalTextsOnlyUpdate();
+      
+      // Scoped notification queue (Cloud Functions processor)
+      match /notifications/{notificationId} {
+        allow read: if hasScopedFranchiseAccess(franchiseId);
+        allow create: if hasScopedFranchiseAccess(franchiseId);
+        allow update, delete: if false;
+      }
+      
+      // Scoped outgoing email queue (Cloud Functions processor)
+      match /outgoingEmails/{emailId} {
+        allow read: if hasScopedFranchiseAccess(franchiseId);
+        allow create: if hasScopedFranchiseAccess(franchiseId) && !isBlockedProtocolMailJob();
+        allow update, delete: if false;
+      }
+      
+      // Per-user work time entries (strict read: own row OR franchise manager OR superadmin)
+      match /workTimeEntries/{docId} {
+        allow read: if isElevatedAdmin() || (
+          hasScopedFranchiseAccess(franchiseId) && (
+            isFranchiseManagerRole() ||
+            (resource.data.keys().hasAll(['userId']) && resource.data.userId == request.auth.uid)
+          )
+        );
+        allow create: if hasScopedFranchiseAccess(franchiseId) &&
+          request.resource.data.keys().hasAll([
+            'franchiseId', 'userId', 'dayKey', 'clockIn', 'clockOut', 'totalMinutes', 'updatedAt'
+          ]) &&
+          request.resource.data.franchiseId == franchiseId &&
+          request.resource.data.userId == request.auth.uid;
+        allow update: if hasScopedFranchiseAccess(franchiseId) &&
+          resource.data.userId == request.auth.uid &&
+          request.resource.data.userId == resource.data.userId &&
+          resource.data.franchiseId == franchiseId &&
+          request.resource.data.franchiseId == franchiseId;
+        allow delete: if hasScopedFranchiseAccess(franchiseId) &&
+          resource.data.userId == request.auth.uid;
+      }
+      
+      // Monthly plan files uploaded by managers/admins for each franchise
+      match /workTimePlans/{docId} {
+        allow read: if hasScopedFranchiseAccess(franchiseId);
+        allow create, update: if hasScopedFranchiseAccess(franchiseId) && (
+          isFranchiseManagerRole() || isElevatedAdmin() || isAdmin()
+        );
+        allow delete: if hasScopedFranchiseAccess(franchiseId) && (
+          isFranchiseManagerRole() || isElevatedAdmin() || isAdmin()
+        );
+      }
+
+      // Live shuttle driver position (opt-in; doc id = driver uid)
+      match /shuttleDriverLocations/{driverUid} {
+        allow read: if hasScopedFranchiseAccess(franchiseId);
+        allow create, update: if hasScopedFranchiseAccess(franchiseId)
+          && request.auth.uid == driverUid
+          && request.resource.data.driverUid == request.auth.uid
+          && request.resource.data.franchiseId == franchiseId;
+        allow delete: if hasScopedFranchiseAccess(franchiseId) && request.auth.uid == driverUid;
+      }
+
+      match /frontDeskCustomers/{docId} {
+        allow read: if hasScopedFranchiseAccess(franchiseId);
+        allow create: if hasScopedFranchiseAccess(franchiseId) && isActiveUser() && (
+          isElevatedAdmin() || isFranchiseOperationalStaffRole()
+        ) && isFrontDeskStaffWebCreate();
+        allow update: if hasScopedFranchiseAccess(franchiseId) && isActiveUser() && (
+          isElevatedAdmin() ||
+          isFrontDeskStaffCompletionUpdate() ||
+          (isFranchiseOperationalStaffRole() && isFrontDeskStatusQuickUpdate()) ||
+          (isFranchiseOperationalStaffRole() && isFrontDeskWebStaffFullUpdate()) ||
+          (isFranchiseOperationalStaffRole() && isFrontDeskIOSHandoverLifecycleUpdate()) ||
+          (isFranchiseOperationalStaffRole() && isFrontDeskIOSCustomerDocumentsUpdate())
+        );
+        allow delete: if isActiveUser() && (
+          isElevatedAdmin() ||
+          (hasScopedFranchiseAccess(franchiseId) && isFranchiseFrontDeskCustomerDeleteRole())
+        );
+      }
+
+      // Deleted item archive — franchise-scoped snapshot store for soft-delete restore
+      match /deletedItems/{itemId} {
+        allow read: if hasScopedFranchiseAccess(franchiseId);
+        allow create: if hasScopedFranchiseAccess(franchiseId);
+        allow delete: if hasScopedFranchiseAccess(franchiseId);
+        allow write: if hasScopedFranchiseAccess(franchiseId);
+      }
+
+      // Customer QR self-fill (return + checkout) — unauthenticated public access.
+      match /returnFormData/{token} {
+        allow read: if true;
+        allow create: if !exists(/databases/$(database)/documents/franchises/$(franchiseId)/returnFormData/$(token))
+          && publicCustomerSelfFillPayloadValid(token, franchiseId);
+        allow update: if publicCustomerSelfFillNotSubmittedYet()
+          && publicCustomerSelfFillPayloadValid(token, franchiseId);
+        allow delete: if request.auth != null && isElevatedAdmin();
+      }
+
+      match /checkoutFormData/{token} {
+        allow read: if true;
+        allow create: if !exists(/databases/$(database)/documents/franchises/$(franchiseId)/checkoutFormData/$(token))
+          && publicCustomerSelfFillPayloadValid(token, franchiseId);
+        allow update: if publicCustomerSelfFillNotSubmittedYet()
+          && publicCustomerSelfFillPayloadValid(token, franchiseId);
+        allow delete: if request.auth != null && isElevatedAdmin();
+      }
+
+      // Staff-scoped remembered customer contact (keyed by normalized email doc id) for autofill across web/iOS.
+      match /customerContactRemember/{docId} {
+        allow read: if hasScopedFranchiseAccess(franchiseId);
+        allow create, update: if hasScopedFranchiseAccess(franchiseId) && isActiveUser() &&
+          request.resource.data.franchiseId == franchiseId &&
+          request.resource.data.keys().hasAll(['franchiseId', 'email', 'updatedAt']);
+        allow delete: if hasScopedFranchiseAccess(franchiseId) && isActiveUser();
+      }
+
+      // Garage service jobs (iOS + web garage portal). Role `garage` is scoped to targetGarageId.
+      match /garageServiceJobs/{jobId} {
+        allow read: if hasScopedFranchiseAccess(franchiseId) && (
+          isElevatedAdmin() ||
+          !isGaragePortalRole() ||
+          (isGaragePortalRole() && userLinkedGarageIdStr() != '' && resource.data.targetGarageId == userLinkedGarageIdStr())
+        );
+        allow create: if hasScopedFranchiseAccess(franchiseId) && !isGaragePortalRole() &&
+          request.resource.data.franchiseId == franchiseId &&
+          request.resource.data.keys().hasAll(['franchiseId', 'targetGarageId']);
+        allow update: if hasScopedFranchiseAccess(franchiseId) && (
+          isElevatedAdmin() ||
+          (isGaragePortalRole() && resource.data.targetGarageId == userLinkedGarageIdStr() && userLinkedGarageIdStr() != '' && (garageJobCompletionUpdate() || garageJobNotesOnlyUpdate())) ||
+          (!isGaragePortalRole() && resource.data.franchiseId == franchiseId)
+        );
+        allow delete: if hasScopedFranchiseAccess(franchiseId) && !isGaragePortalRole();
+      }
+
+      // Pickup notification queue (plain SMTP via greenmotion_web Cloud Function). Client create-only.
+      match /garageOutgoingEmails/{emailId} {
+        allow read: if hasScopedFranchiseAccess(franchiseId) && isElevatedAdmin();
+        allow create: if hasScopedFranchiseAccess(franchiseId) &&
+          request.resource.data.franchiseId == franchiseId &&
+          request.resource.data.keys().hasAll(['franchiseId', 'type', 'status', 'to', 'subject', 'body']) &&
+          request.resource.data.type == 'garage_service_ready' &&
+          request.resource.data.status == 'queued';
+        allow update, delete: if false;
+      }
+
+      // Stripe financial audit (written by Cloud Functions only)
+      match /stripeFinancialAudit/{auditId} {
+        allow read: if hasScopedFranchiseAccess(franchiseId) && (
+          isFranchiseManagerRole() || isElevatedAdmin() || isAdmin()
+        );
+        allow write: if false;
+      }
+      match /stripeFinancialAudit {
+        allow list: if hasScopedFranchiseAccess(franchiseId) && (
+          isFranchiseManagerRole() || isElevatedAdmin() || isAdmin()
+        );
+      }
+
+      // Transitional scoped domain data model:
+      // /franchises/{franchiseId}/{collectionName}/{docId}
+      match /{collectionName}/{docId} {
+        allow read: if hasScopedFranchiseAccess(franchiseId);
+        allow create: if hasScopedFranchiseAccess(franchiseId) &&
+          collectionName != 'frontDeskCustomers' &&
+          collectionName != 'returnFormData' &&
+          collectionName != 'checkoutFormData' &&
+          collectionName != 'customerContactRemember' &&
+          request.resource.data.keys().hasAll(['franchiseId']) &&
+          request.resource.data.franchiseId == franchiseId;
+        allow update: if hasScopedFranchiseAccess(franchiseId) &&
+          collectionName != 'frontDeskCustomers' &&
+          collectionName != 'returnFormData' &&
+          collectionName != 'checkoutFormData' &&
+          collectionName != 'customerContactRemember' &&
+          (
+            canSoftDeleteScopedExitOrReturn(collectionName, franchiseId) ||
+            (
+              resource.data.franchiseId == franchiseId &&
+              (
+                !request.resource.data.keys().hasAny(['franchiseId']) ||
+                request.resource.data.franchiseId == franchiseId
+              )
+            )
+          );
+        allow delete: if hasScopedFranchiseAccess(franchiseId) && collectionName != 'frontDeskCustomers' && collectionName != 'returnFormData' && collectionName != 'checkoutFormData' && collectionName != 'customerContactRemember';
+      }
+      
+      match /{collectionName} {
+        allow list: if hasScopedFranchiseAccess(franchiseId);
+      }
+    }
+    
+    // Collection-level list (admin / tooling). Login franchise list uses callable listFranchisesForLogin.
+    match /franchises {
+      allow list: if isElevatedAdmin();
+    }
+    
+    // ===== PLATE FORMATS COLLECTION (NEW) =====
+    // Read-only for authenticated users, write by super admin
+    
+    match /plateFormats/{countryId} {
+      allow read: if isAuthenticated();
+      allow write: if isElevatedAdmin();
+    }
+    
+    // Allow collection-level queries for plateFormats
+    match /plateFormats {
+      allow list: if isAuthenticated();
+    }
+    
+    // ===== USERS COLLECTION =====
+    
+    match /users/{userId} {
+      // Users can read their own profile.
+      // Global admins read every user (admin panel + audit).
+      allow read: if isOwner(userId) || isGlobalAdminOnly();
+
+      // Users can update non-privileged fields on their own profile
+      // (excludes any privilege/identity-affecting fields).
+      // SECURITY: franchise admins are NOT allowed to write here — the previous
+      // `isElevatedAdmin` write rule let franchise superadmins mint roles for
+      // arbitrary uids.  All admin user mutations go through the
+      // `adminCreateUserWithScope` / `adminUpdateUserScope` / `adminDeleteUserScope`
+      // Cloud Functions (which use the Admin SDK and bypass these rules).
+      allow update: if isOwner(userId) &&
+        !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny([
+            'role',
+            'roleScope',
+            'isAdmin',
+            'franchiseId',
+            'franchiseMemberships',
+            'scopeLevel',
+            'defaultFranchiseId',
+            'countryCode',
+            'username',
+            'usernameNormalized',
+            'isDemo',
+            'isDemoAccount',
+            'isTrialUser',
+            'trialStartedAt',
+            'trialEndsAt',
+            'trialStatus',
+            'convertedAt',
+            'demoExpiresAt',
+            'isActive',
+            'maxUsers',
+            'garageId',
+            'linkedGarageId'
+          ]);
+
+      // Only global admins may create / write / delete user docs directly.
+      // (Cloud Functions use the Admin SDK so they are unaffected.)
+      allow create, write, delete: if isGlobalAdminOnly();
+    }
+
+    // Collection-level list: global admin only (callable filter for franchise admins).
+    match /users {
+      allow list: if isGlobalAdminOnly();
+    }
+    
+    // ===== VEHICLE CATEGORIES COLLECTION =====
+    // Franchise-filtered: users can only access categories in their own franchise
+    
+    match /vehicleCategories/{categoryId} {
+      allow read: if hasFranchiseReadAccess();
+      allow write: if hasFranchiseWriteAccess();
+      allow delete: if hasFranchiseDeleteAccess();
+    }
+    
+    match /vehicleCategories {
+      allow list: if isProductionUser();
+    }
+    
+    // ===== ARACLAR (VEHICLES) COLLECTION =====
+    // Franchise-filtered: users can only access vehicles in their own franchise
+    // Superadmins bypass franchise filtering
+    
+    match /araclar/{aracId} {
+      allow read: if hasFranchiseReadAccess();
+      allow write: if hasFranchiseWriteAccess();
+      allow delete: if hasFranchiseDeleteAccess();
+    }
+    
+    // Allow collection-level queries (list operations) for araclar
+    match /araclar {
+      allow list: if isProductionUser();
+    }
+    
+    // ===== ACTIVITIES COLLECTION =====
+    // Franchise-filtered: users can only access activities in their own franchise
+    
+    match /activities/{activityId} {
+      allow read: if hasFranchiseReadAccess();
+      allow write: if hasFranchiseWriteAccess();
+      allow delete: if hasFranchiseDeleteAccess();
+    }
+    
+    // Allow collection-level queries (list operations) for activities
+    match /activities {
+      allow list: if isProductionUser();
+    }
+    
+    // ===== SERVIS KAYITLARI (SERVICE RECORDS) =====
+    // Franchise-filtered: users can only access service records in their own franchise
+    
+    match /servisler/{servisId} {
+      allow read: if hasFranchiseReadAccess();
+      allow write: if hasFranchiseWriteAccess();
+      allow delete: if hasFranchiseDeleteAccess();
+    }
+    
+    // Allow collection-level queries (list operations) for servisler
+    match /servisler {
+      allow list: if isProductionUser();
+    }
+    
+    // ===== SERVIS FIRMALARI (SERVICE COMPANIES) =====
+    // Franchise-filtered: users can only access service companies in their own franchise
+    
+    match /servisFirmalari/{firmaId} {
+      allow read: if hasFranchiseReadAccess();
+      allow write: if hasFranchiseWriteAccess();
+      allow delete: if hasFranchiseDeleteAccess();
+    }
+    
+    // Allow collection-level queries (list operations) for servisFirmalari
+    match /servisFirmalari {
+      allow list: if isProductionUser();
+    }
+    
+    // ===== IADE ISLEMLERI (RETURN OPERATIONS) =====
+    // Franchise-filtered: users can only access return operations in their own franchise
+    
+    match /iadeIslemleri/{iadeId} {
+      allow read: if hasFranchiseReadAccess();
+      allow write: if hasFranchiseWriteAccess();
+      allow delete: if hasFranchiseDeleteAccess();
+    }
+    
+    // Allow collection-level queries (list operations) for iadeIslemleri
+    match /iadeIslemleri {
+      allow list: if isProductionUser();
+    }
+    
+    // ===== EXIT ISLEMLERI (CHECK OUT OPERATIONS) =====
+    // Franchise-filtered: users can only access check out operations in their own franchise
+    
+    match /exitIslemleri/{exitId} {
+      allow read: if hasFranchiseReadAccess();
+      allow write: if hasFranchiseWriteAccess();
+      allow delete: if hasFranchiseDeleteAccess();
+    }
+    
+    // Allow collection-level queries (list operations) for exitIslemleri
+    match /exitIslemleri {
+      allow list: if isProductionUser();
+    }
+    
+    // ===== OFFICE OPERATIONS =====
+    // Franchise-filtered: users can only access office operations in their own franchise
+    
+    match /office_operations/{operationId} {
+      allow read: if hasFranchiseReadAccess();
+      allow write: if hasFranchiseWriteAccess();
+      allow delete: if hasFranchiseDeleteAccess();
+    }
+    
+    // Allow collection-level queries (list operations) for office_operations
+    match /office_operations {
+      allow list: if isProductionUser();
+    }
+    
+    // Alternative collection name (if used)
+    match /officeOperations/{operationId} {
+      allow read: if hasFranchiseReadAccess();
+      allow write: if hasFranchiseWriteAccess();
+      allow delete: if hasFranchiseDeleteAccess();
+    }
+    
+    // Allow collection-level queries for officeOperations
+    match /officeOperations {
+      allow list: if isProductionUser();
+    }
+    
+    // ===== OFFICE RETURNS (CUSTOMER RETURNS) =====
+    // Franchise-filtered: users can only access office returns in their own franchise
+    
+    match /office_Return/{returnId} {
+      allow read: if hasFranchiseReadAccess();
+      allow write: if hasFranchiseWriteAccess();
+      allow delete: if hasFranchiseDeleteAccess();
+    }
+    
+    // Allow collection-level queries (list operations) for office_Return
+    match /office_Return {
+      allow list: if isProductionUser();
+    }
+    
+    // ===== NOTIFICATIONS COLLECTION (for push notifications) =====
+    
+    match /notifications/{notificationId} {
+      allow read, create, update, delete: if false;
+    }
+    
+    // ===== SMTP CONFIGURATION =====
+    // Stored per franchise id (document id = franchiseId). Franchise users need read for Mail Center send.
+    match /smtpConfigurations/{franchiseId} {
+      allow read: if isElevatedAdmin() || (
+        isAuthenticated() && canAccessFranchise(franchiseId)
+      );
+      allow write, delete: if isElevatedAdmin() || (
+        canAccessFranchise(franchiseId) &&
+        getUserDoc().data.role.lower() in ['admin', 'superadmin', 'manager']
+      );
+    }
+    
+    // ===== OUTGOING EMAIL QUEUE =====
+    // Clients can create email jobs for their franchise.
+    // Cloud Functions handles status updates and sending.
+    match /outgoingEmails/{emailId} {
+      allow create: if hasFranchiseWriteAccess() && !isBlockedProtocolMailJob();
+      allow read: if hasFranchiseReadAccess();
+      allow update, delete: if false;
+    }
+    
+    // ===== FCM TOKENS COLLECTION =====
+    
+    match /fcmTokens/{userId} {
+      // Users can only manage their own tokens
+      allow read, write: if isOwner(userId);
+    }
+    
+    // ===== SHUTTLE REPORTS (Generated PDF reports metadata) =====
+    
+    match /shuttleReports/{reportId} {
+      allow read: if hasFranchiseReadAccess();
+      allow create, update: if hasFranchiseWriteAccess() &&
+        request.resource.data.keys().hasAll([
+          'type', 'startDate', 'endDate', 'totalSessions', 'totalCustomers', 'totalTrips', 'generatedAt'
+        ]);
+      allow delete: if hasFranchiseDeleteAccess();
+    }
+    
+    // Allow collection-level queries (list operations) for shuttleReports
+    match /shuttleReports {
+      allow list: if isProductionUser();
+    }
+    
+    // ===== REPORT HISTORY =====
+    // Franchise-filtered: users can only access report history in their own franchise
+    
+    match /raporGecmisi/{raporId} {
+      allow read: if hasFranchiseReadAccess();
+      allow write: if hasFranchiseWriteAccess();
+      allow delete: if hasFranchiseDeleteAccess();
+    }
+    
+    // Allow collection-level queries (list operations) for raporGecmisi
+    match /raporGecmisi {
+      allow list: if isProductionUser();
+    }
+    
+    // ===== PROTOCOL TEMPLATES (Shared Reference Data) =====
+    // Templates are shared across franchises -- read by any authenticated user, write by superadmin only
+    match /protocolTemplates/{templateCode} {
+      allow read, list: if isAuthenticated();
+      allow create, update, delete: if isElevatedAdmin();
+    }
+    
+    // Allow collection-level queries (list operations) for protocolTemplates
+    match /protocolTemplates {
+      allow list: if isAuthenticated();
+    }
+    
+    // ===== PROTOCOLS COLLECTION =====
+    
+    match /protocols/{protocolId} {
+      allow read: if hasFranchiseReadAccess();
+      allow create: if hasFranchiseWriteAccess();
+      allow update: if hasFranchiseWriteAccess();
+      allow delete: if hasFranchiseDeleteAccess();
+    }
+    
+    // Allow collection-level queries (list operations) for protocols
+    match /protocols {
+      allow list: if isProductionUser();
+    }
+
+    // ===== DAMAGE RECORDS (Top-level) =====
+    // Transitional: keep legacy nested `araclar.hasarKayitlari` and dual-write to top-level.
+    match /hasarKayitlari/{damageId} {
+      allow read: if hasFranchiseReadAccess();
+      allow create, update: if hasFranchiseWriteAccess();
+      allow delete: if hasFranchiseDeleteAccess();
+    }
+
+    match /hasarKayitlari {
+      allow list: if isProductionUser();
+    }
+    
+    // ===== USER PRESENCE COLLECTION =====
+    
+    match /userPresence/{userId} {
+      // Elevated admins inspect presence globally; everyone else only sees
+      // presence rows in a franchise they can access (roleScope-aware).
+      allow read: if isElevatedAdmin() ||
+        (isAuthenticated() && getUserDoc() != null &&
+         resource.data.keys().hasAny(["franchiseId"]) &&
+         userMatchesFranchiseId(resource.data.franchiseId));
+
+      // Users can only write their own presence in a franchise they belong to.
+      allow create, update: if isOwner(userId) &&
+        getUserDoc() != null &&
+        request.resource.data.keys().hasAll(["franchiseId"]) &&
+        userMatchesFranchiseId(request.resource.data.franchiseId);
+
+      allow delete: if isElevatedAdmin();
+    }
+    
+    // ===== SHUTTLE ENTRIES =====
+    
+    match /shuttleEntries/{entryId} {
+      allow read: if hasFranchiseReadAccess();
+      allow create: if hasFranchiseWriteAccess();
+      allow update: if hasFranchiseWriteAccess();
+      allow delete: if hasFranchiseDeleteAccess();
+    }
+    
+    // Allow collection-level queries (list operations) for shuttleEntries
+    match /shuttleEntries {
+      allow list: if isProductionUser();
+    }
+    
+    // ===== SHUTTLE SESSIONS =====
+    
+    match /shuttleSessions/{sessionId} {
+      allow read: if hasFranchiseReadAccess();
+      allow create: if hasFranchiseWriteAccess();
+      allow update: if hasFranchiseWriteAccess();
+      allow delete: if hasFranchiseDeleteAccess();
+    }
+    
+    // Allow collection-level queries (list operations) for shuttleSessions
+    match /shuttleSessions {
+      allow list: if isProductionUser();
+    }
+    
+    // ===== TRANSACTIONS COLLECTION (ERP - Web App Specific) =====
+    // Franchise-filtered: users can only access transactions in their own franchise
+    
+    match /transactions/{transactionId} {
+      allow read: if hasFranchiseReadAccess();
+      allow write: if hasFranchiseWriteAccess();
+      allow delete: if hasFranchiseDeleteAccess();
+    }
+    
+    // Allow collection-level queries (list operations) for transactions
+    match /transactions {
+      allow list: if isProductionUser();
+    }
+    
+    // ===== CUSTOMERS COLLECTION (ERP - Web App Specific) =====
+    // Franchise-filtered: users can only access customers in their own franchise
+    
+    match /customers/{customerId} {
+      allow read: if hasFranchiseReadAccess();
+      allow write: if hasFranchiseWriteAccess();
+      allow delete: if hasFranchiseDeleteAccess();
+    }
+    
+    // Allow collection-level queries (list operations) for customers
+    match /customers {
+      allow list: if isProductionUser();
+    }
+    
+    // ===== ACCIDENTS COLLECTION (ERP - Web App Specific) =====
+    // Franchise-filtered: users can only access accidents in their own franchise
+    
+    match /accidents/{accidentId} {
+      allow read: if hasFranchiseReadAccess();
+      allow write: if hasFranchiseWriteAccess();
+      allow delete: if hasFranchiseDeleteAccess();
+    }
+    
+    // Allow collection-level queries (list operations) for accidents
+    match /accidents {
+      allow list: if isProductionUser();
+    }
+    
+    // ===== ACCIDENT CODES COLLECTION (Reference Data) =====
+    // Read-only for all authenticated users (shared across franchises)
+    // Write only by superadmin
+    
+    match /accidentCodes/{code} {
+      allow read: if isAuthenticated();
+      allow write: if isElevatedAdmin();
+    }
+    
+    // Allow collection-level queries (list operations) for accidentCodes
+    match /accidentCodes {
+      allow list: if isAuthenticated();
+    }
+    
+    // ===== TRAFFIC FINES COLLECTION =====
+    // Franchise-filtered: users can only access traffic fines in their own franchise
+    match /trafficFines/{fineId} {
+      allow read: if hasFranchiseReadAccess();
+      allow create: if hasFranchiseWriteAccess();
+      allow update: if hasFranchiseWriteAccess();
+      allow delete: if hasFranchiseDeleteAccess();
+    }
+    
+    // Allow collection-level queries (list operations) for trafficFines
+    match /trafficFines {
+      allow list: if isProductionUser();
+    }
+    
+    // ===== BANKING TRANSACTIONS COLLECTION =====
+    // Franchise-filtered: users can only access banking transactions in their own franchise
+    match /bankingTransactions/{transactionId} {
+      allow read: if hasFranchiseReadAccess();
+      allow create: if hasFranchiseWriteAccess();
+      allow update: if hasFranchiseWriteAccess();
+      allow delete: if hasFranchiseDeleteAccess();
+    }
+    
+    // Allow collection-level queries (list operations) for bankingTransactions
+    match /bankingTransactions {
+      allow list: if isProductionUser();
+    }
+    
+    // ===== ADDITIONAL SALES COLLECTION =====
+    // Franchise-filtered: users can only access additional sales in their own franchise
+    match /additionalSales/{saleId} {
+      allow read: if hasFranchiseReadAccess();
+      allow create: if hasFranchiseWriteAccess();
+      allow update: if hasFranchiseWriteAccess();
+      allow delete: if hasFranchiseDeleteAccess();
+    }
+    
+    // Allow collection-level queries (list operations) for additionalSales
+    match /additionalSales {
+      allow list: if isProductionUser();
+    }
+    
+    // ===== WORK SCHEDULES (Timetable) =====
+    // Franchise-filtered: users can only access work schedules in their own franchise
+    
+    match /workSchedules/{scheduleId} {
+      allow read: if hasFranchiseReadAccess();
+      allow write: if hasFranchiseWriteAccess();
+      allow delete: if hasFranchiseDeleteAccess();
+    }
+    
+    // Allow collection-level queries (list operations) for workSchedules
+    match /workSchedules {
+      allow list: if isProductionUser();
+    }
+    
+    // Alternative collection name (if used)
+    match /work_schedules/{scheduleId} {
+      allow read: if hasFranchiseReadAccess();
+      allow write: if hasFranchiseWriteAccess();
+      allow delete: if hasFranchiseDeleteAccess();
+    }
+    
+    // Allow collection-level queries for work_schedules
+    match /work_schedules {
+      allow list: if isProductionUser();
+    }
+    
+    // ===== TEST COLLECTION (superadmin only in production) =====
+    
+    match /test/{testId} {
+      allow read, write: if isElevatedAdmin();
+    }
+    
+    // ===== ADMIN TESTS COLLECTION =====
+    // PERMANENT: All authenticated users have full access
+    // DO NOT CHANGE: This allows all authenticated users to manage admin tests
+    // DEMO USERS CANNOT ACCESS PRODUCTION DATA
+    
+    match /adminTests/{testId} {
+      // Only superadmins can write admin tests (admin panel is superadmin-only)
+      allow read, write: if isElevatedAdmin();
+      allow delete: if isElevatedAdmin();
+    }
+    
+    // Allow collection-level queries (list operations) for adminTests
+    match /adminTests {
+      allow list: if isElevatedAdmin();
+    }
+    
+    // ===== VACATION TIMES COLLECTION =====
+    // Franchise-filtered: users can only access vacation times in their own franchise
+    
+    match /vacationTimes/{vacationId} {
+      allow read: if hasFranchiseReadAccess();
+      allow write: if hasFranchiseWriteAccess();
+      allow delete: if hasFranchiseDeleteAccess();
+    }
+    
+    // Allow collection-level queries (list operations) for vacationTimes
+    match /vacationTimes {
+      allow list: if isProductionUser();
+    }
+    
+    // ===== ASSISTANT COMPANIES COLLECTION =====
+    // Franchise-filtered: users can only access assistant companies in their own franchise
+    
+    match /assistantCompanies/{companyId} {
+      allow read: if hasFranchiseReadAccess();
+      allow write: if hasFranchiseWriteAccess();
+      allow delete: if hasFranchiseDeleteAccess();
+    }
+    
+    // Allow collection-level queries (list operations) for assistantCompanies
+    match /assistantCompanies {
+      allow list: if isProductionUser();
+    }
+    
+    // ===== ADMIN TEST LOGS COLLECTION =====
+    // PERMANENT: All authenticated users have full access
+    // DO NOT CHANGE: This allows all authenticated users to manage admin test logs
+    // DEMO USERS CANNOT ACCESS PRODUCTION DATA
+    
+    match /adminTestLogs/{logId} {
+      // Only superadmins can access admin test logs
+      allow read: if isElevatedAdmin();
+      allow write: if isElevatedAdmin();
+      // No deletes from clients (logs should be preserved)
+      allow delete: if false;
+    }
+    
+    // Allow collection-level queries (list operations)
+    match /adminTestLogs {
+      allow list: if isElevatedAdmin();
+    }
+    
+    // ===== SEMES INVOICES COLLECTION =====
+    // Franchise-filtered collection
+    
+    match /semesInvoices/{invoiceId} {
+      allow read: if hasFranchiseReadAccess();
+      allow create: if hasFranchiseWriteAccess();
+      allow update: if hasFranchiseWriteAccess();
+      allow delete: if hasFranchiseDeleteAccess();
+    }
+    
+    // Allow collection-level queries (list operations) for semesInvoices
+    match /semesInvoices {
+      allow list: if isProductionUser();
+    }
+    
+    // ===== AUDIT LOGS COLLECTION =====
+    // Franchise-filtered collection - logs should not be deleted by clients
+    
+    match /audit_logs/{logId} {
+      allow read: if hasFranchiseReadAccess();
+      allow create: if hasFranchiseWriteAccess();
+      allow update: if hasFranchiseWriteAccess();
+      // No deletes from clients (audit logs should be preserved)
+      allow delete: if false;
+    }
+    
+    // Allow collection-level queries (list operations) for audit_logs
+    match /audit_logs {
+      allow list: if isProductionUser();
+    }
+
+    // Legacy top-level returnFormData — blocked; use franchises/{franchiseId}/returnFormData/{token}.
+    match /returnFormData/{token} {
+      allow read, create, update: if false;
+      allow delete: if request.auth != null && isElevatedAdmin();
+    }
+
+    match /checkoutFormData/{token} {
+      allow read, create, update: if false;
+      allow delete: if request.auth != null && isElevatedAdmin();
+    }
+
+  }
+}
+

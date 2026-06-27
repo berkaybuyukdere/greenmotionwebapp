@@ -1,0 +1,365 @@
+rules_version = '2';
+
+// ============================================================================
+// IMPORTANT: PERMANENT PERMISSION RULES - DO NOT MODIFY
+// ============================================================================
+// These rules are configured to allow ALL authenticated users to perform
+// ALL operations (read, write, delete, list) on ALL storage paths.
+// This configuration is PERMANENT and should NOT be changed.
+// All authenticated users have full access to:
+// - Damage photos (hasar_fotograflari)
+// - Return photos (iade_fotograflari)
+// - Check Out photos (exit_fotograflari)
+// - Office operation photos (office_operations)
+// - Test files (test)
+// - All other storage paths
+// ============================================================================
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // ===== HELPER FUNCTIONS =====
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isImageFile() {
+      return request.resource.contentType.matches('image/.*');
+    }
+    
+    function isPDFFile() {
+      return request.resource.contentType == 'application/pdf';
+    }
+    
+    function isUnder10MB() {
+      return request.resource.size < 10 * 1024 * 1024; // 10MB
+    }
+    
+    function isUnder5MB() {
+      return request.resource.size < 5 * 1024 * 1024; // 5MB
+    }
+
+    // ===== roleScope-aware franchise access (custom Auth claim) =====
+    // Cloud Function `adminCreateUserWithScope` / `adminUpdateUserScope` set the
+    // claim `request.auth.token.franchiseScope = { level, countryCode,
+    // franchiseIds, allowAllInCountry }`. We use it here because Storage Rules
+    // cannot run Firestore lookups for membership lists.
+    //
+    // Fallback: when the claim is missing (older sessions before claim refresh)
+    // we fall through to `isAuthenticated()` so existing flows do not break;
+    // Firestore rules still enforce the per-document franchiseId match for the
+    // companion data writes.
+
+    function hasFranchiseScopeClaim() {
+      return request.auth != null &&
+        request.auth.token != null &&
+        'franchiseScope' in request.auth.token &&
+        request.auth.token.franchiseScope is map;
+    }
+
+    function tokenScopeLevel() {
+      return hasFranchiseScopeClaim() &&
+        'level' in request.auth.token.franchiseScope
+        ? request.auth.token.franchiseScope.level
+        : '';
+    }
+
+    function tokenAllowAllInCountry() {
+      return hasFranchiseScopeClaim() &&
+        'allowAllInCountry' in request.auth.token.franchiseScope
+        ? request.auth.token.franchiseScope.allowAllInCountry
+        : '';
+    }
+
+    function tokenFranchiseIds() {
+      return hasFranchiseScopeClaim() &&
+        'franchiseIds' in request.auth.token.franchiseScope &&
+        request.auth.token.franchiseScope.franchiseIds is list
+        ? request.auth.token.franchiseScope.franchiseIds
+        : [];
+    }
+
+    function tokenHasFranchise(fid) {
+      return tokenFranchiseIds().hasAny([fid])
+        || tokenFranchiseIds().hasAny([fid.upper()])
+        || tokenFranchiseIds().hasAny([fid.lower()]);
+    }
+
+    function canFranchiseStorageRead(fid) {
+      return isAuthenticated() && (
+        !hasFranchiseScopeClaim() ||
+        tokenScopeLevel() == 'global' ||
+        tokenHasFranchise(fid) ||
+        (tokenScopeLevel() == 'country' && tokenAllowAllInCountry() != '' && (
+          fid.upper() == tokenAllowAllInCountry().upper() ||
+          fid.upper().matches(tokenAllowAllInCountry().upper() + '_.*')
+        ))
+      );
+    }
+
+    function canFranchiseStorageWrite(fid) {
+      return canFranchiseStorageRead(fid);
+    }
+    
+    // ===== PROTOCOL TEMPLATES (Web App Specific) =====
+    // Allow authenticated users to read/write
+    match /protocolTemplates/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+    
+    // Allow listing protocolTemplates folder contents
+    match /protocolTemplates {
+      allow list: if isAuthenticated();
+    }
+    
+    // ===== CARS PHOTOS (Web App Specific - Alternative path) =====
+    // Allow authenticated users to read/write
+    match /cars/{carId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+    
+    // ===== RETURNS PHOTOS (Web App Specific - Alternative path) =====
+    // Allow authenticated users to read/write
+    match /returns/{returnId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+    
+    // ===== HASAR FOTOGRAFLARI (DAMAGE PHOTOS) =====
+    // All authenticated users can upload, read, and delete damage photos
+    // DO NOT CHANGE: This allows all authenticated users to manage damage photos
+    
+    match /hasar_fotograflari/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && 
+        isImageFile() && 
+        isUnder10MB();
+      allow delete: if isAuthenticated();
+    }
+    
+    // Alternative path structure (if you use this)
+    match /damages/{aracId}/{hasarId}/{imageName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && 
+        isImageFile() && 
+        isUnder10MB();
+      allow delete: if isAuthenticated();
+    }
+    
+    // ===== IADE FOTOGRAFLARI (RETURN PHOTOS) =====
+    // All authenticated users can upload, read, and delete return photos
+    // DO NOT CHANGE: This allows all authenticated users to manage return photos
+    
+    match /iade_fotograflari/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && 
+        isImageFile() && 
+        isUnder10MB();
+      allow delete: if isAuthenticated();
+    }
+    
+    // ===== EXIT FOTOGRAFLARI (CHECK OUT PHOTOS) =====
+    // All authenticated users can upload, read, and delete check out photos
+    // DO NOT CHANGE: This allows all authenticated users to manage check out photos
+    
+    match /exit_fotograflari/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && 
+        isImageFile() && 
+        isUnder10MB();
+      allow delete: if isAuthenticated();
+    }
+    
+    // ===== OFFICE OPERATION PHOTOS =====
+    // All authenticated users can upload, read, and delete office operation photos
+    // DO NOT CHANGE: This allows all authenticated users to manage office operation photos
+    
+    match /office_operations/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && 
+        isImageFile() && 
+        isUnder10MB();
+      allow delete: if isAuthenticated();
+    }
+    
+    // ===== OFFICE OPERATIONS (Web App Specific - Alternative path) =====
+    // Allow authenticated users to read/write
+    match /officeOperations/{operationId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+    
+    // ===== OFFICE RETURN PHOTOS (CUSTOMER RETURNS) =====
+    
+    match /office_Return/{returnId}/{imageName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && 
+        isImageFile() && 
+        isUnder10MB();
+      allow delete: if isAuthenticated();
+    }
+    
+    // ===== HEAD DOCUMENTS (Vehicle Registration Papers) =====
+    
+    match /head_documents/{aracId}/{documentName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && 
+        (isImageFile() || isPDFFile()) && 
+        isUnder10MB();
+      allow delete: if isAuthenticated();
+    }
+    
+    // ===== PDF EXPORTS =====
+    
+    match /pdf_exports/{userId}/{pdfName} {
+      // Users can only access their own PDFs
+      allow read: if isAuthenticated() && 
+        request.auth.uid == userId;
+      
+      allow write: if isAuthenticated() && 
+        request.auth.uid == userId &&
+        isPDFFile() &&
+        isUnder10MB();
+      
+      allow delete: if isAuthenticated() && 
+        request.auth.uid == userId;
+    }
+    
+    // ===== SERVIS FOTOGRAFLARI (SERVICE PHOTOS) =====
+    
+    match /servis_fotograflari/{userId}/{servisId}/{imageName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && 
+        isImageFile() && 
+        isUnder5MB();
+      allow delete: if isAuthenticated();
+    }
+    
+    // ===== USER PROFILE PHOTOS =====
+    
+    match /profile_photos/{userId}/{imageName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && 
+        request.auth.uid == userId &&
+        isImageFile() && 
+        isUnder5MB();
+      allow delete: if isAuthenticated() && 
+        request.auth.uid == userId;
+    }
+    
+    // ===== TEMPORARY UPLOADS (auto-delete after 24h) =====
+    
+    match /temp/{userId}/{fileName} {
+      allow read: if isAuthenticated() && 
+        request.auth.uid == userId;
+      
+      allow write: if isAuthenticated() && 
+        request.auth.uid == userId &&
+        isUnder10MB();
+      
+      allow delete: if isAuthenticated() && 
+        request.auth.uid == userId;
+    }
+    
+    // ===== ADMIN TEST FILES =====
+    // All authenticated users can use test folder for admin testing
+    // DO NOT CHANGE: This allows all authenticated users to manage test files
+    
+    match /test/{allPaths=**} {
+      // Allow all operations for authenticated users (read, write, delete)
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isUnder10MB();
+      allow delete: if isAuthenticated();
+    }
+    
+    // Allow listing test folder contents
+    match /test {
+      allow list: if isAuthenticated();
+    }
+    
+    // ===== SEMES INVOICES =====
+    // All authenticated users can upload, read, and delete Semes invoices
+    // Supports both PDF and Word documents
+    
+    // Match any file in semesInvoices folder
+    match /semesInvoices/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isUnder10MB();
+      allow delete: if isAuthenticated();
+    }
+    
+    // Match nested paths in semesInvoices folder
+    match /semesInvoices/{path=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isUnder10MB();
+      allow delete: if isAuthenticated();
+    }
+    
+    // Allow listing semesInvoices folder contents
+    match /semesInvoices {
+      allow list: if isAuthenticated();
+    }
+    
+    // Franchise-scoped Semes invoices (new path)
+    // Keep legacy /semesInvoices rules above for backward compatibility.
+    match /franchises/{franchiseId}/semesInvoices/{path=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isUnder10MB();
+      allow delete: if isAuthenticated();
+    }
+    
+    // Lowercase compatibility for historical paths.
+    match /franchises/{franchiseId}/semesinvoices/{path=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isUnder10MB();
+      allow delete: if isAuthenticated();
+    }
+
+    // Return PDFs at bucket root (iOS: return_pdfs/{uuid}_tr.pdf, _en.pdf)
+    match /return_pdfs/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isPDFFile() && isUnder10MB();
+      allow delete: if isAuthenticated();
+    }
+
+    // Switzerland Files library (PDF, Office, ZIP — up to 200MB)
+    match /franchises/{franchiseId}/fileLibrary/{allPaths=**} {
+      allow read: if canFranchiseStorageRead(franchiseId);
+      allow write: if canFranchiseStorageWrite(franchiseId) && request.resource.size < 200 * 1024 * 1024;
+      allow delete: if canFranchiseStorageWrite(franchiseId);
+    }
+
+    // ===== TRANSITIONAL FRANCHISE-SCOPED STORAGE MODEL =====
+    // Critical for iOS + Web shared flows:
+    // franchises/{franchiseId}/exit_fotograflari/...
+    // franchises/{franchiseId}/iade_fotograflari/...
+    // franchises/{franchiseId}/hasar_fotograflari/...
+    // Keep this block BEFORE deny-all.
+    //
+    // SECURITY: when the user has a `franchiseScope` custom claim we restrict
+    // access to franchises the claim permits. Sessions issued before the claim
+    // was applied (no claim present) fall back to authenticated-only access for
+    // legacy compatibility; new sessions get the claim from adminCreate/Update
+    // callables.
+    match /franchises/{franchiseId}/{folder}/{allPaths=**} {
+      allow read: if canFranchiseStorageRead(franchiseId);
+      allow write: if canFranchiseStorageWrite(franchiseId) && isUnder10MB();
+      allow delete: if canFranchiseStorageWrite(franchiseId);
+    }
+    
+    // ===== DENY ALL OTHER PATHS =====
+    // Note: This rule must come AFTER all specific path rules
+    // Otherwise it will deny access to all paths before checking specific rules
+    
+    match /{allPaths=**} {
+      allow read, write, delete: if false;
+    }
+  }
+}
