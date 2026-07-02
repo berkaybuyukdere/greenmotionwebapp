@@ -1,17 +1,21 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CreditCard, Loader2, X } from 'lucide-react';
 import {
   stripeFinancialCreateDeposit,
   stripeFinancialConfirmDepositCollection,
-  stripeFinancialGetTerminalConfig,
+  stripeFinancialListTerminals,
   stripeFinancialCancelDeposit,
   stripeFinancialProcessDepositOnTerminal,
   stripeFinancialGetDepositStatus,
 } from '../../services/stripeFinancialApi';
-
-function chfToDisplay(cents) {
-  return (Number(cents || 0) / 100).toFixed(2);
-}
+import { useConfirmDirtyClose } from '../../utilities/useConfirmDirtyClose';
+import {
+  defaultResCodeValue,
+  formatResCodeForSubmit,
+  isResCodeComplete,
+  normalizeResCodeInput,
+  resCodeNumberPart,
+} from '../../utilities/resCodeInput';
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -20,35 +24,46 @@ function sleep(ms) {
 export function StripeDepositModal({ franchiseId, onClose, onSuccess }) {
   const [step, setStep] = useState('form');
   const [depositAmountChf, setDepositAmountChf] = useState('400');
+  const [maxAuthAmountChf, setMaxAuthAmountChf] = useState('3000');
   const [customerName, setCustomerName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
+  const [resCode, setResCode] = useState(defaultResCodeValue);
   const [plate, setPlate] = useState('');
-  const [reference, setReference] = useState('');
+  const [readers, setReaders] = useState([]);
+  const [selectedReaderId, setSelectedReaderId] = useState('');
   const [error, setError] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
-  const [terminalCfg, setTerminalCfg] = useState(null);
   const [aborting, setAborting] = useState(false);
+  const [tokenSaved, setTokenSaved] = useState(false);
+  const [retryDepositId, setRetryDepositId] = useState('');
   const depositIdRef = useRef('');
   const abortRef = useRef(false);
   const inFlightRef = useRef(false);
 
   useEffect(() => {
-    stripeFinancialGetTerminalConfig({ franchiseId })
-      .then(setTerminalCfg)
-      .catch(() => setTerminalCfg(null));
+    stripeFinancialListTerminals({ franchiseId })
+      .then((termRes) => {
+        const list = termRes.readers || [];
+        setReaders(list);
+        const def = list.find((r) => r.isDefault) || list[0];
+        if (def) setSelectedReaderId(def.readerId);
+      })
+      .catch(() => {
+        setReaders([]);
+      });
   }, [franchiseId]);
 
   const pollUntilAuthorized = useCallback(
     async (depositId) => {
       const deadline = Date.now() + 120000;
       while (Date.now() < deadline) {
-        if (abortRef.current) {
-          throw new Error('cancelled');
-        }
+        if (abortRef.current) throw new Error('cancelled');
         const status = await stripeFinancialGetDepositStatus({ franchiseId, depositId });
-        if (status.terminalActionStatus === 'failed') {
+        if (status.terminalFailed || status.terminalActionStatus === 'failed') {
           throw new Error(
-            status.terminalFailureMessage || 'Card presentation failed on terminal.',
+            status.terminalFailureMessage ||
+              status.lastPaymentError ||
+              'Card presentation failed on terminal.',
           );
         }
         if (status.status === 'authorized' || status.stripeStatus === 'requires_capture') {
@@ -57,7 +72,11 @@ export function StripeDepositModal({ franchiseId, onClose, onSuccess }) {
         if (status.status === 'cancelled' || status.stripeStatus === 'canceled') {
           throw new Error('Payment was cancelled on terminal.');
         }
-        setStatusMessage('Waiting for card on POS…');
+        if (status.terminalActionStatus === 'in_progress') {
+          setStatusMessage('Card detected on POS — authorizing hold…');
+        } else {
+          setStatusMessage('Waiting for card on POS (DEPOSIT)…');
+        }
         await sleep(2000);
       }
       throw new Error('Timed out. Customer did not present card within 2 minutes.');
@@ -71,7 +90,6 @@ export function StripeDepositModal({ franchiseId, onClose, onSuccess }) {
       setAborting(true);
       abortRef.current = true;
       inFlightRef.current = false;
-
       const pendingDepositId = depositIdRef.current;
       if (pendingDepositId) {
         try {
@@ -85,14 +103,11 @@ export function StripeDepositModal({ franchiseId, onClose, onSuccess }) {
         }
         depositIdRef.current = '';
       }
-
       setAborting(false);
       setStep('form');
       setStatusMessage('');
-      setError('Payment cancelled. POS closed and authorization voided.');
-      if (closeModal) {
-        onClose?.();
-      }
+      setError('Deposit cancelled. POS closed and authorization voided.');
+      if (closeModal) onClose?.();
     },
     [aborting, franchiseId, onClose],
   );
@@ -122,12 +137,17 @@ export function StripeDepositModal({ franchiseId, onClose, onSuccess }) {
   const handleStart = async () => {
     setError('');
     setStatusMessage('');
+    setRetryDepositId('');
     if (!customerName.trim()) {
       setError('Customer name is required.');
       return;
     }
-    if (!terminalCfg?.readerId) {
-      setError('Configure a Stripe Terminal reader in Settings → Add device first.');
+    if (!isResCodeComplete(resCode)) {
+      setError('RES number is required.');
+      return;
+    }
+    if (!selectedReaderId) {
+      setError('Select a POS terminal in Settings → Add device first.');
       return;
     }
 
@@ -140,20 +160,24 @@ export function StripeDepositModal({ franchiseId, onClose, onSuccess }) {
       const created = await stripeFinancialCreateDeposit({
         franchiseId,
         initialAmountChf: Number(depositAmountChf),
+        maxAuthAmountChf: Number(maxAuthAmountChf) || 3000,
         customerName: customerName.trim(),
         customerEmail: customerEmail.trim(),
+        resCode: formatResCodeForSubmit(resCode),
+        reference: formatResCodeForSubmit(resCode),
         plate: plate.trim(),
-        reference: reference.trim(),
+        readerId: selectedReaderId,
       });
       createdDepositId = created.depositId;
       depositIdRef.current = created.depositId;
 
       setStep('terminal');
-      setStatusMessage('Sending payment to POS…');
+      setStatusMessage('Sending DEPOSIT to POS…');
 
       const sent = await stripeFinancialProcessDepositOnTerminal({
         franchiseId,
         depositId: created.depositId,
+        readerId: selectedReaderId,
       });
       setStatusMessage(sent.message || 'Present card on POS device.');
 
@@ -161,13 +185,15 @@ export function StripeDepositModal({ franchiseId, onClose, onSuccess }) {
         await pollUntilAuthorized(created.depositId);
       }
 
-      await stripeFinancialConfirmDepositCollection({
+      const confirmed = await stripeFinancialConfirmDepositCollection({
         franchiseId,
         depositId: created.depositId,
       });
 
       inFlightRef.current = false;
       depositIdRef.current = '';
+      setRetryDepositId('');
+      setTokenSaved(confirmed?.tokenSaved === true);
       setStep('done');
       onSuccess?.();
     } catch (e) {
@@ -186,47 +212,120 @@ export function StripeDepositModal({ franchiseId, onClose, onSuccess }) {
           }
         }
         depositIdRef.current = '';
-        setError('Payment cancelled.');
+        setRetryDepositId('');
+        setError('Deposit cancelled.');
+        setStep('form');
+        return;
+      }
+      if (msg.includes('timed out')) {
+        if (createdDepositId) {
+          try {
+            await stripeFinancialCancelDeposit({
+              franchiseId,
+              depositId: createdDepositId,
+              reason: e?.message || 'Timed out',
+            });
+          } catch {
+            /* ignore */
+          }
+        }
+        depositIdRef.current = '';
+        setRetryDepositId('');
+        setError(e?.message || 'Deposit timed out');
         setStep('form');
         return;
       }
       if (createdDepositId) {
-        try {
-          await stripeFinancialCancelDeposit({
-            franchiseId,
-            depositId: createdDepositId,
-            reason: e?.message || 'Terminal payment failed',
-          });
-        } catch {
-          /* ignore */
-        }
-        depositIdRef.current = '';
+        depositIdRef.current = createdDepositId;
+        setRetryDepositId(createdDepositId);
+        setError(e?.message || 'Card declined on POS. Remove the card and try another payment method.');
+        setStep('form');
+        return;
       }
       setError(e?.message || 'Deposit failed');
       setStep('form');
     }
   };
 
+  const retryOnTerminal = async () => {
+    const depositId = retryDepositId || depositIdRef.current;
+    if (!depositId || !selectedReaderId) return;
+    setError('');
+    abortRef.current = false;
+    inFlightRef.current = true;
+    setStep('terminal');
+    setStatusMessage('Sending DEPOSIT to POS again…');
+    try {
+      const sent = await stripeFinancialProcessDepositOnTerminal({
+        franchiseId,
+        depositId,
+        readerId: selectedReaderId,
+      });
+      setStatusMessage(sent.message || 'Present card on POS device.');
+      if (!sent.alreadyAuthorized) {
+        await pollUntilAuthorized(depositId);
+      }
+      const confirmed = await stripeFinancialConfirmDepositCollection({ franchiseId, depositId });
+      inFlightRef.current = false;
+      depositIdRef.current = '';
+      setRetryDepositId('');
+      setTokenSaved(confirmed?.tokenSaved === true);
+      setStep('done');
+      onSuccess?.();
+    } catch (e) {
+      inFlightRef.current = false;
+      const msg = String(e?.message || '').toLowerCase();
+      if (msg === 'cancelled' || msg.includes('cancel')) {
+        setError('Deposit cancelled.');
+      } else {
+        depositIdRef.current = depositId;
+        setRetryDepositId(depositId);
+        setError(e?.message || 'Card declined on POS.');
+      }
+      setStep('form');
+    }
+  };
+
   const showCancelDuringTerminal = step === 'creating' || step === 'terminal';
+  const selectedReader = readers.find((r) => r.readerId === selectedReaderId);
+
+  const isFormDirty = useMemo(
+    () =>
+      step === 'form' &&
+      Boolean(
+        customerName.trim() ||
+          customerEmail.trim() ||
+          resCodeNumberPart(resCode) ||
+          plate.trim() ||
+          depositAmountChf !== '400' ||
+          maxAuthAmountChf !== '3000',
+      ),
+    [step, customerName, customerEmail, resCode, plate, depositAmountChf, maxAuthAmountChf],
+  );
+
+  const requestClose = useConfirmDirtyClose({
+    isDirty: isFormDirty,
+    onClose: handleClose,
+    enabled: step === 'form',
+  });
 
   return (
-    <div className="pal-fin-modal-backdrop" role="dialog" aria-modal="true">
-      <div className="pal-fin-modal">
+    <div
+      className="pal-fin-modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      onClick={(e) => e.target === e.currentTarget && requestClose()}
+    >
+      <div className="pal-fin-modal pal-fin-modal-wide">
         <header className="pal-fin-modal-header">
           <div>
-            <p className="pal-fin-eyebrow">New payment</p>
-            <h2 className="pal-fin-modal-title">Rental deposit (Terminal)</h2>
+            <p className="pal-fin-eyebrow">New deposit</p>
+            <h2 className="pal-fin-modal-title">Rental deposit (Terminal hold)</h2>
             <p className="pal-fin-modal-sub">
-              Authorize a hold on the customer card. Payment is sent to POS via Stripe cloud — no local network setup required.
+              Authorize a card hold via POS. Increment later (e.g. 400 → 3&apos;000 CHF) using incremental authorization on the same card.
             </p>
           </div>
-          <button
-            type="button"
-            className="pal-fin-modal-close"
-            onClick={handleClose}
-            disabled={aborting}
-            aria-label="Close"
-          >
+          <button type="button" className="pal-fin-modal-close" onClick={requestClose} disabled={aborting} aria-label="Close">
             <X size={18} />
           </button>
         </header>
@@ -234,55 +333,63 @@ export function StripeDepositModal({ franchiseId, onClose, onSuccess }) {
         {step === 'form' && (
           <div className="pal-fin-modal-body">
             <div className="pal-fin-form-grid">
-              <label className="pal-fin-field pal-fin-field-full">
-                <span>Deposit amount (CHF) *</span>
+              <label className="pal-fin-field">
+                <span>RES code *</span>
                 <input
-                  type="number"
-                  min="1"
-                  step="0.05"
-                  value={depositAmountChf}
-                  onChange={(e) => setDepositAmountChf(e.target.value)}
-                  autoFocus
+                  value={resCode}
+                  onChange={(e) => setResCode(normalizeResCodeInput(e.target.value))}
+                  placeholder="17505"
+                  className="pal-fin-mono"
                 />
-              </label>
-              <label className="pal-fin-field pal-fin-field-full">
-                <span>Cardholder name *</span>
-                <input
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder="First and last name"
-                />
+                <small>Type reservation number only — RES- is added automatically.</small>
               </label>
               <label className="pal-fin-field">
                 <span>Plate</span>
-                <input value={plate} onChange={(e) => setPlate(e.target.value)} placeholder="ZG108875" />
-              </label>
-              <label className="pal-fin-field">
-                <span>RES / reference</span>
-                <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="RES-17505" />
+                <input value={plate} onChange={(e) => setPlate(e.target.value)} placeholder="ZG108875" className="pal-fin-mono" />
               </label>
               <label className="pal-fin-field pal-fin-field-full">
-                <span>Email (optional)</span>
-                <input
-                  type="email"
-                  value={customerEmail}
-                  onChange={(e) => setCustomerEmail(e.target.value)}
-                />
+                <span>Customer name *</span>
+                <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="First and last name" />
+              </label>
+              <label className="pal-fin-field pal-fin-field-full">
+                <span>Customer email</span>
+                <input type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} />
+              </label>
+              <label className="pal-fin-field">
+                <span>Initial hold (CHF) *</span>
+                <input type="number" min="1" step="0.05" value={depositAmountChf} onChange={(e) => setDepositAmountChf(e.target.value)} />
+              </label>
+              <label className="pal-fin-field">
+                <span>Max authorization (CHF)</span>
+                <input type="number" min="1" step="0.05" value={maxAuthAmountChf} onChange={(e) => setMaxAuthAmountChf(e.target.value)} />
+                <small>Upper limit for &quot;Increase deposit&quot; (default 3&apos;000 CHF)</small>
+              </label>
+              <label className="pal-fin-field pal-fin-field-full">
+                <span>POS terminal *</span>
+                <select value={selectedReaderId} onChange={(e) => setSelectedReaderId(e.target.value)}>
+                  <option value="">Select terminal…</option>
+                  {readers.map((r) => (
+                    <option key={r.readerId} value={r.readerId}>
+                      {r.readerLabel || r.readerId}{r.isDefault ? ' (default)' : ''}
+                    </option>
+                  ))}
+                </select>
               </label>
             </div>
-            {terminalCfg?.readerId ? (
+            {selectedReader ? (
               <p className="pal-fin-hint">
-                Terminal: <strong>{terminalCfg.readerLabel || terminalCfg.readerId}</strong>
-                {terminalCfg.lastTestOk === false && (
-                  <span className="text-amber-600"> — last connection test failed; check POS is Online</span>
-                )}
+                Terminal: <strong>{selectedReader.readerLabel || selectedReader.readerId}</strong> — customer will see <strong>DEPOSIT</strong> on POS.
+                Card details are saved for future off-session use.
               </p>
             ) : (
-              <p className="pal-fin-alert pal-fin-alert-warn">
-                No terminal configured. Add a reader under Settings → Stripe Terminal.
-              </p>
+              <p className="pal-fin-alert pal-fin-alert-warn">No terminal selected. Add readers under Settings → Stripe Terminal.</p>
             )}
             {error && <p className="pal-fin-alert">{error}</p>}
+            {retryDepositId && (
+              <p className="pal-fin-hint">
+                POS declined this card — use <strong>Try another card</strong> below (same deposit hold, no double charge).
+              </p>
+            )}
           </div>
         )}
 
@@ -290,10 +397,8 @@ export function StripeDepositModal({ franchiseId, onClose, onSuccess }) {
           <div className="pal-fin-modal-body pal-fin-modal-center">
             <Loader2 className="animate-spin" size={32} />
             <p className="pal-fin-modal-status">{statusMessage || 'Sending to terminal…'}</p>
-            <p className="text-caption">Ask the customer to tap or insert their card on the POS device.</p>
-            <p className="pal-fin-terminal-security-note">
-              Cancel closes the POS screen and voids any pending authorization.
-            </p>
+            <p className="text-caption">Ask the customer to tap or insert their card. POS shows DEPOSIT.</p>
+            <p className="pal-fin-terminal-security-note">Cancel closes the POS screen and voids any pending authorization.</p>
           </div>
         )}
 
@@ -301,37 +406,33 @@ export function StripeDepositModal({ franchiseId, onClose, onSuccess }) {
           <div className="pal-fin-modal-body pal-fin-modal-center">
             <CreditCard size={36} className="text-[var(--erpx-brand)]" />
             <p className="pal-fin-modal-status">Deposit authorized</p>
-            <p className="text-caption">
-              {chfToDisplay(Number(depositAmountChf) * 100)} CHF authorized on card
-            </p>
+            <p className="text-caption">{Number(depositAmountChf).toFixed(2)} CHF hold on card · max {Number(maxAuthAmountChf).toFixed(2)} CHF</p>
+            {tokenSaved && (
+              <span className="pal-fin-token-saved-badge">Token saved</span>
+            )}
           </div>
         )}
 
         <footer className="pal-fin-modal-footer">
           {step === 'form' && (
             <>
-              <button type="button" className="gm-btn gm-btn-secondary" onClick={handleClose}>
-                Close
-              </button>
-              <button type="button" className="gm-btn gm-btn-primary" onClick={handleStart}>
-                Send to terminal
-              </button>
+              <button type="button" className="gm-btn gm-btn-secondary" onClick={handleClose}>Close</button>
+              {retryDepositId ? (
+                <button type="button" className="gm-btn gm-btn-primary" onClick={retryOnTerminal}>
+                  Try another card on POS
+                </button>
+              ) : (
+                <button type="button" className="gm-btn gm-btn-primary" onClick={handleStart}>Send deposit to terminal</button>
+              )}
             </>
           )}
           {showCancelDuringTerminal && (
-            <button
-              type="button"
-              className="gm-btn gm-btn-danger"
-              disabled={aborting}
-              onClick={() => abortSession({ closeModal: false })}
-            >
-              {aborting ? 'Cancelling…' : 'Cancel payment & close POS'}
+            <button type="button" className="gm-btn gm-btn-danger" disabled={aborting} onClick={() => abortSession({ closeModal: false })}>
+              {aborting ? 'Cancelling…' : 'Cancel deposit & close POS'}
             </button>
           )}
           {step === 'done' && (
-            <button type="button" className="gm-btn gm-btn-primary" onClick={onClose}>
-              Done
-            </button>
+            <button type="button" className="gm-btn gm-btn-primary" onClick={onClose}>Done</button>
           )}
         </footer>
       </div>

@@ -12,10 +12,22 @@ function callEu(name, data = {}) {
 }
 
 /** CH Stripe daily KPI reports (europe-west6). */
-export function chStripeGetDailyReports({ franchiseId, period = '7d' } = {}) {
+export function chStripeGetDailyReports({ franchiseId, period = '7d', startDayKey, endDayKey } = {}) {
   return callEu('getCHStripeDailyReports', {
     franchiseId: String(franchiseId || 'CH').toUpperCase(),
     period,
+    ...(startDayKey && endDayKey ? { startDayKey, endDayKey } : {}),
+  });
+}
+
+/** Charge saved card from prior deposit (us-central1, admin+). */
+export function stripeFinancialChargeSavedPaymentMethod({ franchiseId, depositId, paymentIntentId, amountChf, note } = {}) {
+  return call('stripeFinancialChargeSavedPaymentMethod', {
+    franchiseId,
+    ...(depositId ? { depositId } : {}),
+    ...(paymentIntentId ? { paymentIntentId } : {}),
+    amountChf,
+    note,
   });
 }
 
@@ -59,8 +71,8 @@ export function stripeFinancialListMailOrders({ franchiseId, limit = 100 } = {})
   return call('stripeFinancialListMailOrders', { franchiseId, limit });
 }
 
-export function stripeFinancialListPayments({ franchiseId, dayKey, lookbackDays = 21 } = {}) {
-  return call('stripeFinancialListPayments', { franchiseId, dayKey, lookbackDays });
+export function stripeFinancialListPayments({ franchiseId, dayKey, period = '1d', lookbackDays = 90 } = {}) {
+  return call('stripeFinancialListPayments', { franchiseId, dayKey, period, lookbackDays });
 }
 
 export function stripeFinancialCreateMailOrderPaymentLink({
@@ -135,4 +147,68 @@ export function stripeFinancialGetDepositStatus(payload) {
 
 export function stripeFinancialProcessDepositOnTerminal(payload) {
   return call('stripeFinancialProcessDepositOnTerminal', payload);
+}
+
+export function stripeFinancialListTerminals({ franchiseId } = {}) {
+  return call('stripeFinancialListTerminals', { franchiseId });
+}
+
+export function stripeFinancialUpsertTerminal(payload) {
+  return call('stripeFinancialUpsertTerminal', payload);
+}
+
+export function stripeFinancialDeleteTerminal({ franchiseId, terminalId }) {
+  return call('stripeFinancialDeleteTerminal', { franchiseId, terminalId });
+}
+
+export function stripeFinancialListDepositEmailTemplates({ franchiseId } = {}) {
+  return call('stripeFinancialListDepositEmailTemplates', { franchiseId });
+}
+
+export function stripeFinancialSaveDepositEmailTemplate(payload) {
+  return call('stripeFinancialSaveDepositEmailTemplate', payload);
+}
+
+export function stripeFinancialDeleteDepositEmailTemplate({ franchiseId, templateId }) {
+  return call('stripeFinancialDeleteDepositEmailTemplate', { franchiseId, templateId });
+}
+
+export function stripeFinancialAttachDepositDocuments(payload) {
+  return call('stripeFinancialAttachDepositDocuments', payload);
+}
+
+export function stripeFinancialSendDepositEmail(payload) {
+  return call('stripeFinancialSendDepositEmail', payload);
+}
+
+export function stripeFinancialCreateMailOrderPayment(payload) {
+  return call('stripeFinancialCreateMailOrderPayment', payload);
+}
+
+export function stripeFinancialCreateDirectCardOperation(payload) {
+  return call('stripeFinancialCreateDirectCardOperation', payload);
+}
+
+export function stripeFinancialFinalizeDirectCardOperation(payload) {
+  return call('stripeFinancialFinalizeDirectCardOperation', payload);
+}
+
+export function stripeFinancialPersistDirectCardSnapshot(payload) {
+  return call('stripeFinancialPersistDirectCardSnapshot', payload);
+}
+
+export function stripeFinancialRetryDirectCardOperation(payload) {
+  return call('stripeFinancialRetryDirectCardOperation', payload);
+}
+
+export function stripeFinancialRetryDirectCardSavedPayment(payload) {
+  return call('stripeFinancialRetryDirectCardSavedPayment', payload);
+}
+
+export function stripeFinancialSendMailOrderEmail(payload) {
+  return call('stripeFinancialSendMailOrderEmail', payload);
+}
+
+export function stripeFinancialAttachMailOrderDocuments(payload) {
+  return call('stripeFinancialAttachMailOrderDocuments', payload);
 }

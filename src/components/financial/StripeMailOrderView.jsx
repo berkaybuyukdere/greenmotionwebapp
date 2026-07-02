@@ -1,39 +1,38 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Plus,
-  RefreshCw,
-  Pencil,
-  Trash2,
-  Link2,
-  Search,
-  CreditCard,
-} from 'lucide-react';
-import { MailOrderLinkCopyPanel } from './MailOrderLinkCopyPanel';
+import { Plus, RefreshCw, Search, Upload, X } from 'lucide-react';
+import { ref, uploadBytes } from 'firebase/storage';
+import { storage } from '../../firebase/client';
 import {
   PalantirWorkbench,
   PalantirCommandBar,
-  PalantirInspectorRow,
 } from '../palantir/PalantirWorkbench';
-import { StripePaymentMethodCell } from './StripePaymentMethodCell';
-import { PaymentMethodBadges } from './PaymentMethodBadges';
+import { StripeDataTable, StripeStatusBadge } from '../StripeListUI';
+import { StripeMailOrderDetailDrawer } from './StripeMailOrderDetailDrawer';
+import { PalantirFinKpiCard, PalantirFinKpiRow } from './PalantirFinKpiCard';
+import { useConfirmDirtyClose } from '../../utilities/useConfirmDirtyClose';
+import {
+  defaultResCodeValue,
+  formatResCodeForSubmit,
+  isResCodeComplete,
+  normalizeResCodeInput,
+  resCodeNumberPart,
+} from '../../utilities/resCodeInput';
 import {
   stripeFinancialGetConfig,
-  stripeFinancialListProducts,
-  stripeFinancialCreateProduct,
-  stripeFinancialUpdateProduct,
-  stripeFinancialDeleteProduct,
-  stripeFinancialCreateMailOrderPaymentLink,
   stripeFinancialListMailOrders,
-  stripeFinancialListAudit,
+  stripeFinancialCreateMailOrderPayment,
+  stripeFinancialAttachMailOrderDocuments,
+  stripeFinancialSendMailOrderEmail,
 } from '../../services/stripeFinancialApi';
 import { formatCurrency } from '../../utilities/dateFormatters';
-
-const CURRENCIES = [
-  { id: 'chf', label: 'CHF' },
-  { id: 'eur', label: 'EUR' },
-  { id: 'usd', label: 'USD' },
-  { id: 'try', label: 'TRY' },
-];
+import { isPaymentLinkMailOrder } from '../../utilities/stripeCustomerGroups';
+import {
+  MAIL_ORDER_REMINDER_SMTP_ENABLED,
+  MAIL_ORDER_LINK_VALID_DAYS,
+  formatMailOrderDate,
+  getMailOrderReminderDisplay,
+  reminderToneClass,
+} from '../../utilities/mailOrderReminderUtils';
 
 function formatStripeMoney(amount, currency) {
   if (amount == null) return '—';
@@ -47,33 +46,44 @@ function formatStripeMoney(amount, currency) {
 }
 
 const emptyForm = {
-  name: '',
-  description: '',
+  category: 'damage',
+  resNo: defaultResCodeValue(),
+  customerName: '',
+  customerEmail: '',
+  mailContent: '',
   unitAmountMajor: '',
   currency: 'chf',
-  active: true,
-  saveCustomerInfo: false,
 };
 
-export function StripeMailOrderView({ franchiseId }) {
+function ReminderCell({ reminder, slotLabel }) {
+  const display = getMailOrderReminderDisplay(reminder, slotLabel);
+  return (
+    <div className="pal-fin-reminder-cell">
+      <span className={`pal-fin-status ${reminderToneClass(display.tone)}`}>
+        <span className="pal-fin-status-dot" />
+        {display.label}
+      </span>
+      {display.plannedAt && (
+        <span className="pal-fin-reminder-date">{formatMailOrderDate(display.plannedAt)}</span>
+      )}
+    </div>
+  );
+}
+
+export function StripeMailOrderView({ franchiseId, showFinancialTotals = true }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [configured, setConfigured] = useState(true);
-  const [products, setProducts] = useState([]);
-  const [filter, setFilter] = useState('all');
-  const [search, setSearch] = useState('');
-  const [modal, setModal] = useState(null);
-  const [form, setForm] = useState(emptyForm);
-  const [saving, setSaving] = useState(false);
-  const [selected, setSelected] = useState(null);
-  const [paymentLink, setPaymentLink] = useState('');
-  const [customerEmail, setCustomerEmail] = useState('');
-  const [saveCustomerForCheckout, setSaveCustomerForCheckout] = useState(false);
   const [mailOrders, setMailOrders] = useState([]);
-  const [audit, setAudit] = useState([]);
-  const [linkLoading, setLinkLoading] = useState(false);
+  const [filter, setFilter] = useState('all');
+  const [reminderFilter, setReminderFilter] = useState('all');
+  const [search, setSearch] = useState('');
+  const [showNewPayment, setShowNewPayment] = useState(false);
+  const [form, setForm] = useState(emptyForm);
+  const [files, setFiles] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [drawerOrder, setDrawerOrder] = useState(null);
   const [stripeMode, setStripeMode] = useState('unset');
-  const [detailOpen, setDetailOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!franchiseId) return;
@@ -83,17 +93,11 @@ export function StripeMailOrderView({ franchiseId }) {
       const cfg = await stripeFinancialGetConfig({ franchiseId });
       setConfigured(cfg?.configured !== false);
       setStripeMode(cfg?.mode || 'unset');
-      const [res, mailRes] = await Promise.all([
-        stripeFinancialListProducts({ franchiseId, limit: 100, activeOnly: true }),
-        stripeFinancialListMailOrders({ franchiseId, limit: 200 }),
-      ]);
-      setProducts(res.products || []);
-      setMailOrders(mailRes.orders || []);
-      const auditRes = await stripeFinancialListAudit({ franchiseId, limit: 30 });
-      setAudit(auditRes.entries || []);
+      const mailRes = await stripeFinancialListMailOrders({ franchiseId, limit: 200 });
+      setMailOrders((mailRes.orders || []).filter(isPaymentLinkMailOrder));
     } catch (e) {
-      setError(e?.message || 'Failed to load mail-order products');
-      setProducts([]);
+      setError(e?.message || 'Failed to load mail orders');
+      setMailOrders([]);
     } finally {
       setLoading(false);
     }
@@ -103,94 +107,118 @@ export function StripeMailOrderView({ franchiseId }) {
     load();
   }, [load]);
 
-  useEffect(() => {
-    if (selected) {
-      setSaveCustomerForCheckout(selected.saveCustomerInfo === true);
-    }
-  }, [selected]);
-
-  const paymentStatusByProduct = useMemo(() => {
-    const map = {};
-    for (const order of mailOrders) {
-      const pid = order.productId;
-      if (!pid) continue;
-      const prev = map[pid];
-      if (!prev || String(order.createdAt || '') > String(prev.createdAt || '')) {
-        map[pid] = order;
-      }
-    }
-    return map;
-  }, [mailOrders]);
-
-  const enrichedProducts = useMemo(
-    () =>
-      products.map((p) => {
-        const order = paymentStatusByProduct[p.id];
-        return {
-          ...p,
-          paymentStatus: order?.status === 'paid' ? 'paid' : order ? 'unpaid' : 'none',
-          latestMailOrder: order || null,
-        };
-      }),
-    [products, paymentStatusByProduct]
-  );
-
   const filtered = useMemo(() => {
-    let rows = enrichedProducts;
-    if (filter === 'paid') rows = rows.filter((p) => p.paymentStatus === 'paid');
-    if (filter === 'unpaid') rows = rows.filter((p) => p.paymentStatus === 'unpaid');
+    let rows = mailOrders;
+    if (filter === 'paid') rows = rows.filter((o) => o.status === 'paid');
+    if (filter === 'unpaid') rows = rows.filter((o) => o.status !== 'paid');
+    if (filter === 'sent') rows = rows.filter((o) => o.emailSentAt);
+
+    if (reminderFilter === 'due') {
+      rows = rows.filter((o) => o.reminder1?.shouldSend || o.reminder2?.shouldSend);
+    } else if (reminderFilter === 'planned') {
+      rows = rows.filter(
+        (o) => o.reminder1?.status === 'planned' || o.reminder2?.status === 'planned',
+      );
+    }
+
     const q = search.trim().toLowerCase();
     if (!q) return rows;
     return rows.filter(
-      (p) =>
-        p.name?.toLowerCase().includes(q) ||
-        p.description?.toLowerCase().includes(q) ||
-        p.id?.toLowerCase().includes(q)
+      (o) =>
+        o.resNo?.toLowerCase().includes(q) ||
+        o.mailContent?.toLowerCase().includes(q) ||
+        o.customerName?.toLowerCase().includes(q) ||
+        o.customerEmail?.toLowerCase().includes(q),
     );
-  }, [enrichedProducts, filter, search]);
+  }, [mailOrders, filter, reminderFilter, search]);
 
   const filterChips = useMemo(
     () => [
-      { id: 'all', label: 'All', count: enrichedProducts.length },
-      {
-        id: 'paid',
-        label: 'Paid',
-        count: enrichedProducts.filter((p) => p.paymentStatus === 'paid').length,
-      },
-      {
-        id: 'unpaid',
-        label: 'Unpaid',
-        count: enrichedProducts.filter((p) => p.paymentStatus === 'unpaid').length,
-      },
+      { id: 'all', label: 'All', count: mailOrders.length },
+      { id: 'paid', label: 'Paid', count: mailOrders.filter((o) => o.status === 'paid').length },
+      { id: 'unpaid', label: 'Unpaid', count: mailOrders.filter((o) => o.status !== 'paid').length },
+      { id: 'sent', label: 'Email sent', count: mailOrders.filter((o) => o.emailSentAt).length },
     ],
-    [enrichedProducts]
+    [mailOrders],
   );
 
-  const openCreate = () => {
-    setForm(emptyForm);
-    setModal('create');
-    setError('');
+  const kpi = useMemo(() => {
+    let paidCount = 0;
+    let unpaidCount = 0;
+    let paidVol = 0;
+    let unpaidVol = 0;
+    let trafficCount = 0;
+    let damageCount = 0;
+    for (const o of mailOrders) {
+      const amt = Number(o.amount) || 0;
+      if (o.status === 'paid') {
+        paidCount += 1;
+        paidVol += amt;
+      } else {
+        unpaidCount += 1;
+        unpaidVol += amt;
+      }
+      if (o.category === 'traffic_fine') trafficCount += 1;
+      else damageCount += 1;
+    }
+    return { paidCount, unpaidCount, paidVol, unpaidVol, trafficCount, damageCount };
+  }, [mailOrders]);
+
+  const formDirty = useMemo(
+    () =>
+      Boolean(
+        resCodeNumberPart(form.resNo) ||
+          form.customerName.trim() ||
+          form.customerEmail.trim() ||
+          form.mailContent.trim() ||
+          form.unitAmountMajor.trim() ||
+          files.length,
+      ),
+    [form, files],
+  );
+
+  const requestCloseNewPayment = useConfirmDirtyClose({
+    isDirty: formDirty && !saving,
+    onClose: () => {
+      if (saving) return;
+      setShowNewPayment(false);
+      setForm(emptyForm);
+      setFiles([]);
+      setError('');
+    },
+    enabled: showNewPayment,
+  });
+
+  const uploadDocuments = async (mailOrderId) => {
+    if (!files.length) return [];
+    const uploaded = [];
+    for (const file of files.slice(0, 20)) {
+      const path = `franchises/${franchiseId}/stripeMailOrders/${mailOrderId}/documents/${Date.now()}_${file.name}`;
+      const storageRef = ref(storage, path);
+      await uploadBytes(storageRef, file, { contentType: file.type || 'application/octet-stream' });
+      uploaded.push({
+        name: file.name,
+        storagePath: path,
+        contentType: file.type || 'application/octet-stream',
+        size: file.size,
+      });
+    }
+    if (uploaded.length) {
+      await stripeFinancialAttachMailOrderDocuments({ franchiseId, mailOrderId, documents: uploaded });
+    }
+    return uploaded;
   };
 
-  const openEdit = (product) => {
-    setForm({
-      name: product.name || '',
-      description: product.description || '',
-      unitAmountMajor: product.unitAmount != null ? String(Number(product.unitAmount) / 100) : '',
-      currency: product.currency || 'chf',
-      active: product.active !== false,
-      saveCustomerInfo: product.saveCustomerInfo === true,
-    });
-    setModal('edit');
-    setSelected(product);
-    setError('');
-  };
-
-  const saveProduct = async () => {
-    if (!franchiseId) return;
-    const name = form.name.trim();
-    if (!name) {
-      setError('Product name is required.');
+  const submitNewPayment = async () => {
+    const resNo = formatResCodeForSubmit(form.resNo);
+    const customerName = form.customerName.trim();
+    const customerEmail = form.customerEmail.trim();
+    if (!isResCodeComplete(form.resNo)) {
+      setError('RES number is required.');
+      return;
+    }
+    if (!customerName) {
+      setError('Customer name is required.');
       return;
     }
     const major = parseFloat(String(form.unitAmountMajor).replace(',', '.'));
@@ -198,135 +226,164 @@ export function StripeMailOrderView({ franchiseId }) {
       setError('Enter a valid price.');
       return;
     }
-    const unitAmount = Math.round(major * 100);
 
     setSaving(true);
     setError('');
     try {
-      if (modal === 'create') {
-        await stripeFinancialCreateProduct({
-          franchiseId,
-          name,
-          description: form.description.trim(),
-          unitAmount,
-          currency: form.currency,
-          active: form.active,
-          saveCustomerInfo: form.saveCustomerInfo,
-        });
-      } else if (modal === 'edit' && selected) {
-        await stripeFinancialUpdateProduct({
-          franchiseId,
-          productId: selected.id,
-          name,
-          description: form.description.trim(),
-          unitAmount,
-          currency: form.currency,
-          active: form.active,
-          saveCustomerInfo: form.saveCustomerInfo,
-        });
+      const unitAmount = Math.round(major * 100);
+      const result = await stripeFinancialCreateMailOrderPayment({
+        franchiseId,
+        category: form.category,
+        resNo,
+        customerName,
+        customerEmail,
+        mailContent: form.mailContent.trim(),
+        unitAmount,
+        currency: form.currency,
+        skipEmail: true,
+      });
+      if (files.length && result.mailOrderId) {
+        await uploadDocuments(result.mailOrderId);
       }
-      setModal(null);
+      if (customerEmail) {
+        await stripeFinancialSendMailOrderEmail({ franchiseId, mailOrderId: result.mailOrderId });
+      }
+      setShowNewPayment(false);
+      setForm(emptyForm);
+      setFiles([]);
       await load();
     } catch (e) {
-      setError(e?.message || 'Save failed');
+      setError(e?.message || 'Could not send payment mail');
     } finally {
       setSaving(false);
     }
   };
 
-  const deleteProduct = async (product, e) => {
-    e?.stopPropagation?.();
-    if (!window.confirm(`Permanently delete "${product.name}" from Stripe? This cannot be undone.`)) {
-      return;
-    }
-    setError('');
-    try {
-      const result = await stripeFinancialDeleteProduct({ franchiseId, productId: product.id });
-      if (result?.message && !result?.hardDeleted) {
-        // Soft-deleted in Stripe — still removed from catalog list.
-      }
-      if (selected?.id === product.id) {
-        setSelected(null);
-        setDetailOpen(false);
-      }
-      await load();
-    } catch (err) {
-      setError(err?.message || 'Delete failed');
-    }
-  };
-
-  const createPaymentLink = async () => {
-    if (!selected) return;
-    setLinkLoading(true);
-    setError('');
-    setPaymentLink('');
-    try {
-      const res = await stripeFinancialCreateMailOrderPaymentLink({
-        franchiseId,
-        productId: selected.id,
-        customerEmail: customerEmail.trim() || undefined,
-        saveCustomerInfo: saveCustomerForCheckout,
-      });
-      setPaymentLink(res.url || '');
-      const mailRes = await stripeFinancialListMailOrders({ franchiseId, limit: 200 });
-      setMailOrders(mailRes.orders || []);
-    } catch (e) {
-      const msg = e?.message || 'Could not create checkout link';
-      setError(msg);
-    } finally {
-      setLinkLoading(false);
-    }
-  };
-
-  const openProductDetail = (row) => {
-    setSelected(row);
-    setPaymentLink(row.latestMailOrder?.paymentUrl || '');
-    setCustomerEmail('');
-    setError('');
-    setDetailOpen(true);
-  };
-
-  const paymentStatusLabel = (status) => {
-    if (status === 'paid') return 'Paid';
-    if (status === 'unpaid') return 'Unpaid';
-    return 'No link';
-  };
-
-  const closeProductDetail = () => {
-    setDetailOpen(false);
-  };
+  const columns = useMemo(
+    () => [
+      {
+        key: 'res',
+        header: 'RES',
+        render: (row) => <span className="pal-fin-product-name">{row.resNo || row.productName}</span>,
+      },
+      {
+        key: 'customer',
+        header: 'Customer',
+        render: (row) => (
+          <div>
+            <div>{row.customerName || '—'}</div>
+            <div className="pal-fin-product-desc">{row.customerEmail}</div>
+          </div>
+        ),
+      },
+      {
+        key: 'type',
+        header: 'Type',
+        render: (row) => (
+          <StripeStatusBadge
+            sharp
+            variant={row.category === 'traffic_fine' ? 'traffic_fine' : 'damage'}
+            label={row.category === 'traffic_fine' ? 'Traffic fines' : 'Damage'}
+          />
+        ),
+      },
+      {
+        key: 'amount',
+        header: 'Price',
+        render: (row) => (
+          <span className="font-semibold tabular-nums">{formatStripeMoney(row.amount, row.currency)}</span>
+        ),
+      },
+      {
+        key: 'payment',
+        header: 'Payment',
+        render: (row) => (
+          <StripeStatusBadge
+            sharp
+            variant={row.status === 'paid' ? 'paid' : 'unpaid'}
+            label={row.status === 'paid' ? 'Paid' : 'Unpaid'}
+          />
+        ),
+      },
+      {
+        key: 'valid',
+        header: 'Link valid until',
+        render: (row) => formatMailOrderDate(row.linkValidUntil),
+      },
+      {
+        key: 'r1',
+        header: '1st reminder',
+        render: (row) => <ReminderCell reminder={row.reminder1} slotLabel="1st" />,
+      },
+      {
+        key: 'r2',
+        header: '2nd reminder',
+        render: (row) => <ReminderCell reminder={row.reminder2} slotLabel="2nd" />,
+      },
+    ],
+    [],
+  );
 
   return (
-    <div className="pal-fin-root">
+    <div className="pal-fin-root pal-analytics-page pal-fin-stripe-page">
       <header className="pal-fin-command">
         <div>
-          <p className="pal-fin-eyebrow">Finance · Stripe</p>
+          <p className="pal-fin-eyebrow">Finance · Stripe · Switzerland</p>
           <h1 className="pal-fin-title">Mail order</h1>
           <p className="pal-fin-subtitle">
-            Product catalog and secure checkout links. Customer can pay with card wallets and local methods via Stripe.
+            Payment link e-mails — active for {MAIL_ORDER_LINK_VALID_DAYS} days. Traffic fines and damage use separate SMTP.
           </p>
           {stripeMode === 'live' && <span className="pal-fin-mode-live mt-2">Live mode</span>}
           {stripeMode === 'test' && <span className="pal-fin-mode-test mt-2">Test mode</span>}
         </div>
-        <div className="pal-fin-command-actions">
-          <button type="button" className="gm-btn gm-btn-secondary gm-btn-sm" onClick={load} disabled={loading}>
+        <div className="pal-fin-command-actions pal-fin-command-actions-symmetric">
+          <button type="button" className="gm-btn gm-btn-secondary gm-btn-sm pal-fin-action-btn" onClick={load} disabled={loading}>
             <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
-            Sync
+            Refresh
           </button>
-          <button type="button" className="gm-btn gm-btn-primary gm-btn-sm" onClick={openCreate}>
+          <button type="button" className="gm-btn gm-btn-primary gm-btn-sm pal-fin-action-btn" onClick={() => { setShowNewPayment(true); setError(''); }}>
             <Plus size={15} />
-            New product
+            New payment
           </button>
         </div>
       </header>
 
-      {!configured && (
-        <div className="pal-fin-alert" style={{ borderColor: 'var(--erpx-amber-border)', background: 'var(--erpx-amber-bg)', color: 'var(--erpx-amber)' }}>
-          Stripe CH secret key missing on Cloud Functions. Set STRIPE_CH_SECRET_KEY and redeploy.
+      {!configured && <div className="pal-fin-alert">Stripe CH secret key missing.</div>}
+      {!MAIL_ORDER_REMINDER_SMTP_ENABLED && (
+        <div className="pal-fin-info-banner">
+          Reminder e-mails are planned only — automatic sending is off.
         </div>
       )}
+      {error && !showNewPayment && <div className="pal-fin-alert">{error}</div>}
 
-      {error && <div className="pal-fin-alert">{error}</div>}
+      {showFinancialTotals && (
+      <PalantirFinKpiRow>
+        <PalantirFinKpiCard
+          label="Unpaid"
+          value={formatStripeMoney(kpi.unpaidVol, 'chf')}
+          sub={`${kpi.unpaidCount} open payment${kpi.unpaidCount === 1 ? '' : 's'}`}
+          tone="unpaid"
+        />
+        <PalantirFinKpiCard
+          label="Paid"
+          value={formatStripeMoney(kpi.paidVol, 'chf')}
+          sub={`${kpi.paidCount} completed`}
+          tone="paid"
+        />
+        <PalantirFinKpiCard
+          label="Traffic fines"
+          value={kpi.trafficCount}
+          sub="Mail order records"
+          tone="default"
+        />
+        <PalantirFinKpiCard
+          label="Damage"
+          value={kpi.damageCount}
+          sub="Mail order records"
+          tone="revenue"
+        />
+      </PalantirFinKpiRow>
+      )}
 
       <div className="pal-fin-toolbar">
         <label className="pal-fin-search">
@@ -335,7 +392,7 @@ export function StripeMailOrderView({ franchiseId }) {
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Filter products…"
+            placeholder="Filter by RES, customer, mail content…"
           />
         </label>
         <div className="pal-fin-chips">
@@ -343,7 +400,7 @@ export function StripeMailOrderView({ franchiseId }) {
             <button
               key={chip.id}
               type="button"
-              className={`pal-fin-chip ${filter === chip.id ? 'pal-fin-chip-active' : ''}`}
+              className={`pal-fin-chip pal-fin-chip-symmetric ${filter === chip.id ? 'pal-fin-chip-active' : ''}`}
               onClick={() => setFilter(chip.id)}
             >
               {chip.label}
@@ -351,271 +408,126 @@ export function StripeMailOrderView({ franchiseId }) {
             </button>
           ))}
         </div>
+        <div className="pal-fin-chips pal-fin-chips-reminder">
+          <button type="button" className={`pal-fin-chip pal-fin-chip-symmetric ${reminderFilter === 'all' ? 'pal-fin-chip-active' : ''}`} onClick={() => setReminderFilter('all')}>All reminders</button>
+          <button type="button" className={`pal-fin-chip pal-fin-chip-symmetric ${reminderFilter === 'due' ? 'pal-fin-chip-active' : ''}`} onClick={() => setReminderFilter('due')}>Due now</button>
+          <button type="button" className={`pal-fin-chip pal-fin-chip-symmetric ${reminderFilter === 'planned' ? 'pal-fin-chip-active' : ''}`} onClick={() => setReminderFilter('planned')}>Planned</button>
+        </div>
       </div>
 
       <div className="pal-fin-grid-single">
         <div className="pal-fin-main pal-fin-main-full">
-          <div className="pal-fin-table-wrap">
-            <table className="pal-fin-table pal-fin-table-dense">
-              <thead>
-                <tr>
-                  <th>Product</th>
-                  <th>Price</th>
-                  <th>Payment</th>
-                  <th>Payment status</th>
-                  <th>Stripe ID</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={6} className="pal-fin-empty">
-                      Loading catalog…
-                    </td>
-                  </tr>
-                ) : filtered.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="pal-fin-empty">
-                      No products. Create one to start mail order.
-                    </td>
-                  </tr>
-                ) : (
-                  filtered.map((row) => (
-                    <tr
-                      key={row.id}
-                      className={selected?.id === row.id ? 'pal-fin-row-selected' : ''}
-                      onClick={() => openProductDetail(row)}
-                    >
-                      <td>
-                        <div className="pal-fin-product-name">{row.name}</div>
-                        {row.description ? (
-                          <div className="pal-fin-product-desc">{row.description}</div>
-                        ) : null}
-                      </td>
-                      <td className="font-semibold tabular-nums">
-                        {formatStripeMoney(row.unitAmount, row.currency)}
-                      </td>
-                      <td>
-                        <StripePaymentMethodCell brand="link" methodType="link" />
-                      </td>
-                      <td>
-                        <span
-                          className={`pal-fin-status ${
-                            row.paymentStatus === 'paid'
-                              ? 'pal-fin-status-paid'
-                              : row.paymentStatus === 'unpaid'
-                                ? 'pal-fin-status-unpaid'
-                                : 'pal-fin-status-neutral'
-                          }`}
-                        >
-                          <span className="pal-fin-status-dot" />
-                          {paymentStatusLabel(row.paymentStatus)}
-                        </span>
-                      </td>
-                      <td className="pal-fin-mono">{row.id}</td>
-                      <td>
-                        <div className="pal-fin-row-actions">
-                          <button
-                            type="button"
-                            className="gm-btn gm-btn-ghost gm-btn-sm"
-                            title="Edit"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openEdit(row);
-                            }}
-                          >
-                            <Pencil size={14} />
-                          </button>
-                          <button
-                            type="button"
-                            className="gm-btn gm-btn-ghost gm-btn-sm"
-                            title="Delete permanently"
-                            onClick={(e) => deleteProduct(row, e)}
-                          >
-                            <Trash2 size={14} className="text-[var(--erpx-red)]" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          <StripeDataTable
+            dense
+            columns={columns}
+            rows={filtered}
+            loading={loading}
+            emptyMessage="No mail orders yet. Create a new payment."
+            onRowClick={setDrawerOrder}
+            selectedRowId={drawerOrder?.id}
+          />
         </div>
       </div>
 
-      {detailOpen && selected && (
-        <PalantirWorkbench onClose={closeProductDetail} size="fit">
-          <PalantirCommandBar
-            eyebrow="Mail order · Checkout"
-            title={selected.name}
-            subtitle="Generate a secure Stripe checkout link for this product."
-            onClose={closeProductDetail}
-          />
-          <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
-            <PalantirInspectorRow label="Amount" value={formatStripeMoney(selected.unitAmount, selected.currency)} />
-            <PalantirInspectorRow
-              label="Payment status"
-              value={paymentStatusLabel(selected.paymentStatus || 'none')}
-            />
-            <PalantirInspectorRow label="Stripe ID" value={selected.id} mono />
-            <PalantirInspectorRow
-              label="Save customer"
-              value={selected.saveCustomerInfo ? 'Default: Yes' : 'Default: No'}
-            />
-            <PaymentMethodBadges title="Checkout methods" compact methods={['link']} />
-
-            <label className="block">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--erpx-ink-muted)]">
-                Customer email
-              </span>
-              <input
-                type="email"
-                className="pal-fin-input"
-                value={customerEmail}
-                onChange={(e) => setCustomerEmail(e.target.value)}
-                placeholder="Prefill on Stripe Checkout"
-              />
-            </label>
-
-            <label className="pal-fin-check">
-              <input
-                type="checkbox"
-                checked={saveCustomerForCheckout}
-                onChange={(e) => setSaveCustomerForCheckout(e.target.checked)}
-              />
-              <span>
-                <strong>Save customer &amp; payment method</strong> in Stripe for this checkout.
-              </span>
-            </label>
-
-            <button
-              type="button"
-              className="gm-btn gm-btn-primary w-full"
-              disabled={linkLoading || !selected.active}
-              onClick={createPaymentLink}
-            >
-              <Link2 size={16} />
-              {linkLoading ? 'Creating checkout…' : 'Generate checkout link'}
-            </button>
-
-            {paymentLink && (
-              <MailOrderLinkCopyPanel
-                url={paymentLink}
-                productName={selected.name}
-                amountLabel={formatStripeMoney(selected.unitAmount, selected.currency)}
-              />
-            )}
-
-            {audit.length > 0 && (
-              <div className="pal-fin-audit">
-                <p className="pal-fin-inspector-title">Recent activity</p>
-                {audit.slice(0, 5).map((e) => (
-                  <div key={e.id} className="pal-fin-audit-item">
-                    <strong>{e.action}</strong>
-                    {e.detail?.productId && (
-                      <span className="pal-fin-mono"> · {e.detail.productId}</span>
-                    )}
-                    <div>{e.createdAt || '—'}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </PalantirWorkbench>
+      {drawerOrder && (
+        <StripeMailOrderDetailDrawer order={drawerOrder} onClose={() => setDrawerOrder(null)} />
       )}
 
-      {modal && (
-        <PalantirWorkbench onClose={() => !saving && setModal(null)} size="large">
+      {showNewPayment && (
+        <PalantirWorkbench onClose={requestCloseNewPayment} size="large">
           <PalantirCommandBar
-            eyebrow="Mail order · Product"
-            title={modal === 'create' ? 'Create product' : 'Edit product'}
-            subtitle="Catalog entry synced to Stripe. Configure default customer retention for checkout."
-            onClose={() => !saving && setModal(null)}
+            eyebrow="Mail order · New payment"
+            title="Send payment request"
+            subtitle={`Customer receives e-mail with embedded Pay button. Link valid ${MAIL_ORDER_LINK_VALID_DAYS} days.`}
+            onClose={requestCloseNewPayment}
             actions={
-              <button type="button" className="gm-btn gm-btn-primary gm-btn-sm" onClick={saveProduct} disabled={saving}>
-                {saving ? 'Saving…' : 'Save to Stripe'}
+              <button type="button" className="gm-btn gm-btn-primary gm-btn-sm" onClick={submitNewPayment} disabled={saving}>
+                {saving ? 'Sending…' : 'Send payment e-mail'}
               </button>
             }
           />
-          <div className="p-6 max-w-xl mx-auto w-full space-y-4">
+          <div className="p-6 max-w-2xl mx-auto w-full space-y-4 pal-fin-new-payment-body">
+            {error && <div className="pal-fin-alert">{error}</div>}
+
+            <div className="pal-fin-category-toggle">
+              <button
+                type="button"
+                className={`pal-fin-category-btn ${form.category === 'traffic_fine' ? 'pal-fin-category-btn-active' : ''}`}
+                onClick={() => setForm((f) => ({ ...f, category: 'traffic_fine' }))}
+              >
+                <span className="pal-fin-category-btn-title">Traffic fines</span>
+                <span className="pal-fin-category-btn-sub">SMTP · traffic fines mailbox</span>
+              </button>
+              <button
+                type="button"
+                className={`pal-fin-category-btn ${form.category === 'damage' ? 'pal-fin-category-btn-active' : ''}`}
+                onClick={() => setForm((f) => ({ ...f, category: 'damage' }))}
+              >
+                <span className="pal-fin-category-btn-title">Damage</span>
+                <span className="pal-fin-category-btn-sub">SMTP · damage mailbox</span>
+              </button>
+            </div>
+
             <label className="block">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--erpx-ink-muted)]">
-                Product name *
-              </span>
+              <span className="pal-fin-field-label">RES code *</span>
               <input
-                className="pal-fin-input"
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                maxLength={250}
+                className="pal-fin-input pal-fin-mono"
+                value={form.resNo}
+                onChange={(e) => setForm((f) => ({ ...f, resNo: normalizeResCodeInput(e.target.value) }))}
+                placeholder="17505"
               />
+              <span className="text-caption">Type number only — RES- is prefilled.</span>
             </label>
-
-            <label className="block">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--erpx-ink-muted)]">
-                Description
-              </span>
-              <textarea
-                className="pal-fin-input min-h-[88px]"
-                value={form.description}
-                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-              />
-            </label>
-
-            <div className="grid grid-cols-2 gap-4">
+            <div className="pal-fin-inline-form-row">
               <label className="block">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--erpx-ink-muted)]">
-                  Price *
-                </span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  className="pal-fin-input"
-                  value={form.unitAmountMajor}
-                  onChange={(e) => setForm((f) => ({ ...f, unitAmountMajor: e.target.value }))}
-                  placeholder="1500.00"
-                />
+                <span className="pal-fin-field-label">Customer name *</span>
+                <input className="pal-fin-input" value={form.customerName} onChange={(e) => setForm((f) => ({ ...f, customerName: e.target.value }))} />
               </label>
               <label className="block">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--erpx-ink-muted)]">
-                  Currency
-                </span>
-                <select
-                  className="pal-fin-input"
-                  value={form.currency}
-                  onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value }))}
-                >
-                  {CURRENCIES.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.label}
-                    </option>
-                  ))}
+                <span className="pal-fin-field-label">Customer email *</span>
+                <input type="email" className="pal-fin-input" value={form.customerEmail} onChange={(e) => setForm((f) => ({ ...f, customerEmail: e.target.value }))} />
+              </label>
+            </div>
+            <label className="block">
+              <span className="pal-fin-field-label">Mail content</span>
+              <textarea className="pal-fin-input min-h-[100px]" value={form.mailContent} onChange={(e) => setForm((f) => ({ ...f, mailContent: e.target.value }))} placeholder="Message body for the customer e-mail…" />
+            </label>
+            <div className="pal-fin-inline-form-row">
+              <label className="block">
+                <span className="pal-fin-field-label">Price (CHF) *</span>
+                <input className="pal-fin-input" inputMode="decimal" value={form.unitAmountMajor} onChange={(e) => setForm((f) => ({ ...f, unitAmountMajor: e.target.value }))} placeholder="1500.00" />
+              </label>
+              <label className="block">
+                <span className="pal-fin-field-label">Currency</span>
+                <select className="pal-fin-input" value={form.currency} onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value }))}>
+                  <option value="chf">CHF</option>
+                  <option value="eur">EUR</option>
                 </select>
               </label>
             </div>
 
-            <label className="pal-fin-check">
-              <input
-                type="checkbox"
-                checked={form.active}
-                onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))}
-              />
-              <span>Product is active and available for mail order</span>
-            </label>
-
-            <label className="pal-fin-check">
-              <input
-                type="checkbox"
-                checked={form.saveCustomerInfo}
-                onChange={(e) => setForm((f) => ({ ...f, saveCustomerInfo: e.target.checked }))}
-              />
-              <span>
-                <CreditCard size={14} className="inline mr-1 align-text-bottom" />
-                <strong>Default: save customer &amp; payment info</strong> when generating checkout links for this
-                product (can be overridden per link in the inspector).
-              </span>
+            <label className="block">
+              <span className="pal-fin-field-label">Attachments</span>
+              <div className="pal-fin-upload-zone">
+                <input
+                  type="file"
+                  multiple
+                  id="mail-order-files"
+                  className="sr-only"
+                  onChange={(e) => setFiles(Array.from(e.target.files || []))}
+                />
+                <label htmlFor="mail-order-files" className="gm-btn gm-btn-secondary gm-btn-sm cursor-pointer">
+                  <Upload size={14} />
+                  Add files
+                </label>
+                {files.length > 0 && (
+                  <ul className="pal-fin-doc-list mt-2">
+                    {files.map((f) => (
+                      <li key={f.name}>{f.name}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </label>
           </div>
         </PalantirWorkbench>

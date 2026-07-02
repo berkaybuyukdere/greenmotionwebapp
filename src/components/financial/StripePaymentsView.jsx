@@ -9,10 +9,12 @@ import {
 import { StripePaymentMethodCell } from './StripePaymentMethodCell';
 import { StripeDepositModal } from './StripeDepositModal';
 import { StripePaymentDetailDrawer } from './StripePaymentDetailDrawer';
+import { PalantirFinKpiCard, PalantirFinKpiRow } from './PalantirFinKpiCard';
 import {
   stripeFinancialGetConfig,
   stripeFinancialListPayments,
   stripeFinancialListDeposits,
+  stripeFinancialListAudit,
 } from '../../services/stripeFinancialApi';
 import { formatCurrency } from '../../utilities/dateFormatters';
 
@@ -22,6 +24,31 @@ const BUCKET_VARIANT = {
   pending: 'warning',
   cancelled: 'danger',
 };
+
+const DEPOSIT_STATUS_VARIANT = {
+  hold: 'info',
+  increased: 'warning',
+  captured: 'success',
+  captured_increased: 'success',
+  pending: 'warning',
+  cancelled: 'danger',
+};
+
+const DEPOSIT_STATUS_LABEL = {
+  hold: 'Hold',
+  increased: 'Increased',
+  captured: 'Captured',
+  captured_increased: 'Captured (after increase)',
+  pending: 'Pending',
+  cancelled: 'Canceled',
+};
+
+const PERIOD_PRESETS = [
+  { id: '1d', label: '1d' },
+  { id: '7d', label: '7d' },
+  { id: '30d', label: '30d' },
+  { id: 'all', label: 'All' },
+];
 
 const BUCKET_LABEL = {
   successful: 'Paid',
@@ -78,11 +105,12 @@ function SummaryCard({ label, count, total, currency, variant }) {
   );
 }
 
-export function StripePaymentsView({ franchiseId }) {
+export function StripePaymentsView({ franchiseId, showFinancialTotals = true }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [configured, setConfigured] = useState(true);
   const [stripeMode, setStripeMode] = useState('unset');
+  const [period, setPeriod] = useState('1d');
   const [dayKey, setDayKey] = useState(todayKeyZurich());
   const [transactions, setTransactions] = useState([]);
   const [deposits, setDeposits] = useState([]);
@@ -90,9 +118,9 @@ export function StripePaymentsView({ franchiseId }) {
   const [syncedAt, setSyncedAt] = useState('');
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
-  const [autoRefresh, setAutoRefresh] = useState(true);
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [selectedTx, setSelectedTx] = useState(null);
+  const [audit, setAudit] = useState([]);
 
   const load = useCallback(async () => {
     if (!franchiseId) return;
@@ -102,13 +130,19 @@ export function StripePaymentsView({ franchiseId }) {
       const cfg = await stripeFinancialGetConfig({ franchiseId });
       setConfigured(cfg?.configured !== false);
       setStripeMode(cfg?.mode || 'unset');
-      const [payRes, depRes] = await Promise.all([
-        stripeFinancialListPayments({ franchiseId, dayKey }),
+      const [payRes, depRes, auditRes] = await Promise.all([
+        stripeFinancialListPayments({ franchiseId, dayKey, period }),
         stripeFinancialListDeposits({ franchiseId, limit: 30 }),
+        stripeFinancialListAudit({ franchiseId, limit: 50 }),
       ]);
       setTransactions(payRes.transactions || []);
       setSummary(payRes.summary || null);
       setDeposits(depRes.deposits || []);
+      setAudit(
+        (auditRes.entries || []).filter((a) =>
+          String(a.action || '').includes('deposit') || String(a.action || '').includes('terminal'),
+        ),
+      );
       setSyncedAt(payRes.syncedAt || new Date().toISOString());
     } catch (e) {
       setError(e?.message || 'Failed to load payments');
@@ -117,17 +151,11 @@ export function StripePaymentsView({ franchiseId }) {
     } finally {
       setLoading(false);
     }
-  }, [franchiseId, dayKey]);
+  }, [franchiseId, dayKey, period]);
 
   useEffect(() => {
     load();
   }, [load]);
-
-  useEffect(() => {
-    if (!autoRefresh) return undefined;
-    const id = setInterval(load, 45000);
-    return () => clearInterval(id);
-  }, [autoRefresh, load]);
 
   const currency = transactions[0]?.currency || 'chf';
 
@@ -195,13 +223,18 @@ export function StripePaymentsView({ franchiseId }) {
       {
         key: 'status',
         header: 'Status',
-        render: (row) => (
+        render: (row) => {
+          const depStatus = row.depositDisplayStatus;
+          const statusVariant = depStatus || (row.bucket === 'successful' ? 'paid' : row.bucket === 'hold' ? 'hold' : row.bucket === 'cancelled' ? 'danger' : 'unpaid');
+          const statusLabel = depStatus
+            ? DEPOSIT_STATUS_LABEL[depStatus]
+            : BUCKET_LABEL[row.bucket] || row.statusLabel || row.status;
+          return (
           <div className="stripe-pay-status-cell">
-            <StripeStatusBadge
-              sharp
-              variant={BUCKET_VARIANT[row.bucket] || 'neutral'}
-              label={BUCKET_LABEL[row.bucket] || row.statusLabel || row.status}
-            />
+            <StripeStatusBadge sharp variant={statusVariant} label={statusLabel} />
+            {row.tokenSaved && (
+              <StripeStatusBadge sharp variant="success" label="Token saved" />
+            )}
             {row.channelLabel && (
               <StripeStatusBadge
                 sharp
@@ -210,7 +243,8 @@ export function StripePaymentsView({ franchiseId }) {
               />
             )}
           </div>
-        ),
+          );
+        },
       },
       {
         key: 'customer',
@@ -255,6 +289,36 @@ export function StripePaymentsView({ franchiseId }) {
     [],
   );
 
+  const depositKpi = useMemo(() => {
+    let holdVol = 0;
+    let holdCount = 0;
+    let paidVol = 0;
+    let paidCount = 0;
+    let pos1Vol = 0;
+    let pos2Vol = 0;
+    for (const tx of transactions) {
+      const amt = Number(tx.holdAmount || tx.amountReceived || tx.amount) || 0;
+      if (tx.depositDisplayStatus === 'hold' || tx.depositDisplayStatus === 'increased' || tx.bucket === 'hold') {
+        holdCount += 1;
+        holdVol += amt;
+      }
+      if (tx.depositDisplayStatus === 'captured' || tx.depositDisplayStatus === 'captured_increased' || (tx.bucket === 'successful' && tx.flowType === 'deposit')) {
+        paidCount += 1;
+        paidVol += amt;
+      }
+    }
+    for (const d of deposits) {
+      const amt = Number(d.currentHoldAmount || d.initialAmount) || 0;
+      const label = String(d.readerLabel || d.readerId || '').toLowerCase();
+      if (label.includes('pos 1') || label.includes('pos1') || (d.isDefault && !label.includes('pos 2'))) {
+        pos1Vol += amt;
+      } else if (label.includes('pos 2') || label.includes('pos2')) {
+        pos2Vol += amt;
+      }
+    }
+    return { holdVol, holdCount, paidVol, paidCount, pos1Vol, pos2Vol };
+  }, [transactions, deposits]);
+
   const selectedDeposit = useMemo(() => {
     if (!selectedTx) return null;
     if (selectedTx.depositId) {
@@ -264,13 +328,13 @@ export function StripePaymentsView({ franchiseId }) {
   }, [selectedTx, deposits, depositByPi]);
 
   return (
-    <div className="pal-fin-root">
+    <div className="pal-fin-root pal-analytics-page pal-fin-stripe-page">
       <header className="pal-fin-command">
         <div>
           <p className="pal-fin-eyebrow">Finance · Stripe · Switzerland</p>
-          <h1 className="pal-fin-title">Payments</h1>
+          <h1 className="pal-fin-title">Deposits</h1>
           <p className="pal-fin-subtitle">
-            Terminal deposits, mail-order links, and card holds — one row per payment (no duplicates).
+            Terminal deposit holds, incremental authorization, and capture — one row per transaction.
           </p>
           {stripeMode === 'live' && <span className="pal-fin-mode-live mt-2">Live mode</span>}
           {stripeMode === 'test' && <span className="pal-fin-mode-test mt-2">Test mode</span>}
@@ -280,34 +344,42 @@ export function StripePaymentsView({ franchiseId }) {
             </p>
           )}
         </div>
-        <div className="pal-fin-command-actions">
+        <div className="pal-fin-command-actions pal-fin-command-actions-symmetric">
           <button
             type="button"
-            className="gm-btn gm-btn-primary gm-btn-sm"
+            className="gm-btn gm-btn-primary gm-btn-sm pal-fin-action-btn"
             onClick={() => setShowDepositModal(true)}
           >
-            <Plus size={15} /> New payment
+            <Plus size={15} /> New deposit
           </button>
-          <label className="pal-fin-check pal-fin-check-inline">
-            <input
-              type="checkbox"
-              checked={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.checked)}
-            />
-            <span>Auto-refresh</span>
-          </label>
           <input
             type="date"
-            className="pal-fin-input pal-fin-date-input"
+            className="pal-fin-input pal-fin-date-input pal-fin-action-btn"
             value={dayKey}
             onChange={(e) => setDayKey(e.target.value)}
+            title="End date"
           />
-          <button type="button" className="gm-btn gm-btn-secondary gm-btn-sm" onClick={load} disabled={loading}>
+          <button type="button" className="gm-btn gm-btn-secondary gm-btn-sm pal-fin-action-btn" onClick={load} disabled={loading}>
             <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
             Refresh
           </button>
         </div>
       </header>
+
+      <div className="pal-fin-toolbar">
+        <div className="pal-fin-chips">
+          {PERIOD_PRESETS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className={`pal-fin-chip pal-fin-chip-symmetric ${period === p.id ? 'pal-fin-chip-active' : ''}`}
+              onClick={() => setPeriod(p.id)}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {!configured && (
         <div className="pal-fin-alert pal-fin-alert-warn">
@@ -324,37 +396,33 @@ export function StripePaymentsView({ franchiseId }) {
         </div>
       )}
 
-      {summary && (
-        <div className="pal-fin-summary-row pal-fin-summary-row-4">
-          <SummaryCard
-            label="Paid"
-            count={summary.successful?.count || 0}
-            total={summary.successful?.amount || 0}
-            currency={currency}
-            variant="success"
+      {summary && showFinancialTotals && (
+        <PalantirFinKpiRow>
+          <PalantirFinKpiCard
+            label="Hold"
+            value={formatStripeMoney(depositKpi.holdVol || summary.hold?.amount, currency)}
+            sub={`${depositKpi.holdCount || summary.hold?.count || 0} authorizations`}
+            tone="hold"
           />
-          <SummaryCard
-            label="Hold amount"
-            count={summary.hold?.count || 0}
-            total={summary.hold?.amount || 0}
-            currency={currency}
-            variant="hold"
+          <PalantirFinKpiCard
+            label="Captured"
+            value={formatStripeMoney(depositKpi.paidVol || summary.successful?.amount, currency)}
+            sub={`${depositKpi.paidCount || summary.successful?.count || 0} paid`}
+            tone="paid"
           />
-          <SummaryCard
-            label="Pending"
-            count={summary.pending?.count || 0}
-            total={summary.pending?.amount || 0}
-            currency={currency}
-            variant="pending"
+          <PalantirFinKpiCard
+            label="1. POS"
+            value={formatStripeMoney(depositKpi.pos1Vol, currency)}
+            sub="Terminal hold volume"
+            tone="default"
           />
-          <SummaryCard
-            label="Canceled"
-            count={summary.cancelled?.count || 0}
-            total={summary.cancelled?.amount || 0}
-            currency={currency}
-            variant="cancelled"
+          <PalantirFinKpiCard
+            label="2. POS"
+            value={formatStripeMoney(depositKpi.pos2Vol, currency)}
+            sub="Terminal hold volume"
+            tone="default"
           />
-        </div>
+        </PalantirFinKpiRow>
       )}
 
       <StripeListToolbar
@@ -375,8 +443,9 @@ export function StripePaymentsView({ franchiseId }) {
               id: row.paymentIntentId || row.chargeId || row.id,
             }))}
             loading={loading}
-            emptyMessage={`No Stripe payments for ${dayKey}.`}
+            emptyMessage={`No Stripe payments for selected period.`}
             onRowClick={setSelectedTx}
+            selectedRowId={selectedTx?.id}
           />
         </div>
       </div>
@@ -397,6 +466,27 @@ export function StripePaymentsView({ franchiseId }) {
           onClose={() => setSelectedTx(null)}
           onChanged={load}
         />
+      )}
+
+      {audit.length > 0 && (
+        <section className="pal-fin-audit-panel mt-6">
+          <p className="pal-fin-eyebrow">Deposit activity log</p>
+          <ul className="pal-fin-audit-list">
+            {audit.slice(0, 20).map((entry) => (
+              <li key={entry.id || `${entry.action}-${entry.createdAt}`} className="pal-fin-audit-row">
+                <span className="pal-fin-mono text-xs">{entry.action}</span>
+                <span className="text-caption">
+                  {entry.createdAt ? new Date(entry.createdAt).toLocaleString() : '—'}
+                </span>
+                {entry.detail && (
+                  <span className="text-xs text-[var(--erpx-ink-muted)] truncate">
+                    {JSON.stringify(entry.detail)}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
     </div>
   );

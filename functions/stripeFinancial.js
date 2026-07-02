@@ -6,10 +6,25 @@
 const { HttpsError } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
+const crypto = require('crypto');
+const { sendMailOrderPaymentEmail, sendMailOrderReceiptEmail } = require('./stripeMailOrderMail');
+const { formatStripeApiError } = require('./stripeDeclineMessages');
+
+const MAIL_ORDER_LINK_VALID_DAYS = 30;
+const MAIL_ORDER_REMINDER_1_DAYS = 15;
+const MAIL_ORDER_REMINDER_2_DAYS = 29;
 
 const stripeCHSecretKey = defineSecret('STRIPE_CH_SECRET_KEY');
 
-const FINANCIAL_ROLES = new Set(['globaladmin', 'superadmin', 'admin', 'manager']);
+const STRIPE_FINANCE_ROLES = new Set([
+  'globaladmin',
+  'superadmin',
+  'admin',
+  'manager',
+  'staff',
+  'shuttle',
+  'viewer',
+]);
 
 function normalizeRoleKey(role) {
   return String(role || '')
@@ -72,8 +87,8 @@ async function assertFinancialCallable(request) {
   }
   const profile = snap.data() || {};
   const role = normalizeRoleKey(profile.role);
-  if (!FINANCIAL_ROLES.has(role)) {
-    throw new HttpsError('permission-denied', 'Financial access required (admin or manager).');
+  if (!STRIPE_FINANCE_ROLES.has(role)) {
+    throw new HttpsError('permission-denied', 'Stripe finance access required.');
   }
   return { uid: request.auth.uid, profile };
 }
@@ -150,6 +165,167 @@ function mailOrdersCol(franchiseId) {
     .collection('stripeMailOrders');
 }
 
+function generateMailOrderAccessToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+function timingSafeTokenMatch(provided, stored) {
+  const a = String(provided || '');
+  const b = String(stored || '');
+  if (!a || !b || a.length !== b.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
+  } catch {
+    return false;
+  }
+}
+
+function addDaysToDate(baseDate, days) {
+  const d = new Date(baseDate);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+function resolveAppBaseUrl() {
+  return String(process.env.STRIPE_CHECKOUT_RETURN_URL || 'https://vehiclesentinel.com').replace(
+    /\/$/,
+    '',
+  );
+}
+
+function buildStableMailOrderPaymentUrl(franchiseId, mailOrderId, accessToken) {
+  const base = resolveAppBaseUrl();
+  return `${base}/pay/mo/${encodeURIComponent(franchiseId)}/${encodeURIComponent(mailOrderId)}?t=${encodeURIComponent(accessToken)}`;
+}
+
+function isoOrNull(value) {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value?.toDate === 'function') {
+    return value.toDate().toISOString();
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+function computeReminderSlot(plannedAtIso, status, paymentStatus, nowMs = Date.now()) {
+  if (paymentStatus === 'paid') {
+    return { status: 'na_paid', label: 'N/A (paid)', tone: 'success', plannedAt: plannedAtIso, shouldSend: false };
+  }
+  const raw = String(status || 'planned').toLowerCase();
+  if (raw === 'sent') {
+    return { status: 'sent', label: 'Sent', tone: 'info', plannedAt: plannedAtIso, shouldSend: false };
+  }
+  if (raw === 'skipped') {
+    return { status: 'skipped', label: 'Skipped', tone: 'neutral', plannedAt: plannedAtIso, shouldSend: false };
+  }
+  const plannedMs = plannedAtIso ? new Date(plannedAtIso).getTime() : NaN;
+  const due = Number.isFinite(plannedMs) && plannedMs <= nowMs;
+  return {
+    status: due ? 'due' : 'planned',
+    label: due ? 'Due — send manually' : 'Planned',
+    tone: due ? 'danger' : 'warning',
+    plannedAt: plannedAtIso,
+    shouldSend: due,
+  };
+}
+
+function enrichMailOrderRow(row) {
+  const nowMs = Date.now();
+  const linkSentAt = isoOrNull(row.linkSentAt) || isoOrNull(row.createdAt);
+  const linkValidUntil =
+    isoOrNull(row.linkValidUntil) ||
+    (linkSentAt ? addDaysToDate(linkSentAt, MAIL_ORDER_LINK_VALID_DAYS).toISOString() : null);
+  const reminder1PlannedAt =
+    isoOrNull(row.reminder1PlannedAt) ||
+    (linkSentAt ? addDaysToDate(linkSentAt, MAIL_ORDER_REMINDER_1_DAYS).toISOString() : null);
+  const reminder2PlannedAt =
+    isoOrNull(row.reminder2PlannedAt) ||
+    (linkSentAt ? addDaysToDate(linkSentAt, MAIL_ORDER_REMINDER_2_DAYS).toISOString() : null);
+
+  let linkStatus = 'active';
+  if (row.status === 'paid') linkStatus = 'paid';
+  else if (linkValidUntil && new Date(linkValidUntil).getTime() < nowMs) linkStatus = 'expired';
+
+  const paymentStatus = row.status === 'paid' ? 'paid' : 'unpaid';
+  const reminder1 = computeReminderSlot(
+    reminder1PlannedAt,
+    row.reminder1Status || 'planned',
+    paymentStatus,
+    nowMs,
+  );
+  const reminder2 = computeReminderSlot(
+    reminder2PlannedAt,
+    row.reminder2Status || 'planned',
+    paymentStatus,
+    nowMs,
+  );
+
+  return {
+    ...row,
+    resNo: row.resNo || row.productName || '',
+    mailContent: row.mailContent || row.description || '',
+    linkSentAt,
+    linkValidUntil,
+    linkStatus,
+    reminder1PlannedAt,
+    reminder1Status: row.reminder1Status || 'planned',
+    reminder1,
+    reminder2PlannedAt,
+    reminder2Status: row.reminder2Status || 'planned',
+    reminder2,
+    reminderSendingEnabled: row.reminderSendingEnabled === true,
+  };
+}
+
+async function createCheckoutSessionForMailOrder({
+  franchiseId,
+  mailOrderId,
+  productId,
+  saveCustomerInfo,
+  customerEmail,
+  uid,
+}) {
+  const p = await stripeRequest('GET', `/products/${encodeURIComponent(productId)}`, {
+    expand: ['default_price'],
+  });
+  const priceId =
+    typeof p.default_price === 'object' && p.default_price ? p.default_price.id : p.default_price;
+  if (!priceId) {
+    throw new HttpsError('failed-precondition', 'Product has no default price.');
+  }
+
+  const appBase = resolveAppBaseUrl();
+  const sessionParams = {
+    mode: 'payment',
+    line_items: [{ price: priceId, quantity: 1 }],
+    success_url: `${appBase}/#stripeMailOrder?paid=1&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${appBase}/#stripeMailOrder?cancel=1`,
+    metadata: {
+      franchiseId,
+      productId,
+      mailOrderId,
+      mailOrder: 'true',
+      saveCustomerInfo: saveCustomerInfo ? 'true' : 'false',
+      createdByUid: uid || 'public_checkout',
+    },
+    billing_address_collection: 'auto',
+    phone_number_collection: { enabled: true },
+  };
+
+  if (customerEmail) {
+    sessionParams.customer_email = customerEmail;
+  }
+  if (saveCustomerInfo) {
+    sessionParams.customer_creation = 'always';
+    sessionParams.payment_intent_data = { setup_future_usage: 'off_session' };
+  } else {
+    sessionParams.customer_creation = 'if_required';
+  }
+
+  return stripeRequest('POST', '/checkout/sessions', sessionParams);
+}
+
 /**
  * @param {object} session Stripe checkout session
  * @return {'paid'|'unpaid'}
@@ -165,6 +341,10 @@ function paymentStatusFromSession(session) {
  * @return {Promise<object>}
  */
 async function syncMailOrderPaymentStatus(row) {
+  if (row.status === 'paid' || row.paidAt) {
+    return { ...row, status: 'paid' };
+  }
+
   const sessionId = String(row.checkoutSessionId || '').trim();
   if (!sessionId) {
     return { ...row, status: row.status === 'paid' ? 'paid' : 'unpaid' };
@@ -176,7 +356,7 @@ async function syncMailOrderPaymentStatus(row) {
       null,
     );
     const status = paymentStatusFromSession(session);
-    if (status === 'paid' && row.status !== 'paid') {
+    if (status === 'paid') {
       await mailOrdersCol(row.franchiseId).doc(row.id).set(
         {
           status: 'paid',
@@ -185,10 +365,16 @@ async function syncMailOrderPaymentStatus(row) {
         },
         { merge: true },
       );
+      return {
+        ...row,
+        status: 'paid',
+        stripeSessionStatus: session.status || null,
+        paymentStatus: session.payment_status || null,
+      };
     }
     return {
       ...row,
-      status,
+      status: row.status === 'paid' ? 'paid' : 'unpaid',
       stripeSessionStatus: session.status || null,
       paymentStatus: session.payment_status || null,
     };
@@ -207,7 +393,7 @@ async function parseStripeResponse(res) {
     throw new HttpsError('internal', `Stripe returned invalid JSON (${res.status})`);
   }
   if (!res.ok) {
-    const msg = data?.error?.message || `Stripe error ${res.status}`;
+    const msg = formatStripeApiError(data);
     throw new HttpsError('failed-precondition', msg);
   }
   return data;
@@ -253,18 +439,49 @@ function mapProduct(p) {
 }
 
 function mapDispute(d) {
+  const evidence = d.evidence_details || {};
+  const charge = typeof d.charge === 'object' && d.charge ? d.charge : null;
   return {
     id: d.id,
+    object: d.object,
     amount: d.amount,
     currency: d.currency,
     status: d.status,
     reason: d.reason,
-    charge: d.charge,
-    paymentIntent: d.payment_intent,
+    charge: typeof d.charge === 'string' ? d.charge : charge?.id,
+    paymentIntent: typeof d.payment_intent === 'string' ? d.payment_intent : d.payment_intent?.id,
     created: d.created,
-    evidenceDetails: d.evidence_details || null,
+    evidenceDetails: evidence,
+    evidenceDueBy: evidence.due_by || null,
+    hasEvidence: evidence.has_evidence,
+    pastDue: evidence.past_due,
+    submissionCount: evidence.submission_count,
     isChargeRefundable: d.is_charge_refundable,
+    balanceTransactions: d.balance_transactions || [],
+    networkReasonCode: d.network_reason_code,
+    livemode: d.livemode,
     metadata: d.metadata || {},
+    chargeDetails: charge
+      ? {
+          id: charge.id,
+          amount: charge.amount,
+          amountCaptured: charge.amount_captured,
+          amountRefunded: charge.amount_refunded,
+          currency: charge.currency,
+          status: charge.status,
+          captured: charge.captured,
+          disputed: charge.disputed,
+          description: charge.description,
+          receiptEmail: charge.receipt_email,
+          receiptUrl: charge.receipt_url,
+          billingName: charge.billing_details?.name,
+          billingEmail: charge.billing_details?.email,
+          cardBrand: charge.payment_method_details?.card?.brand,
+          cardLast4: charge.payment_method_details?.card?.last4,
+          cardCountry: charge.payment_method_details?.card?.country,
+          created: charge.created,
+        }
+      : null,
     raw: d,
   };
 }
@@ -334,7 +551,9 @@ async function runGetDispute(request) {
   const disputeId = String(data.disputeId || '').trim();
   if (!disputeId) throw new HttpsError('invalid-argument', 'disputeId required');
 
-  const d = await stripeRequest('GET', `/disputes/${encodeURIComponent(disputeId)}`, null);
+  const d = await stripeRequest('GET', `/disputes/${encodeURIComponent(disputeId)}`, {
+    expand: ['charge', 'charge.payment_intent', 'charge.customer'],
+  });
   await writeAudit(franchiseId, uid, 'get_dispute', { disputeId });
   return { dispute: mapDispute(d) };
 }
@@ -528,9 +747,39 @@ async function runCreateMailOrderPaymentLink(request) {
   const franchiseId = normalizeFranchiseId(data.franchiseId);
   assertSwitzerlandFranchise(franchiseId);
   const productId = String(data.productId || '').trim();
-  if (!productId) throw new HttpsError('invalid-argument', 'productId required');
+  const mailOrderIdArg = String(data.mailOrderId || '').trim();
+  if (!productId && !mailOrderIdArg) {
+    throw new HttpsError('invalid-argument', 'productId or mailOrderId required');
+  }
 
-  const p = await stripeRequest('GET', `/products/${encodeURIComponent(productId)}`, {
+  if (mailOrderIdArg) {
+    const existingRef = mailOrdersCol(franchiseId).doc(mailOrderIdArg);
+    const existingSnap = await existingRef.get();
+    if (!existingSnap.exists) {
+      throw new HttpsError('not-found', 'Mail order not found');
+    }
+    const existing = existingSnap.data() || {};
+    if (existing.status === 'paid') {
+      throw new HttpsError('failed-precondition', 'Already paid.');
+    }
+    if (existing.emailSentAt && !data.forceRegenerate) {
+      throw new HttpsError('failed-precondition', 'Payment email already sent.');
+    }
+    if (existing.paymentUrl) {
+      return {
+        url: existing.paymentUrl,
+        id: mailOrderIdArg,
+        mailOrderId: mailOrderIdArg,
+        active: existing.linkStatus !== 'expired',
+        paymentStatus: existing.status === 'paid' ? 'paid' : 'unpaid',
+        linkValidUntil: existing.linkValidUntil?.toDate?.()?.toISOString?.() || null,
+        reused: true,
+      };
+    }
+  }
+
+  const effectiveProductId = productId || (await mailOrdersCol(franchiseId).doc(mailOrderIdArg).get()).data()?.productId;
+  const p = await stripeRequest('GET', `/products/${encodeURIComponent(effectiveProductId)}`, {
     expand: ['default_price'],
   });
   const priceId =
@@ -546,77 +795,754 @@ async function runCreateMailOrderPaymentLink(request) {
     (data.saveCustomerInfo !== false && p.metadata?.mailOrderSaveCustomer === 'true');
 
   const customerEmail = String(data.customerEmail || '').trim();
-  const appBase =
-    String(process.env.STRIPE_CHECKOUT_RETURN_URL || 'https://vehiclesentinel.com').replace(
-      /\/$/,
-      ''
-    );
 
   const mailOrderRef = mailOrdersCol(franchiseId).doc();
   const mailOrderId = mailOrderRef.id;
+  const accessToken = generateMailOrderAccessToken();
+  const now = new Date();
+  const linkValidUntil = addDaysToDate(now, MAIL_ORDER_LINK_VALID_DAYS);
+  const reminder1PlannedAt = addDaysToDate(now, MAIL_ORDER_REMINDER_1_DAYS);
+  const reminder2PlannedAt = addDaysToDate(now, MAIL_ORDER_REMINDER_2_DAYS);
+  const stablePaymentUrl = buildStableMailOrderPaymentUrl(franchiseId, mailOrderId, accessToken);
+
   const priceObj =
     typeof p.default_price === 'object' && p.default_price ? p.default_price : null;
-
-  const sessionParams = {
-    mode: 'payment',
-    line_items: [{ price: priceId, quantity: 1 }],
-    success_url: `${appBase}/#stripeMailOrder?paid=1&session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${appBase}/#stripeMailOrder?cancel=1`,
-    metadata: {
-      franchiseId,
-      productId,
-      mailOrderId,
-      mailOrder: 'true',
-      saveCustomerInfo: saveCustomerInfo ? 'true' : 'false',
-      createdByUid: uid,
-    },
-    billing_address_collection: 'auto',
-    phone_number_collection: { enabled: true },
-  };
-
-  if (customerEmail) {
-    sessionParams.customer_email = customerEmail;
-  }
-
-  if (saveCustomerInfo) {
-    sessionParams.customer_creation = 'always';
-    sessionParams.payment_intent_data = { setup_future_usage: 'off_session' };
-  } else {
-    sessionParams.customer_creation = 'if_required';
-  }
-
-  const session = await stripeRequest('POST', '/checkout/sessions', sessionParams);
   const unitAmount = priceObj?.unit_amount ?? null;
   const currency = priceObj?.currency || 'chf';
+  const resNo = String(p.name || '').trim();
+  const mailContent = String(p.description || '').trim();
 
   await mailOrderRef.set({
     franchiseId,
     productId,
-    productName: p.name || '',
-    checkoutSessionId: session.id,
-    paymentUrl: session.url || '',
+    productName: resNo,
+    resNo,
+    mailContent,
+    description: mailContent,
+    checkoutSessionId: '',
+    paymentUrl: stablePaymentUrl,
+    accessToken,
     amount: unitAmount,
     currency,
     status: 'unpaid',
     customerEmail: customerEmail || '',
     createdByUid: uid,
+    saveCustomerInfo,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    linkSentAt: admin.firestore.FieldValue.serverTimestamp(),
+    linkValidUntil: admin.firestore.Timestamp.fromDate(linkValidUntil),
+    reminder1PlannedAt: admin.firestore.Timestamp.fromDate(reminder1PlannedAt),
+    reminder1Status: 'planned',
+    reminder2PlannedAt: admin.firestore.Timestamp.fromDate(reminder2PlannedAt),
+    reminder2Status: 'planned',
+    reminderSendingEnabled: false,
   });
 
   await writeAudit(franchiseId, uid, 'create_payment_link', {
     productId,
     mailOrderId,
-    checkoutSessionId: session.id,
     saveCustomerInfo,
+    linkValidUntil: linkValidUntil.toISOString(),
   });
   return {
-    url: session.url,
-    id: session.id,
+    url: stablePaymentUrl,
+    id: mailOrderId,
     mailOrderId,
-    active: session.status !== 'expired',
+    active: true,
     saveCustomerInfo,
     paymentStatus: 'unpaid',
-    raw: session,
+    linkValidUntil: linkValidUntil.toISOString(),
+    reminder1PlannedAt: reminder1PlannedAt.toISOString(),
+    reminder2PlannedAt: reminder2PlannedAt.toISOString(),
+  };
+}
+
+async function runAttachMailOrderDocuments(request) {
+  const { uid } = await assertFinancialCallable(request);
+  const data = request.data || {};
+  const franchiseId = normalizeFranchiseId(data.franchiseId);
+  assertSwitzerlandFranchise(franchiseId);
+  const mailOrderId = String(data.mailOrderId || '').trim();
+  const documents = Array.isArray(data.documents) ? data.documents.slice(0, 20) : [];
+  if (!mailOrderId) throw new HttpsError('invalid-argument', 'mailOrderId required');
+
+  const docRef = mailOrdersCol(franchiseId).doc(mailOrderId);
+  const snap = await docRef.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Mail order not found');
+
+  const existing = Array.isArray(snap.data()?.documents) ? snap.data().documents : [];
+  const merged = [...existing, ...documents].slice(0, 20);
+  await docRef.set({ documents: merged, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  await writeAudit(franchiseId, uid, 'mail_order_attach_documents', { mailOrderId, count: documents.length });
+  return { ok: true, mailOrderId, documents: merged };
+}
+
+async function runSendMailOrderEmail(request) {
+  const { uid } = await assertFinancialCallable(request);
+  const data = request.data || {};
+  const franchiseId = normalizeFranchiseId(data.franchiseId);
+  assertSwitzerlandFranchise(franchiseId);
+  const mailOrderId = String(data.mailOrderId || '').trim();
+  if (!mailOrderId) throw new HttpsError('invalid-argument', 'mailOrderId required');
+
+  const docRef = mailOrdersCol(franchiseId).doc(mailOrderId);
+  const snap = await docRef.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Mail order not found');
+  const row = snap.data() || {};
+  const customerEmail = String(row.customerEmail || '').trim();
+
+  if (!customerEmail) {
+    return {
+      ok: true,
+      mailOrderId,
+      sent: false,
+      message: 'No customer email — payment link created without email',
+    };
+  }
+
+  if (row.emailSentAt && !data.resend) {
+    throw new HttpsError('failed-precondition', 'Payment email already sent.');
+  }
+  if (row.status === 'paid') {
+    throw new HttpsError('failed-precondition', 'Already paid.');
+  }
+
+  const emailResult = await sendMailOrderPaymentEmail({
+    franchiseId,
+    category: row.category || 'damage',
+    toEmail: row.customerEmail,
+    customerName: row.customerName,
+    resNo: row.resNo || row.productName,
+    mailContent: row.mailContent || row.description,
+    paymentUrl: row.paymentUrl,
+    amountCents: row.amount,
+    currency: row.currency,
+    subject: data.subject || row.emailSubject,
+    htmlBody: data.htmlBody || row.emailBodyHtml,
+    documents: row.documents || [],
+  });
+
+  await docRef.set(
+    {
+      emailSentAt: admin.firestore.FieldValue.serverTimestamp(),
+      emailSentOk: emailResult.sent === true,
+      emailSentMessage: emailResult.message || '',
+    },
+    { merge: true },
+  );
+  await writeAudit(franchiseId, uid, 'mail_order_email_sent', {
+    mailOrderId,
+    sent: emailResult.sent,
+    message: emailResult.message,
+    to: row.customerEmail,
+  });
+
+  if (!emailResult.sent) {
+    throw new HttpsError('failed-precondition', emailResult.message || 'Email not sent');
+  }
+  return { ok: true, mailOrderId, sent: true };
+}
+
+async function runCreateMailOrderPayment(request) {
+  const { uid } = await assertFinancialCallable(request);
+  const data = request.data || {};
+  const franchiseId = normalizeFranchiseId(data.franchiseId);
+  assertSwitzerlandFranchise(franchiseId);
+
+  const category = String(data.category || '').toLowerCase();
+  if (!['traffic_fine', 'damage'].includes(category)) {
+    throw new HttpsError('invalid-argument', 'category must be traffic_fine or damage');
+  }
+  const resNo = String(data.resNo || data.name || '').trim();
+  const customerName = String(data.customerName || '').trim();
+  const customerEmail = String(data.customerEmail || '').trim();
+  const mailContent = String(data.mailContent || data.description || '').trim();
+  const unitAmount = Number(data.unitAmount);
+  const currency = String(data.currency || 'chf').toLowerCase();
+  const documents = Array.isArray(data.documents) ? data.documents.slice(0, 20) : [];
+
+  if (!resNo) throw new HttpsError('invalid-argument', 'RES code required');
+  if (!customerName) throw new HttpsError('invalid-argument', 'Customer name required');
+  if (!Number.isFinite(unitAmount) || unitAmount <= 0) {
+    throw new HttpsError('invalid-argument', 'Valid amount required');
+  }
+
+  const product = await stripeRequest('POST', '/products', {
+    name: resNo,
+    description: mailContent,
+    active: true,
+    'metadata[franchiseId]': franchiseId,
+    'metadata[mailOrderCategory]': category,
+    'metadata[mailOrderSaveCustomer]': 'true',
+    default_price_data: {
+      currency,
+      unit_amount: Math.round(unitAmount),
+    },
+  });
+
+  const productId = product.id;
+  const mailOrderRef = mailOrdersCol(franchiseId).doc();
+  const mailOrderId = mailOrderRef.id;
+  const accessToken = generateMailOrderAccessToken();
+  const now = new Date();
+  const linkValidUntil = addDaysToDate(now, MAIL_ORDER_LINK_VALID_DAYS);
+  const reminder1PlannedAt = addDaysToDate(now, MAIL_ORDER_REMINDER_1_DAYS);
+  const reminder2PlannedAt = addDaysToDate(now, MAIL_ORDER_REMINDER_2_DAYS);
+  const stablePaymentUrl = buildStableMailOrderPaymentUrl(franchiseId, mailOrderId, accessToken);
+
+  await mailOrderRef.set({
+    franchiseId,
+    productId,
+    productName: resNo,
+    resNo,
+    mailContent,
+    description: mailContent,
+    category,
+    customerName,
+    customerEmail,
+    checkoutSessionId: '',
+    paymentUrl: stablePaymentUrl,
+    accessToken,
+    amount: Math.round(unitAmount),
+    currency,
+    status: 'unpaid',
+    createdByUid: uid,
+    saveCustomerInfo: true,
+    documents,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    linkSentAt: admin.firestore.FieldValue.serverTimestamp(),
+    linkValidUntil: admin.firestore.Timestamp.fromDate(linkValidUntil),
+    reminder1PlannedAt: admin.firestore.Timestamp.fromDate(reminder1PlannedAt),
+    reminder1Status: 'planned',
+    reminder2PlannedAt: admin.firestore.Timestamp.fromDate(reminder2PlannedAt),
+    reminder2Status: 'planned',
+    reminderSendingEnabled: false,
+  });
+
+  const skipEmail = data.skipEmail === true;
+  let emailResult = { sent: false, message: 'skipped' };
+  if (!skipEmail) {
+    emailResult = await sendMailOrderPaymentEmail({
+      franchiseId,
+      category,
+      toEmail: customerEmail,
+      customerName,
+      resNo,
+      mailContent,
+      paymentUrl: stablePaymentUrl,
+      amountCents: Math.round(unitAmount),
+      currency,
+      documents,
+    });
+    await mailOrderRef.set(
+      {
+        emailSentAt: admin.firestore.FieldValue.serverTimestamp(),
+        emailSentOk: emailResult.sent === true,
+        emailSentMessage: emailResult.message || '',
+      },
+      { merge: true },
+    );
+  }
+
+  await writeAudit(franchiseId, uid, 'create_mail_order_payment', {
+    mailOrderId,
+    productId,
+    category,
+    resNo,
+    emailSent: emailResult.sent,
+  });
+
+  if (!skipEmail && customerEmail && !emailResult.sent) {
+    throw new HttpsError('failed-precondition', emailResult.message || 'Mail order created but email failed');
+  }
+
+  return {
+    ok: true,
+    mailOrderId,
+    productId,
+    paymentUrl: stablePaymentUrl,
+    emailSent: emailResult.sent === true,
+    linkValidUntil: linkValidUntil.toISOString(),
+  };
+}
+
+/** Staff-entered card (MOTO) — creates mail order + PaymentIntent client secret. */
+async function runCreateDirectCardOperation(request) {
+  const { uid } = await assertFinancialCallable(request);
+  const data = request.data || {};
+  const franchiseId = normalizeFranchiseId(data.franchiseId);
+  assertSwitzerlandFranchise(franchiseId);
+
+  const category = String(data.category || '').toLowerCase();
+  if (!['traffic_fine', 'damage'].includes(category)) {
+    throw new HttpsError('invalid-argument', 'category must be traffic_fine or damage');
+  }
+  const resNo = String(data.resNo || data.name || '').trim();
+  const customerName = String(data.customerName || '').trim();
+  const customerEmail = String(data.customerEmail || '').trim();
+  const cardholderName = String(data.cardholderName || customerName || '').trim();
+  const mailContent = String(data.mailContent || data.emailBodyHtml || '').trim();
+  const emailSubject = String(data.emailSubject || '').trim();
+  const emailBodyHtml = String(data.emailBodyHtml || data.mailContent || '').trim();
+  const unitAmount = Number(data.unitAmount);
+  const currency = String(data.currency || 'chf').toLowerCase();
+
+  if (!resNo) throw new HttpsError('invalid-argument', 'RES code required');
+  if (!customerName) throw new HttpsError('invalid-argument', 'Customer name required');
+  if (!Number.isFinite(unitAmount) || unitAmount < 50) {
+    throw new HttpsError('invalid-argument', 'Minimum amount is CHF 0.50');
+  }
+
+  const customer = await stripeRequest('POST', '/customers', {
+    name: customerName,
+    ...(customerEmail ? { email: customerEmail } : {}),
+    'metadata[franchiseId]': franchiseId,
+    'metadata[resNo]': resNo,
+  });
+
+  const mailOrderRef = mailOrdersCol(franchiseId).doc();
+  const mailOrderId = mailOrderRef.id;
+
+  const pi = await stripeRequest('POST', '/payment_intents', {
+    amount: Math.round(unitAmount),
+    currency,
+    customer: customer.id,
+    payment_method_types: ['card'],
+    capture_method: 'automatic',
+    description: `${category === 'traffic_fine' ? 'Traffic fine' : 'Damage'} — ${resNo}`,
+    'metadata[franchiseId]': franchiseId,
+    'metadata[flow]': 'direct_card_operation',
+    'metadata[mailOrderId]': mailOrderId,
+    'metadata[category]': category,
+    'metadata[resNo]': resNo,
+    'metadata[customerName]': customerName,
+  });
+
+  await mailOrderRef.set({
+    franchiseId,
+    productId: '',
+    productName: resNo,
+    resNo,
+    mailContent,
+    description: mailContent,
+    emailSubject,
+    emailBodyHtml,
+    category,
+    customerName,
+    customerEmail,
+    cardholderName,
+    stripeCustomerId: customer.id,
+    paymentIntentId: pi.id,
+    chargeMode: 'direct_card',
+    checkoutSessionId: '',
+    paymentUrl: '',
+    amount: Math.round(unitAmount),
+    currency,
+    status: 'pending_charge',
+    createdByUid: uid,
+    documents: [],
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  const publishableKey = await resolvePublishableKey(franchiseId);
+  if (!publishableKey) {
+    throw new HttpsError('failed-precondition', 'Stripe publishable key not configured for CH');
+  }
+
+  await writeAudit(franchiseId, uid, 'direct_card_operation_created', {
+    mailOrderId,
+    paymentIntentId: pi.id,
+    category,
+    resNo,
+    amount: Math.round(unitAmount),
+  });
+
+  return {
+    ok: true,
+    mailOrderId,
+    paymentIntentId: pi.id,
+    clientSecret: pi.client_secret,
+    publishableKey,
+  };
+}
+
+async function extractCardSnapshotFromPaymentIntent(pi) {
+  let pm = typeof pi.payment_method === 'object' && pi.payment_method ? pi.payment_method : null;
+  const pmId = typeof pi.payment_method === 'string' ? pi.payment_method : pm?.id;
+  if (!pm && pmId) {
+    pm = await stripeRequest('GET', `/payment_methods/${encodeURIComponent(pmId)}`, null);
+  }
+  const charge = typeof pi.latest_charge === 'object' ? pi.latest_charge : null;
+  const card = pm?.card || charge?.payment_method_details?.card || null;
+  const customerId = typeof pi.customer === 'string' ? pi.customer : pi.customer?.id || null;
+  return {
+    stripePaymentMethodId: pm?.id || pmId || null,
+    stripeCustomerId: customerId,
+    cardBrand: card?.brand || null,
+    cardLast4: card?.last4 || null,
+    cardExpMonth: card?.exp_month || null,
+    cardExpYear: card?.exp_year || null,
+    cardholderName: pm?.billing_details?.name || null,
+  };
+}
+
+/** Save card snapshot from a PaymentIntent after entry (incl. failed attempts) for retry. */
+async function runPersistDirectCardSnapshot(request) {
+  const { uid } = await assertFinancialCallable(request);
+  const data = request.data || {};
+  const franchiseId = normalizeFranchiseId(data.franchiseId);
+  assertSwitzerlandFranchise(franchiseId);
+  const mailOrderId = String(data.mailOrderId || '').trim();
+  const paymentIntentId = String(data.paymentIntentId || '').trim();
+
+  if (!mailOrderId) throw new HttpsError('invalid-argument', 'mailOrderId required');
+
+  const docRef = mailOrdersCol(franchiseId).doc(mailOrderId);
+  const snap = await docRef.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Operation not found');
+  const row = snap.data() || {};
+
+  const piId = paymentIntentId || row.paymentIntentId;
+  if (!piId) throw new HttpsError('failed-precondition', 'Missing PaymentIntent');
+
+  const pi = await stripeRequest('GET', `/payment_intents/${encodeURIComponent(piId)}`, {
+    expand: ['payment_method', 'latest_charge'],
+  });
+
+  if (pi.metadata?.mailOrderId && pi.metadata.mailOrderId !== mailOrderId) {
+    throw new HttpsError('failed-precondition', 'PaymentIntent does not match this operation');
+  }
+
+  const cardSnap = await extractCardSnapshotFromPaymentIntent(pi);
+  if (!cardSnap.stripePaymentMethodId && !cardSnap.cardLast4) {
+    throw new HttpsError('not-found', 'No card found on this payment attempt');
+  }
+
+  const customerId = cardSnap.stripeCustomerId || row.stripeCustomerId;
+  if (cardSnap.stripePaymentMethodId && customerId) {
+    try {
+      await stripeRequest(
+        'POST',
+        `/payment_methods/${encodeURIComponent(cardSnap.stripePaymentMethodId)}/attach`,
+        { customer: customerId },
+      );
+    } catch (e) {
+      const msg = String(e?.message || '');
+      if (!msg.includes('already been attached') && !msg.includes('already attached')) {
+        console.warn('[persistDirectCard] attach', msg);
+      }
+    }
+  }
+
+  const patch = {
+    paymentIntentId: pi.id,
+    stripeCustomerId: customerId || row.stripeCustomerId || null,
+    stripePaymentMethodId: cardSnap.stripePaymentMethodId || row.stripePaymentMethodId || null,
+    cardBrand: cardSnap.cardBrand || row.cardBrand || null,
+    cardLast4: cardSnap.cardLast4 || row.cardLast4 || null,
+    cardExpMonth: cardSnap.cardExpMonth || row.cardExpMonth || null,
+    cardExpYear: cardSnap.cardExpYear || row.cardExpYear || null,
+    cardholderName: cardSnap.cardholderName || row.cardholderName || row.customerName || null,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  await docRef.set(patch, { merge: true });
+
+  await writeAudit(franchiseId, uid, 'direct_card_snapshot_saved', {
+    mailOrderId,
+    paymentIntentId: pi.id,
+    cardLast4: patch.cardLast4,
+    hasPaymentMethod: Boolean(patch.stripePaymentMethodId),
+  });
+
+  return {
+    ok: true,
+    mailOrderId,
+    ...patch,
+    cardExpMonth: patch.cardExpMonth,
+    cardExpYear: patch.cardExpYear,
+  };
+}
+
+/** After client confirms PaymentIntent — mark paid and send receipt e-mail. */
+async function runFinalizeDirectCardOperation(request) {
+  const { uid } = await assertFinancialCallable(request);
+  const data = request.data || {};
+  const franchiseId = normalizeFranchiseId(data.franchiseId);
+  assertSwitzerlandFranchise(franchiseId);
+  const mailOrderId = String(data.mailOrderId || '').trim();
+  const paymentIntentId = String(data.paymentIntentId || '').trim();
+  const sendEmail = data.sendEmail !== false;
+
+  if (!mailOrderId) throw new HttpsError('invalid-argument', 'mailOrderId required');
+
+  const docRef = mailOrdersCol(franchiseId).doc(mailOrderId);
+  const snap = await docRef.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Operation not found');
+  const row = snap.data() || {};
+
+  const piId = paymentIntentId || row.paymentIntentId;
+  if (!piId) throw new HttpsError('failed-precondition', 'Missing PaymentIntent');
+
+  const pi = await stripeRequest('GET', `/payment_intents/${encodeURIComponent(piId)}`, {
+    expand: ['payment_method', 'latest_charge'],
+  });
+
+  if (pi.metadata?.mailOrderId && pi.metadata.mailOrderId !== mailOrderId) {
+    throw new HttpsError('failed-precondition', 'PaymentIntent does not match this operation');
+  }
+
+  if (pi.status !== 'succeeded') {
+    throw new HttpsError('failed-precondition', `Payment not completed (${pi.status})`);
+  }
+
+  const charge = typeof pi.latest_charge === 'object' ? pi.latest_charge : null;
+  const cardSnap = await extractCardSnapshotFromPaymentIntent(pi);
+  const card = charge?.payment_method_details?.card || cardSnap;
+
+  await docRef.set(
+    {
+      status: 'paid',
+      paymentIntentId: pi.id,
+      amount: pi.amount_received || pi.amount || row.amount,
+      paidAt: admin.firestore.FieldValue.serverTimestamp(),
+      cardBrand: cardSnap.cardBrand || card?.brand || null,
+      cardLast4: cardSnap.cardLast4 || card?.last4 || null,
+      cardExpMonth: cardSnap.cardExpMonth || card?.exp_month || null,
+      cardExpYear: cardSnap.cardExpYear || card?.exp_year || null,
+      cardholderName: cardSnap.cardholderName || row.cardholderName || row.customerName || null,
+      stripePaymentMethodId:
+        cardSnap.stripePaymentMethodId ||
+        (typeof pi.payment_method === 'string' ? pi.payment_method : pi.payment_method?.id) ||
+        row.stripePaymentMethodId ||
+        null,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+
+  let emailResult = { sent: false, message: 'skipped' };
+  if (sendEmail && row.customerEmail) {
+    emailResult = await sendMailOrderReceiptEmail({
+      franchiseId,
+      category: row.category || 'damage',
+      toEmail: row.customerEmail,
+      customerName: row.customerName,
+      resNo: row.resNo || row.productName,
+      mailContent: row.mailContent || row.emailBodyHtml,
+      amountCents: pi.amount_received || pi.amount || row.amount,
+      currency: row.currency,
+      subject: row.emailSubject,
+      htmlBody: row.emailBodyHtml,
+      documents: row.documents || [],
+    });
+    await docRef.set(
+      {
+        emailSentAt: admin.firestore.FieldValue.serverTimestamp(),
+        emailSentOk: emailResult.sent === true,
+        emailSentMessage: emailResult.message || '',
+      },
+      { merge: true },
+    );
+  }
+
+  await writeAudit(franchiseId, uid, 'direct_card_operation_paid', {
+    mailOrderId,
+    paymentIntentId: pi.id,
+    emailSent: emailResult.sent,
+    cardLast4: card?.last4 || null,
+  });
+
+  return {
+    ok: true,
+    mailOrderId,
+    paymentIntentId: pi.id,
+    status: pi.status,
+    emailSent: emailResult.sent === true,
+    cardLast4: card?.last4 || null,
+  };
+}
+
+/** Retry unpaid direct-card operation with a new amount (new PaymentIntent). */
+async function runRetryDirectCardOperation(request) {
+  const { uid } = await assertFinancialCallable(request);
+  const data = request.data || {};
+  const franchiseId = normalizeFranchiseId(data.franchiseId);
+  assertSwitzerlandFranchise(franchiseId);
+  const mailOrderId = String(data.mailOrderId || '').trim();
+  const unitAmount = Number(data.unitAmount);
+
+  if (!mailOrderId) throw new HttpsError('invalid-argument', 'mailOrderId required');
+  if (!Number.isFinite(unitAmount) || unitAmount < 50) {
+    throw new HttpsError('invalid-argument', 'Minimum amount is CHF 0.50');
+  }
+
+  const docRef = mailOrdersCol(franchiseId).doc(mailOrderId);
+  const snap = await docRef.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Operation not found');
+  const row = snap.data() || {};
+
+  if (row.status === 'paid') {
+    throw new HttpsError('failed-precondition', 'Already paid');
+  }
+  if (row.chargeMode !== 'direct_card' && row.status !== 'pending_charge') {
+    throw new HttpsError(
+      'failed-precondition',
+      'Only direct card charges can be retried — use Mail order page for payment links.',
+    );
+  }
+
+  let customerId = row.stripeCustomerId;
+  if (!customerId) {
+    const customer = await stripeRequest('POST', '/customers', {
+      name: row.customerName || 'Customer',
+      ...(row.customerEmail ? { email: row.customerEmail } : {}),
+      'metadata[franchiseId]': franchiseId,
+      'metadata[resNo]': row.resNo || row.productName || '',
+    });
+    customerId = customer.id;
+  }
+
+  const oldPiId = String(row.paymentIntentId || '').trim();
+  if (oldPiId.startsWith('pi_')) {
+    try {
+      const oldPi = await stripeRequest('GET', `/payment_intents/${encodeURIComponent(oldPiId)}`, null);
+      if (['requires_payment_method', 'requires_confirmation', 'requires_action'].includes(oldPi.status)) {
+        await stripeRequest('POST', `/payment_intents/${encodeURIComponent(oldPiId)}/cancel`, {
+          cancellation_reason: 'abandoned',
+        });
+      }
+    } catch (e) {
+      console.warn('[retryDirectCard] cancel old PI', e?.message);
+    }
+  }
+
+  const resNo = row.resNo || row.productName || '';
+  const category = row.category || 'damage';
+  const currency = row.currency || 'chf';
+
+  const pi = await stripeRequest('POST', '/payment_intents', {
+    amount: Math.round(unitAmount),
+    currency,
+    customer: customerId,
+    payment_method_types: ['card'],
+    capture_method: 'automatic',
+    description: `${category === 'traffic_fine' ? 'Traffic fine' : 'Damage'} — ${resNo}`,
+    'metadata[franchiseId]': franchiseId,
+    'metadata[flow]': 'direct_card_operation',
+    'metadata[mailOrderId]': mailOrderId,
+    'metadata[category]': category,
+    'metadata[resNo]': resNo,
+    'metadata[customerName]': row.customerName || '',
+    'metadata[retry]': 'true',
+  });
+
+  await docRef.set(
+    {
+      stripeCustomerId: customerId,
+      paymentIntentId: pi.id,
+      amount: Math.round(unitAmount),
+      status: 'pending_charge',
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+
+  const publishableKey = await resolvePublishableKey(franchiseId);
+  if (!publishableKey) {
+    throw new HttpsError('failed-precondition', 'Stripe publishable key not configured for CH');
+  }
+
+  await writeAudit(franchiseId, uid, 'direct_card_operation_retry', {
+    mailOrderId,
+    paymentIntentId: pi.id,
+    amount: Math.round(unitAmount),
+    previousPaymentIntentId: oldPiId || null,
+  });
+
+  return {
+    ok: true,
+    mailOrderId,
+    paymentIntentId: pi.id,
+    clientSecret: pi.client_secret,
+    publishableKey,
+  };
+}
+
+/** Off-session retry when card was saved on a prior attempt. */
+async function runRetryDirectCardSavedPayment(request) {
+  const { uid } = await assertFinancialCallable(request);
+  const data = request.data || {};
+  const franchiseId = normalizeFranchiseId(data.franchiseId);
+  assertSwitzerlandFranchise(franchiseId);
+  const mailOrderId = String(data.mailOrderId || '').trim();
+  const unitAmount = Number(data.unitAmount);
+
+  if (!mailOrderId) throw new HttpsError('invalid-argument', 'mailOrderId required');
+  if (!Number.isFinite(unitAmount) || unitAmount < 50) {
+    throw new HttpsError('invalid-argument', 'Minimum amount is CHF 0.50');
+  }
+
+  const docRef = mailOrdersCol(franchiseId).doc(mailOrderId);
+  const snap = await docRef.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Operation not found');
+  const row = snap.data() || {};
+
+  if (row.status === 'paid') {
+    throw new HttpsError('failed-precondition', 'Already paid');
+  }
+  const customerId = row.stripeCustomerId;
+  const paymentMethodId = row.stripePaymentMethodId;
+  if (!customerId || !paymentMethodId) {
+    throw new HttpsError('failed-precondition', 'No saved card on this operation — enter card details.');
+  }
+
+  const resNo = row.resNo || row.productName || '';
+  const category = row.category || 'damage';
+  const currency = row.currency || 'chf';
+
+  let charged;
+  try {
+    charged = await stripeRequest('POST', '/payment_intents', {
+      amount: Math.round(unitAmount),
+      currency,
+      customer: customerId,
+      payment_method: paymentMethodId,
+      off_session: true,
+      confirm: true,
+      capture_method: 'automatic',
+      description: `${category === 'traffic_fine' ? 'Traffic fine' : 'Damage'} — ${resNo}`,
+      'metadata[franchiseId]': franchiseId,
+      'metadata[flow]': 'direct_card_operation',
+      'metadata[mailOrderId]': mailOrderId,
+      'metadata[resNo]': resNo,
+      'metadata[retry]': 'saved_card',
+    });
+  } catch (e) {
+    throw new HttpsError('failed-precondition', String(e?.message || 'Saved card charge failed'));
+  }
+
+  await docRef.set(
+    {
+      paymentIntentId: charged.id,
+      amount: Math.round(unitAmount),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+
+  await writeAudit(franchiseId, uid, 'direct_card_operation_retry_saved', {
+    mailOrderId,
+    paymentIntentId: charged.id,
+    amount: Math.round(unitAmount),
+  });
+
+  return {
+    ok: true,
+    mailOrderId,
+    paymentIntentId: charged.id,
+    status: charged.status,
   };
 }
 
@@ -634,25 +1560,55 @@ async function runListMailOrders(request) {
 
   const rows = snap.docs.map((docSnap) => {
     const row = docSnap.data() || {};
-    return {
+    return enrichMailOrderRow({
       id: docSnap.id,
       franchiseId,
       productId: row.productId || '',
       productName: row.productName || '',
+      resNo: row.resNo || row.productName || '',
+      mailContent: row.mailContent || row.description || '',
       checkoutSessionId: row.checkoutSessionId || '',
       paymentUrl: row.paymentUrl || '',
       amount: row.amount ?? null,
       currency: row.currency || 'chf',
       status: row.status === 'paid' ? 'paid' : 'unpaid',
+      rawStatus: row.status || 'unpaid',
+      chargeMode: row.chargeMode || '',
+      paymentIntentId: row.paymentIntentId || '',
+      stripePaymentMethodId: row.stripePaymentMethodId || '',
+      cardBrand: row.cardBrand || '',
+      cardLast4: row.cardLast4 || '',
+      cardExpMonth: row.cardExpMonth || null,
+      cardExpYear: row.cardExpYear || null,
+      cardholderName: row.cardholderName || row.customerName || '',
+      emailSubject: row.emailSubject || '',
+      emailBodyHtml: row.emailBodyHtml || '',
       customerEmail: row.customerEmail || '',
       createdAt: row.createdAt?.toDate?.()?.toISOString?.() || null,
       paidAt: row.paidAt?.toDate?.()?.toISOString?.() || null,
-    };
+      linkSentAt: row.linkSentAt?.toDate?.()?.toISOString?.() || null,
+      linkValidUntil: row.linkValidUntil?.toDate?.()?.toISOString?.() || null,
+      reminder1PlannedAt: row.reminder1PlannedAt?.toDate?.()?.toISOString?.() || null,
+      reminder1Status: row.reminder1Status || 'planned',
+      reminder2PlannedAt: row.reminder2PlannedAt?.toDate?.()?.toISOString?.() || null,
+      reminder2Status: row.reminder2Status || 'planned',
+      reminderSendingEnabled: row.reminderSendingEnabled === true,
+      category: row.category || '',
+      customerName: row.customerName || '',
+      emailSentAt: row.emailSentAt?.toDate?.()?.toISOString?.() || null,
+      emailSentOk: row.emailSentOk === true,
+      documents: row.documents || [],
+    });
   });
 
   const orders = await Promise.all(rows.map((row) => syncMailOrderPaymentStatus(row)));
-  await writeAudit(franchiseId, uid, 'list_mail_orders', { count: orders.length });
-  return { orders };
+  const enriched = orders.map((row) => {
+    const safe = enrichMailOrderRow(row);
+    delete safe.accessToken;
+    return safe;
+  });
+  await writeAudit(franchiseId, uid, 'list_mail_orders', { count: enriched.length });
+  return { orders: enriched };
 }
 
 const CH_TIMEZONE = 'Europe/Zurich';
@@ -675,6 +1631,63 @@ function isUnixOnLocalDay(unixSec, timeZone, dayKey) {
     day: '2-digit',
   }).format(new Date(Number(unixSec) * 1000));
   return key === dayKey;
+}
+
+function localDayKeyFromUnix(unixSec, timeZone) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(Number(unixSec) * 1000));
+}
+
+function addDaysToDayKey(dayKey, days, timeZone) {
+  const parts = String(dayKey).split('-').map(Number);
+  const d = new Date(parts[0], parts[1] - 1, parts[2]);
+  d.setDate(d.getDate() + days);
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
+}
+
+function resolvePaymentPeriodRange(period, timeZone, dayKey) {
+  const endDayKey = String(dayKey || localDayKeyInTimezone(timeZone)).trim();
+  const p = String(period || '1d').toLowerCase();
+  if (p === 'all') {
+    return { startDayKey: addDaysToDayKey(endDayKey, -89, timeZone), endDayKey, all: true };
+  }
+  const span = p === '7d' ? 6 : p === '30d' ? 29 : 0;
+  return { startDayKey: addDaysToDayKey(endDayKey, -span, timeZone), endDayKey, all: false };
+}
+
+function isUnixInDayRange(unixSec, timeZone, startDayKey, endDayKey) {
+  if (!unixSec) return false;
+  const key = localDayKeyFromUnix(unixSec, timeZone);
+  return key >= startDayKey && key <= endDayKey;
+}
+
+function resolveDepositDisplayStatus(tx, dep) {
+  if (!dep && tx?.flowType !== 'deposit') return null;
+  const initial = Number(dep?.initialAmount || tx?.depositInitialAmount) || 0;
+  const current = Number(dep?.currentHoldAmount || dep?.initialAmount || tx?.depositCurrentHold) || 0;
+  const depStatus = String(dep?.status || '').toLowerCase();
+  const capturedAmount = Number(dep?.capturedAmount) || 0;
+
+  if (depStatus === 'captured' || (tx?.bucket === 'successful' && tx?.flowType === 'deposit')) {
+    if (capturedAmount > initial || current > initial) return 'captured_increased';
+    return 'captured';
+  }
+  if (depStatus === 'authorized' || tx?.bucket === 'hold') {
+    if (current > initial) return 'increased';
+    return 'hold';
+  }
+  if (depStatus === 'cancelled' || tx?.bucket === 'cancelled') return 'cancelled';
+  if (depStatus === 'pending_collection' || tx?.bucket === 'pending') return 'pending';
+  return null;
 }
 
 function paymentBucketFromCharge(ch) {
@@ -807,8 +1820,15 @@ async function runListPayments(request) {
   assertSwitzerlandFranchise(franchiseId);
   const timeZone = CH_TIMEZONE;
   const dayKey = String(data.dayKey || localDayKeyInTimezone(timeZone)).trim();
-  const lookbackSec = Math.min(Math.max(Number(data.lookbackDays) || 21, 1), 90) * 86400;
+  const period = String(data.period || '1d').trim();
+  const range = resolvePaymentPeriodRange(period, timeZone, dayKey);
+  const lookbackSec = Math.min(Math.max(Number(data.lookbackDays) || 90, 1), 90) * 86400;
   const createdGte = Math.floor(Date.now() / 1000) - lookbackSec;
+
+  const dayFilter = (unixSec) =>
+    range.all
+      ? isUnixInDayRange(unixSec, timeZone, range.startDayKey, range.endDayKey)
+      : isUnixOnLocalDay(unixSec, timeZone, dayKey);
 
   const [chargesRes, intentsRes] = await Promise.all([
     stripeRequest('GET', '/charges', { limit: 100, 'created[gte]': createdGte }),
@@ -818,7 +1838,7 @@ async function runListPayments(request) {
   const byKey = new Map();
 
   for (const ch of chargesRes.data || []) {
-    if (!isUnixOnLocalDay(ch.created, timeZone, dayKey)) continue;
+    if (!dayFilter(ch.created)) continue;
     const meta = ch.metadata || {};
     if (meta.franchiseId && String(meta.franchiseId).toUpperCase() !== franchiseId) continue;
     const bucket = paymentBucketFromCharge(ch);
@@ -853,7 +1873,7 @@ async function runListPayments(request) {
   }
 
   for (const pi of intentsRes.data || []) {
-    if (!isUnixOnLocalDay(pi.created, timeZone, dayKey)) continue;
+    if (!dayFilter(pi.created)) continue;
     const meta = pi.metadata || {};
     if (meta.franchiseId && String(meta.franchiseId).toUpperCase() !== franchiseId) continue;
     const bucket = paymentBucketFromIntent(pi);
@@ -910,13 +1930,7 @@ async function runListPayments(request) {
     const row = docSnap.data() || {};
     const createdAt = row.createdAt?.toDate?.();
     if (!createdAt) continue;
-    const rowDayKey = new Intl.DateTimeFormat('en-CA', {
-      timeZone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(createdAt);
-    if (rowDayKey !== dayKey) continue;
+    if (!dayFilter(Math.floor(createdAt.getTime() / 1000))) continue;
 
     let synced = row;
     synced = await syncMailOrderPaymentStatus({
@@ -995,6 +2009,16 @@ async function runListPayments(request) {
       tx.depositInitialAmount = dep.initialAmount || null;
       tx.depositMaxAuthAmount = dep.maxAuthAmount || null;
       tx.depositCurrentHold = dep.currentHoldAmount || dep.initialAmount || null;
+      tx.tokenSaved = dep.tokenSaved === true;
+      tx.depositDisplayStatus = resolveDepositDisplayStatus(tx, dep);
+      if (tx.depositDisplayStatus === 'hold' || tx.depositDisplayStatus === 'increased') {
+        tx.bucket = 'hold';
+        tx.statusLabel = tx.depositDisplayStatus === 'increased' ? 'Increased' : 'Hold';
+      } else if (tx.depositDisplayStatus === 'captured' || tx.depositDisplayStatus === 'captured_increased') {
+        tx.bucket = 'successful';
+        tx.statusLabel =
+          tx.depositDisplayStatus === 'captured_increased' ? 'Captured (after increase)' : 'Captured';
+      }
     }
   } catch (e) {
     console.warn('[runListPayments] deposit enrich', e?.message || e);
@@ -1009,6 +2033,9 @@ async function runListPayments(request) {
 
   return {
     dayKey,
+    period,
+    startDayKey: range.startDayKey,
+    endDayKey: range.endDayKey,
     timeZone,
     transactions,
     summary,
@@ -1045,10 +2072,124 @@ async function runListAudit(request) {
   return { entries };
 }
 
+function renderMailOrderHtml(title, message) {
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${title}</title><style>body{font-family:system-ui,-apple-system,sans-serif;background:#f4f6f8;color:#1a2332;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px}.card{max-width:420px;background:#fff;border:1px solid #d8dee6;border-radius:8px;padding:28px 24px;text-align:center}h1{font-size:18px;margin:0 0 10px}p{margin:0;color:#5c6778;font-size:14px;line-height:1.5}</style></head><body><div class="card"><h1>${title}</h1><p>${message}</p></div></body></html>`;
+}
+
+async function runMailOrderCheckoutRedirect(req, res) {
+  if (req.method !== 'GET') {
+    res.status(405).send('Method not allowed');
+    return;
+  }
+
+  const parts = String(req.path || '').split('/').filter(Boolean);
+  if (parts.length < 4 || parts[0] !== 'pay' || parts[1] !== 'mo') {
+    res.status(404).send('Not found');
+    return;
+  }
+
+  let franchiseId;
+  try {
+    franchiseId = normalizeFranchiseId(parts[2]);
+    assertSwitzerlandFranchise(franchiseId);
+  } catch {
+    res.status(404).send('Not found');
+    return;
+  }
+
+  const mailOrderId = String(parts[3] || '').trim();
+  const token = String(req.query?.t || '').trim();
+  if (!mailOrderId || !token || token.length > 128) {
+    res.status(404).send('Not found');
+    return;
+  }
+
+  const docRef = mailOrdersCol(franchiseId).doc(mailOrderId);
+  const snap = await docRef.get();
+  if (!snap.exists) {
+    res.status(404).send('Not found');
+    return;
+  }
+
+  const row = snap.data() || {};
+  if (!timingSafeTokenMatch(token, row.accessToken)) {
+    res.status(404).send('Not found');
+    return;
+  }
+
+  if (row.status === 'paid') {
+    res
+      .status(200)
+      .send(
+        renderMailOrderHtml(
+          'Payment already completed',
+          'This payment link has already been used. If you need assistance, please contact Green Motion.',
+        ),
+      );
+    return;
+  }
+
+  const linkValidUntilMs = row.linkValidUntil?.toDate?.()?.getTime?.() || 0;
+  const fallbackValidUntil = row.linkSentAt?.toDate?.()?.getTime?.() || row.createdAt?.toDate?.()?.getTime?.() || 0;
+  const validUntilMs =
+    linkValidUntilMs ||
+    (fallbackValidUntil
+      ? addDaysToDate(new Date(fallbackValidUntil), MAIL_ORDER_LINK_VALID_DAYS).getTime()
+      : 0);
+  if (validUntilMs && validUntilMs < Date.now()) {
+    res
+      .status(410)
+      .send(
+        renderMailOrderHtml(
+          'Payment link expired',
+          'This payment link is no longer active. Please contact Green Motion for a new link.',
+        ),
+      );
+    return;
+  }
+
+  const productId = String(row.productId || '').trim();
+  if (!productId) {
+    res.status(404).send('Not found');
+    return;
+  }
+
+  try {
+    const session = await createCheckoutSessionForMailOrder({
+      franchiseId,
+      mailOrderId,
+      productId,
+      saveCustomerInfo: row.saveCustomerInfo === true,
+      customerEmail: String(row.customerEmail || '').trim(),
+      uid: row.createdByUid || 'public_checkout',
+    });
+
+    await docRef.set(
+      {
+        checkoutSessionId: session.id || '',
+        lastCheckoutSessionAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+
+    if (!session.url) {
+      res.status(503).send('Payment unavailable');
+      return;
+    }
+    res.redirect(302, session.url);
+  } catch (e) {
+    console.error('[stripeFinancial] mail order checkout redirect', mailOrderId, e?.message);
+    res.status(503).send('Payment unavailable');
+  }
+}
+
 const callableOpts = { cors: true, secrets: [stripeCHSecretKey] };
+const httpOpts = { cors: false, secrets: [stripeCHSecretKey] };
 
 module.exports = {
   callableOpts,
+  httpOpts,
+  stripeCHSecretKey,
   runGetConfig,
   runListDisputes,
   runGetDispute,
@@ -1059,7 +2200,16 @@ module.exports = {
   runArchiveProduct,
   runDeleteProduct,
   runCreateMailOrderPaymentLink,
+  runCreateMailOrderPayment,
+  runCreateDirectCardOperation,
+  runFinalizeDirectCardOperation,
+  runPersistDirectCardSnapshot,
+  runRetryDirectCardOperation,
+  runRetryDirectCardSavedPayment,
+  runSendMailOrderEmail,
+  runAttachMailOrderDocuments,
   runListMailOrders,
   runListPayments,
   runListAudit,
+  runMailOrderCheckoutRedirect,
 };

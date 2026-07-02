@@ -4,13 +4,25 @@
 const { HttpsError } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
+const { sendDepositConfirmationEmail } = require('./stripeDepositMail');
 
 const stripeCHSecretKey = defineSecret('STRIPE_CH_SECRET_KEY');
 
-const FINANCIAL_ROLES = new Set(['globaladmin', 'superadmin', 'admin', 'manager']);
+const STRIPE_FINANCE_ROLES = new Set([
+  'globaladmin',
+  'superadmin',
+  'admin',
+  'manager',
+  'staff',
+  'shuttle',
+  'viewer',
+]);
 const CH_TIMEZONE = 'Europe/Zurich';
 const MAX_DEPOSIT_CHF = 5000;
 const MAX_INCREMENT_CHF = 10000;
+const DEFAULT_MAX_AUTH_CHF = 3000;
+/** Required when saving card on Terminal with setup_future_usage (Stripe API). */
+const TERMINAL_ALLOW_REDISPLAY = 'always';
 
 function getStripeSecretKey() {
   let key = '';
@@ -102,10 +114,21 @@ async function assertFinancialCallable(request) {
   }
   const profile = snap.data() || {};
   const role = normalizeRoleKey(profile.role);
-  if (!FINANCIAL_ROLES.has(role)) {
-    throw new HttpsError('permission-denied', 'Financial access required.');
+  if (!STRIPE_FINANCE_ROLES.has(role)) {
+    throw new HttpsError('permission-denied', 'Stripe finance access required.');
   }
   return { uid: request.auth.uid, profile };
+}
+
+const STRIPE_FINANCE_ADMIN_ROLES = new Set(['globaladmin', 'superadmin', 'admin']);
+
+async function assertFinancialAdminCallable(request) {
+  const ctx = await assertFinancialCallable(request);
+  const role = normalizeRoleKey(ctx.profile.role);
+  if (!STRIPE_FINANCE_ADMIN_ROLES.has(role)) {
+    throw new HttpsError('permission-denied', 'Stripe finance admin access required.');
+  }
+  return ctx;
 }
 
 function normalizeFranchiseId(raw) {
@@ -133,6 +156,84 @@ function terminalConfigRef(franchiseId) {
     .doc(franchiseId)
     .collection('stripeConfig')
     .doc('terminal');
+}
+
+function terminalsCol(franchiseId) {
+  return admin
+    .firestore()
+    .collection('franchises')
+    .doc(franchiseId)
+    .collection('stripeTerminals');
+}
+
+function depositEmailTemplatesCol(franchiseId) {
+  return admin
+    .firestore()
+    .collection('franchises')
+    .doc(franchiseId)
+    .collection('depositEmailTemplates');
+}
+
+function normalizeResCode(raw) {
+  let s = String(raw || '').trim().toUpperCase();
+  if (s.startsWith('RES-')) s = s.slice(4);
+  else if (s.startsWith('RES')) s = s.slice(3).replace(/^[-_\s]+/, '');
+  const digits = s.replace(/\D/g, '');
+  return digits ? `RES-${digits}` : String(raw || '').trim();
+}
+
+async function loadReadersForFranchise(franchiseId) {
+  const [terminalSnap, terminalsSnap] = await Promise.all([
+    terminalConfigRef(franchiseId).get(),
+    terminalsCol(franchiseId).orderBy('createdAt', 'asc').get().catch(() => ({ docs: [] })),
+  ]);
+
+  const readers = [];
+  for (const docSnap of terminalsSnap.docs || []) {
+    const row = docSnap.data() || {};
+    const readerId = String(row.readerId || '').trim();
+    if (!readerId) continue;
+    readers.push({
+      id: docSnap.id,
+      readerId,
+      readerLabel: String(row.readerLabel || row.label || '').trim(),
+      locationId: String(row.locationId || '').trim(),
+      isDefault: row.isDefault === true,
+      lastTestAt: row.lastTestAt?.toDate?.()?.toISOString?.() || null,
+      lastTestOk: row.lastTestOk === true,
+      lastTestMessage: String(row.lastTestMessage || ''),
+    });
+  }
+
+  const legacy = terminalSnap.exists ? terminalSnap.data() || {} : {};
+  const legacyReaderId = String(legacy.readerId || '').trim();
+  if (legacyReaderId && !readers.some((r) => r.readerId === legacyReaderId)) {
+    readers.unshift({
+      id: 'legacy',
+      readerId: legacyReaderId,
+      readerLabel: String(legacy.readerLabel || 'Default POS').trim(),
+      locationId: String(legacy.locationId || '').trim(),
+      isDefault: readers.length === 0,
+      lastTestAt: legacy.lastTestAt?.toDate?.()?.toISOString?.() || null,
+      lastTestOk: legacy.lastTestOk === true,
+      lastTestMessage: String(legacy.lastTestMessage || ''),
+    });
+  }
+
+  if (readers.length && !readers.some((r) => r.isDefault)) {
+    readers[0].isDefault = true;
+  }
+  return readers;
+}
+
+async function resolveReaderForDeposit(franchiseId, readerIdHint) {
+  const readers = await loadReadersForFranchise(franchiseId);
+  const hint = String(readerIdHint || '').trim();
+  if (hint) {
+    const match = readers.find((r) => r.readerId === hint || r.id === hint);
+    if (match) return match;
+  }
+  return readers.find((r) => r.isDefault) || readers[0] || null;
 }
 
 function parseChfToCents(amountChf) {
@@ -182,9 +283,22 @@ function mapDepositDoc(id, row) {
     customerName: row.customerName || '',
     customerEmail: row.customerEmail || '',
     reference: row.reference || '',
+    resCode: row.resCode || row.reference || '',
     source: row.source || 'terminal',
     status: row.status || 'pending_collection',
     readerId: row.readerId || '',
+    readerLabel: row.readerLabel || '',
+    emailSubject: row.emailSubject || '',
+    emailBodyHtml: row.emailBodyHtml || '',
+    emailTemplateId: row.emailTemplateId || '',
+    sendEmailAfterAuth: row.sendEmailAfterAuth === true,
+    emailSentAt: row.emailSentAt?.toDate?.()?.toISOString?.() || null,
+    emailSentOk: row.emailSentOk === true,
+    emailSentMessage: row.emailSentMessage || '',
+    documents: Array.isArray(row.documents) ? row.documents : [],
+    tokenSaved: row.tokenSaved === true,
+    stripeCustomerId: row.stripeCustomerId || null,
+    stripePaymentMethodId: row.stripePaymentMethodId || null,
     createdAt: row.createdAt?.toDate?.()?.toISOString?.() || null,
     updatedAt: row.updatedAt?.toDate?.()?.toISOString?.() || null,
   };
@@ -210,15 +324,17 @@ async function runGetTerminalConfig(request) {
   const publicCfg = publicSnap.exists ? publicSnap.data() || {} : {};
   const publishableKey = String(publicCfg.publishableKey || '').trim();
   const mode = publishableKey.startsWith('pk_live') ? 'live' : publishableKey ? 'test' : 'unset';
+  const readers = await loadReadersForFranchise(franchiseId);
 
   return {
     franchiseId,
     publishableKey,
     mode,
     secretConfigured: Boolean(getStripeSecretKey()),
-    readerId: String(terminal.readerId || '').trim(),
-    locationId: String(terminal.locationId || '').trim(),
-    readerLabel: String(terminal.readerLabel || '').trim(),
+    readerId: String(terminal.readerId || readers.find((r) => r.isDefault)?.readerId || '').trim(),
+    locationId: String(terminal.locationId || readers.find((r) => r.isDefault)?.locationId || '').trim(),
+    readerLabel: String(terminal.readerLabel || readers.find((r) => r.isDefault)?.readerLabel || '').trim(),
+    readers,
     lastTestAt: terminal.lastTestAt?.toDate?.()?.toISOString?.() || null,
     lastTestOk: terminal.lastTestOk === true,
     lastTestMessage: String(terminal.lastTestMessage || ''),
@@ -264,7 +380,7 @@ async function runTestTerminalConnection(request) {
 
   const snap = await terminalConfigRef(franchiseId).get();
   const cfg = snap.exists ? snap.data() || {} : {};
-  const readerId = String(cfg.readerId || request.data?.readerId || '').trim();
+  const readerId = String(request.data?.readerId || cfg.readerId || '').trim();
   if (!readerId) {
     throw new HttpsError('failed-precondition', 'Add a reader ID (tmr_…) first.');
   }
@@ -319,7 +435,7 @@ async function runCreateDeposit(request) {
   const initialCents = parseChfToCents(data.initialAmountChf);
   const maxCents = data.maxAuthAmountChf != null && data.maxAuthAmountChf !== ''
     ? parseChfToCents(data.maxAuthAmountChf)
-    : parseChfToCents(MAX_INCREMENT_CHF);
+    : parseChfToCents(DEFAULT_MAX_AUTH_CHF);
   if (initialCents > parseChfToCents(MAX_DEPOSIT_CHF)) {
     throw new HttpsError('invalid-argument', `Initial deposit max ${MAX_DEPOSIT_CHF} CHF`);
   }
@@ -333,37 +449,63 @@ async function runCreateDeposit(request) {
   const plate = String(data.plate || '').trim().toUpperCase();
   const customerName = String(data.customerName || '').trim();
   const customerEmail = String(data.customerEmail || '').trim();
-  const reference = String(data.reference || '').trim();
-  const readerId = String(data.readerId || '').trim();
+  const referenceRaw = String(data.reference || data.resCode || '').trim();
+  const reference = normalizeResCode(referenceRaw) || referenceRaw;
+  const resCode = reference;
+  const readerIdHint = String(data.readerId || data.terminalId || '').trim();
   const source = String(data.source || 'terminal').trim().toLowerCase();
+  const emailSubject = String(data.emailSubject || '').trim();
+  const emailBodyHtml = String(data.emailBodyHtml || data.emailBody || '').trim();
+  const emailTemplateId = String(data.emailTemplateId || '').trim();
+  const sendEmailAfterAuth = data.sendEmailAfterAuth !== false && Boolean(customerEmail);
+  const documents = Array.isArray(data.documents) ? data.documents.slice(0, 50) : [];
 
   if (!customerName) {
     throw new HttpsError('invalid-argument', 'Customer name is required');
   }
 
-  const terminalSnap = await terminalConfigRef(franchiseId).get();
-  const terminalCfg = terminalSnap.exists ? terminalSnap.data() || {} : {};
-  const effectiveReaderId = readerId || String(terminalCfg.readerId || '').trim();
+  const resolvedReader = await resolveReaderForDeposit(franchiseId, readerIdHint);
+  const effectiveReaderId = String(resolvedReader?.readerId || readerIdHint || '').trim();
+  const effectiveReaderLabel = String(resolvedReader?.readerLabel || '').trim();
 
-  const pi = await stripeRequest('POST', '/payment_intents', {
+  const amountLabel = (initialCents / 100).toFixed(2);
+  const depositDescription = `DEPOSIT · CHF ${amountLabel}${resCode ? ` · ${resCode}` : ''}`;
+
+  const piParams = {
     amount: initialCents,
     currency: 'chf',
     capture_method: 'manual',
     payment_method_types: ['card_present'],
-    description: `Deposit · ${plate || reference || customerName}`,
+    description: depositDescription,
+    statement_descriptor_suffix: 'DEPOSIT',
+    setup_future_usage: 'off_session',
     'metadata[franchiseId]': franchiseId,
     'metadata[flow]': 'deposit',
     'metadata[plate]': plate,
     'metadata[customerName]': customerName,
     'metadata[customerReference]': reference,
+    'metadata[resCode]': resCode,
     'metadata[maxAuthAmount]': String(maxCents),
     'metadata[source]': source === 'wheelsys' ? 'wheelsys' : 'terminal',
     'payment_method_options[card_present][request_incremental_authorization_support]': 'true',
-  });
+  };
+
+  const customerParams = {
+    name: customerName,
+    'metadata[franchiseId]': franchiseId,
+    'metadata[resCode]': resCode,
+  };
+  if (customerEmail) customerParams.email = customerEmail;
+  const customer = await stripeRequest('POST', '/customers', customerParams);
+  const stripeCustomerId = customer.id;
+  piParams.customer = stripeCustomerId;
+
+  const pi = await stripeRequest('POST', '/payment_intents', piParams);
 
   const docRef = depositsCol(franchiseId).doc();
   await docRef.set({
     paymentIntentId: pi.id,
+    stripeCustomerId,
     initialAmount: initialCents,
     maxAuthAmount: maxCents,
     currentHoldAmount: initialCents,
@@ -372,9 +514,16 @@ async function runCreateDeposit(request) {
     customerName,
     customerEmail,
     reference,
+    resCode,
     readerId: effectiveReaderId,
+    readerLabel: effectiveReaderLabel,
     source: source === 'wheelsys' ? 'wheelsys' : 'terminal',
     status: 'pending_collection',
+    emailSubject,
+    emailBodyHtml,
+    emailTemplateId,
+    sendEmailAfterAuth,
+    documents,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     createdBy: uid,
@@ -385,6 +534,10 @@ async function runCreateDeposit(request) {
     paymentIntentId: pi.id,
     initialAmount: initialCents,
     maxAuthAmount: maxCents,
+    resCode,
+    readerId: effectiveReaderId,
+    customerEmail: customerEmail || null,
+    documentCount: documents.length,
   });
 
   return {
@@ -495,7 +648,9 @@ async function runIncrementDeposit(request) {
   await writeAudit(franchiseId, uid, 'deposit_incremented', {
     depositId,
     paymentIntentId,
+    previousAmount: currentCents,
     newAmount: newCents,
+    delta: newCents - currentCents,
   });
 
   return {
@@ -564,6 +719,27 @@ async function runCancelDeposit(request) {
   const paymentIntentId = String(row.paymentIntentId || '').trim();
   const readerId = String(row.readerId || data.readerId || '').trim();
 
+  let tokenPatch = {};
+  if (paymentIntentId) {
+    try {
+      const pi = await stripeRequest(
+        'GET',
+        `/payment_intents/${encodeURIComponent(paymentIntentId)}`,
+        { expand: ['payment_method', 'latest_charge'] },
+      );
+      if (pi.status === 'requires_capture') {
+        const resolved = await resolveDepositCardForReuse(franchiseId, row, paymentIntentId, pi);
+        tokenPatch = {
+          stripePaymentMethodId: resolved.paymentMethodId,
+          stripeCustomerId: resolved.customerId,
+          tokenSaved: true,
+        };
+      }
+    } catch (e) {
+      console.warn('[runCancelDeposit] token snapshot', e?.message || e);
+    }
+  }
+
   if (readerId) {
     try {
       await stripeRequest(
@@ -612,6 +788,7 @@ async function runCancelDeposit(request) {
       cancelledBy: uid,
       cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      ...tokenPatch,
     },
     { merge: true },
   );
@@ -622,6 +799,110 @@ async function runCancelDeposit(request) {
     reason: cancelReason || null,
   });
   return { ok: true };
+}
+
+/** Off-session charge using card saved during a prior deposit (admin+). */
+async function runChargeSavedPaymentMethod(request) {
+  const { uid } = await assertFinancialAdminCallable(request);
+  const data = request.data || {};
+  const franchiseId = normalizeFranchiseId(data.franchiseId);
+  assertSwitzerlandFranchise(franchiseId);
+  const depositId = String(data.depositId || '').trim();
+  const paymentIntentId = String(data.paymentIntentId || '').trim();
+  const amountChf = Math.round(Number(data.amountChf || 0) * 100);
+  const note = String(data.note || data.description || '').trim().slice(0, 500);
+
+  if (amountChf < 50) {
+    throw new HttpsError('invalid-argument', 'Minimum charge amount is CHF 0.50');
+  }
+
+  let row = null;
+  let docRef = null;
+  if (depositId) {
+    docRef = depositsCol(franchiseId).doc(depositId);
+    const docSnap = await docRef.get();
+    if (!docSnap.exists) {
+      throw new HttpsError('not-found', 'Deposit not found');
+    }
+    row = docSnap.data() || {};
+  } else if (paymentIntentId.startsWith('pi_')) {
+    const snap = await depositsCol(franchiseId)
+      .where('paymentIntentId', '==', paymentIntentId)
+      .limit(1)
+      .get();
+    if (snap.empty) {
+      throw new HttpsError('not-found', 'Deposit not found for PaymentIntent');
+    }
+    docRef = snap.docs[0].ref;
+    row = snap.docs[0].data() || {};
+  } else {
+    throw new HttpsError('invalid-argument', 'depositId or paymentIntentId is required');
+  }
+
+  const sourcePiId = String(row.paymentIntentId || paymentIntentId || '').trim();
+  if (!sourcePiId.startsWith('pi_')) {
+    throw new HttpsError('failed-precondition', 'Deposit has no PaymentIntent');
+  }
+
+  let resolved;
+  try {
+    resolved = await resolveDepositCardForReuse(franchiseId, row, sourcePiId);
+  } catch (e) {
+    throw new HttpsError('failed-precondition', friendlyPmReuseError(e?.message));
+  }
+  const { customerId, paymentMethodId } = resolved;
+
+  await docRef.set(
+    {
+      stripeCustomerId: customerId,
+      stripePaymentMethodId: paymentMethodId,
+      tokenSaved: true,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+
+  const resCode = row.resCode || row.reference || '';
+  let charged;
+  try {
+    charged = await stripeRequest('POST', '/payment_intents', {
+      amount: amountChf,
+      currency: row.currency || 'chf',
+      customer: customerId,
+      payment_method: paymentMethodId,
+      off_session: true,
+      confirm: true,
+      capture_method: 'automatic',
+      description: note || `Charge — ${resCode}`,
+      'metadata[franchiseId]': franchiseId,
+      'metadata[flow]': 'saved_token_charge',
+      'metadata[parentPaymentIntentId]': sourcePiId,
+      'metadata[resCode]': resCode,
+      'metadata[customerName]': row.customerName || '',
+      'metadata[note]': note,
+    });
+  } catch (e) {
+    throw new HttpsError('failed-precondition', friendlyPmReuseError(e?.message));
+  }
+
+  await writeAudit(franchiseId, uid, 'saved_token_charge', {
+    depositId: docRef.id,
+    parentPaymentIntentId: sourcePiId,
+    paymentIntentId: charged.id,
+    amountChf: amountChf / 100,
+    status: charged.status,
+  });
+
+  return {
+    ok: true,
+    franchiseId,
+    depositId: docRef.id,
+    paymentIntentId: charged.id,
+    parentPaymentIntentId: sourcePiId,
+    chargedAmount: charged.amount_received || amountChf,
+    currency: charged.currency || row.currency || 'chf',
+    status: charged.status,
+  };
 }
 
 async function runCancelTerminalAction(request) {
@@ -725,6 +1006,21 @@ async function runCancelPaymentHold(request) {
   return { ok: true };
 }
 
+function describeDepositTerminalFailure({ terminalFailureMessage, lastPaymentError, declineCode }) {
+  const msg = String(terminalFailureMessage || lastPaymentError || '').trim();
+  if (/incremental/i.test(msg)) {
+    return 'This card does not support a hold with later increase (incremental authorization). Ask the customer to try another card — usually a credit card.';
+  }
+  if (declineCode === 'card_not_supported') {
+    return 'This card type is not supported for rental deposit holds. Try another card.';
+  }
+  if (declineCode === 'insufficient_funds') {
+    return 'Insufficient funds on card. Try another card.';
+  }
+  if (msg) return msg;
+  return 'Card was declined on POS. Remove the card and try another payment method.';
+}
+
 async function runGetDepositStatus(request) {
   await assertFinancialCallable(request);
   const data = request.data || {};
@@ -747,23 +1043,70 @@ async function runGetDepositStatus(request) {
   let stripeStatus = '';
   let terminalActionStatus = '';
   let terminalFailureMessage = '';
+  let terminalFailureCode = '';
+  let lastPaymentError = '';
+  let declineCode = '';
 
   if (paymentIntentId) {
     const pi = await stripeRequest(
       'GET',
       `/payment_intents/${encodeURIComponent(paymentIntentId)}`,
-      null,
+      { expand: ['latest_charge'] },
     );
     stripeStatus = pi.status || '';
+    if (pi.last_payment_error) {
+      lastPaymentError = String(pi.last_payment_error.message || '').trim();
+      declineCode = String(pi.last_payment_error.code || '').trim();
+    }
   }
 
-  if (readerId && stripeStatus === 'requires_payment_method') {
+  const pendingOnTerminal =
+    row.status === 'pending_collection' ||
+    stripeStatus === 'requires_payment_method' ||
+    stripeStatus === 'requires_confirmation' ||
+    stripeStatus === 'processing';
+
+  if (readerId && pendingOnTerminal) {
     try {
       const reader = await stripeRequest('GET', `/terminal/readers/${encodeURIComponent(readerId)}`, null);
-      terminalActionStatus = reader.action?.status || '';
-      terminalFailureMessage = String(reader.action?.failure_message || '').trim();
-    } catch {
-      /* ignore */
+      const action = reader.action || {};
+      terminalActionStatus = action.status || '';
+      terminalFailureMessage = String(action.failure_message || '').trim();
+      terminalFailureCode = String(action.failure_code || action.type || '').trim();
+      const apiError = action.process_payment_intent?.payment_intent?.last_payment_error;
+      if (apiError?.message && !lastPaymentError) {
+        lastPaymentError = String(apiError.message).trim();
+        declineCode = String(apiError.code || '').trim();
+      }
+    } catch (e) {
+      console.warn('[stripeTerminalDeposits] reader status', e?.message);
+    }
+  }
+
+  const terminalFailed =
+    terminalActionStatus === 'failed' ||
+    Boolean(terminalFailureMessage) ||
+    Boolean(lastPaymentError && stripeStatus === 'requires_payment_method');
+
+  if (terminalFailed) {
+    const failureSummary = describeDepositTerminalFailure({
+      terminalFailureMessage,
+      lastPaymentError,
+      declineCode,
+    });
+    console.warn('[stripeTerminalDeposits] deposit terminal decline', {
+      depositId,
+      franchiseId,
+      paymentIntentId,
+      stripeStatus,
+      terminalActionStatus,
+      terminalFailureMessage,
+      terminalFailureCode,
+      lastPaymentError,
+      declineCode,
+    });
+    if (!terminalFailureMessage && failureSummary) {
+      terminalFailureMessage = failureSummary;
     }
   }
 
@@ -779,8 +1122,160 @@ async function runGetDepositStatus(request) {
     paymentIntentId,
     terminalActionStatus,
     terminalFailureMessage,
+    terminalFailureCode,
+    lastPaymentError,
+    declineCode,
+    terminalFailed,
     readerId,
   };
+}
+
+function friendlyPmReuseError(raw) {
+  const msg = String(raw || '');
+  if (/without Customer attachment/i.test(msg) || /may not be used again/i.test(msg)) {
+    return 'This card cannot be reused — it was not linked to a Stripe customer during the original deposit. Create a new deposit on POS; after hold + cancel the card will be chargeable.';
+  }
+  if (/card_present/i.test(msg) && /cannot be saved/i.test(msg)) {
+    return 'Terminal card token was not converted for reuse. Create a new deposit on POS with customer linking enabled.';
+  }
+  return msg || 'Card charge failed';
+}
+
+async function ensureStripeCustomerForDeposit(franchiseId, row, pi) {
+  const fromPi = typeof pi?.customer === 'string' ? pi.customer : pi?.customer?.id;
+  if (row.stripeCustomerId) return row.stripeCustomerId;
+  if (fromPi) return fromPi;
+  const customerParams = {
+    name: String(row.customerName || 'Customer').trim() || 'Customer',
+    'metadata[franchiseId]': franchiseId,
+    'metadata[resCode]': row.resCode || row.reference || '',
+  };
+  if (row.customerEmail) customerParams.email = row.customerEmail;
+  const customer = await stripeRequest('POST', '/customers', customerParams);
+  return customer.id;
+}
+
+function extractPaymentMethodIdFromPi(pi) {
+  const charge = typeof pi.latest_charge === 'object' ? pi.latest_charge : null;
+  // Terminal deposits: reusable off-session token is generated_card, not card_present on the PI.
+  const generatedCard = charge?.payment_method_details?.card_present?.generated_card;
+  if (generatedCard) {
+    return generatedCard;
+  }
+  let paymentMethodId =
+    typeof pi.payment_method === 'string' ? pi.payment_method : pi.payment_method?.id || null;
+  if (!paymentMethodId && charge?.payment_method) {
+    paymentMethodId =
+      typeof charge.payment_method === 'string' ? charge.payment_method : charge.payment_method?.id;
+  }
+  return paymentMethodId;
+}
+
+async function resolveReusablePaymentMethodId(pi) {
+  let paymentMethodId = extractPaymentMethodIdFromPi(pi);
+  let charge = typeof pi.latest_charge === 'object' ? pi.latest_charge : null;
+
+  if (!paymentMethodId && typeof pi.latest_charge === 'string') {
+    charge = await stripeRequest('GET', `/charges/${encodeURIComponent(pi.latest_charge)}`, null);
+    paymentMethodId = charge?.payment_method_details?.card_present?.generated_card || null;
+  }
+
+  if (!paymentMethodId) {
+    return null;
+  }
+
+  const pm = await stripeRequest('GET', `/payment_methods/${encodeURIComponent(paymentMethodId)}`, null);
+  if (pm.type === 'card_present') {
+    if (!charge && typeof pi.latest_charge === 'string') {
+      charge = await stripeRequest('GET', `/charges/${encodeURIComponent(pi.latest_charge)}`, null);
+    }
+    const generatedCard = charge?.payment_method_details?.card_present?.generated_card;
+    if (generatedCard) {
+      return generatedCard;
+    }
+    throw new HttpsError(
+      'failed-precondition',
+      'Terminal card is not ready for off-session charge — complete POS authorization first.',
+    );
+  }
+
+  return paymentMethodId;
+}
+
+/**
+ * Ensure terminal card is attached to a Stripe Customer for off-session reuse.
+ * @param {object} [piPrefetched] optional PI from caller
+ */
+async function resolveDepositCardForReuse(franchiseId, row, paymentIntentId, piPrefetched) {
+  const pi =
+    piPrefetched ||
+    (await stripeRequest('GET', `/payment_intents/${encodeURIComponent(paymentIntentId)}`, {
+      expand: ['payment_method', 'latest_charge'],
+    }));
+
+  const customerId = await ensureStripeCustomerForDeposit(franchiseId, row, pi);
+  const piCustomer = typeof pi.customer === 'string' ? pi.customer : pi.customer?.id;
+
+  if (!piCustomer && customerId && ['requires_capture', 'requires_payment_method'].includes(pi.status)) {
+    try {
+      await stripeRequest('POST', `/payment_intents/${encodeURIComponent(paymentIntentId)}`, {
+        customer: customerId,
+      });
+    } catch (e) {
+      console.warn('[resolveDepositCard] pi customer attach', e?.message);
+    }
+  }
+
+  const paymentMethodId = await resolveReusablePaymentMethodId(pi);
+  if (!paymentMethodId) {
+    throw new HttpsError('failed-precondition', 'No card on file for this deposit.');
+  }
+
+  await ensurePaymentMethodSavedForReuse(paymentMethodId, customerId);
+
+  const pm = await stripeRequest('GET', `/payment_methods/${encodeURIComponent(paymentMethodId)}`, null);
+  if (!pm.customer || pm.customer !== customerId) {
+    throw new HttpsError(
+      'failed-precondition',
+      friendlyPmReuseError(
+        'PaymentMethod was not attached to Customer — create a new deposit on POS.',
+      ),
+    );
+  }
+
+  return { customerId, paymentMethodId, tokenSaved: true };
+}
+
+async function ensurePaymentMethodSavedForReuse(paymentMethodId, stripeCustomerId) {
+  if (!paymentMethodId) {
+    throw new HttpsError('failed-precondition', 'No payment method on deposit');
+  }
+  if (!stripeCustomerId) {
+    throw new HttpsError('failed-precondition', 'No Stripe customer for deposit');
+  }
+  try {
+    await stripeRequest('POST', `/payment_methods/${encodeURIComponent(paymentMethodId)}`, {
+      allow_redisplay: TERMINAL_ALLOW_REDISPLAY,
+    });
+  } catch (e) {
+    console.warn('[stripeTerminalDeposits] pm allow_redisplay', e?.message);
+  }
+  try {
+    await stripeRequest('POST', `/payment_methods/${encodeURIComponent(paymentMethodId)}/attach`, {
+      customer: stripeCustomerId,
+    });
+  } catch (e) {
+    const msg = String(e?.message || '');
+    if (msg.includes('already been attached') || msg.includes('already attached')) {
+      const pm = await stripeRequest('GET', `/payment_methods/${encodeURIComponent(paymentMethodId)}`, null);
+      if (pm.customer && pm.customer !== stripeCustomerId) {
+        throw new HttpsError('failed-precondition', 'Card is linked to another customer profile.');
+      }
+      return true;
+    }
+    throw new HttpsError('failed-precondition', friendlyPmReuseError(msg));
+  }
+  return true;
 }
 
 /**
@@ -809,7 +1304,9 @@ async function runProcessDepositOnTerminal(request) {
 
   const terminalSnap = await terminalConfigRef(franchiseId).get();
   const terminalCfg = terminalSnap.exists ? terminalSnap.data() || {} : {};
-  const readerId = String(row.readerId || terminalCfg.readerId || '').trim();
+  const readerHint = String(data.readerId || row.readerId || '').trim();
+  const resolved = await resolveReaderForDeposit(franchiseId, readerHint);
+  const readerId = String(resolved?.readerId || readerHint || terminalCfg.readerId || '').trim();
   if (!readerId) {
     throw new HttpsError('failed-precondition', 'Configure a terminal reader in Settings first.');
   }
@@ -854,12 +1351,16 @@ async function runProcessDepositOnTerminal(request) {
   await stripeRequest(
     'POST',
     `/terminal/readers/${encodeURIComponent(readerId)}/process_payment_intent`,
-    { payment_intent: paymentIntentId },
+    {
+      payment_intent: paymentIntentId,
+      process_config: { allow_redisplay: TERMINAL_ALLOW_REDISPLAY },
+    },
   );
 
   await docRef.set(
     {
       readerId,
+      readerLabel: reader.label || resolved?.readerLabel || terminalCfg.readerLabel || readerId,
       status: 'pending_collection',
       sentToTerminalAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -871,6 +1372,8 @@ async function runProcessDepositOnTerminal(request) {
     depositId,
     paymentIntentId,
     readerId,
+    readerLabel: reader.label || resolved?.readerLabel || readerId,
+    depositDescription: row.resCode || row.reference || 'deposit',
   });
 
   return {
@@ -878,8 +1381,8 @@ async function runProcessDepositOnTerminal(request) {
     depositId,
     paymentIntentId,
     readerId,
-    readerLabel: reader.label || terminalCfg.readerLabel || readerId,
-    message: `Sent to ${reader.label || 'POS'}. Ask customer to tap or insert card.`,
+    readerLabel: reader.label || resolved?.readerLabel || terminalCfg.readerLabel || readerId,
+    message: `Deposit sent to ${reader.label || 'POS'}. Customer will see DEPOSIT on terminal — ask to tap or insert card.`,
   };
 }
 
@@ -901,7 +1404,7 @@ async function runConfirmDepositCollection(request) {
   const pi = await stripeRequest(
     'GET',
     `/payment_intents/${encodeURIComponent(paymentIntentId)}`,
-    { expand: ['latest_charge'] },
+    { expand: ['payment_method', 'latest_charge'] },
   );
 
   const charge = typeof pi.latest_charge === 'object' ? pi.latest_charge : null;
@@ -910,6 +1413,21 @@ async function runConfirmDepositCollection(request) {
     pi.status === 'succeeded' ? 'captured' :
     pi.status === 'canceled' ? 'cancelled' : 'pending_collection';
 
+  const paymentMethodId = extractPaymentMethodIdFromPi(pi);
+  let stripeCustomerId = await ensureStripeCustomerForDeposit(franchiseId, row, pi);
+  let stripePaymentMethodId = paymentMethodId;
+  let tokenSaved = false;
+  if (paymentMethodId && status === 'authorized') {
+    try {
+      const resolved = await resolveDepositCardForReuse(franchiseId, row, paymentIntentId, pi);
+      stripeCustomerId = resolved.customerId;
+      stripePaymentMethodId = resolved.paymentMethodId;
+      tokenSaved = true;
+    } catch (e) {
+      console.warn('[runConfirmDepositCollection] card reuse', e?.message);
+    }
+  }
+
   await docRef.set(
     {
       status,
@@ -917,6 +1435,9 @@ async function runConfirmDepositCollection(request) {
       cardBrand: charge?.payment_method_details?.card_present?.brand || null,
       cardLast4: charge?.payment_method_details?.card_present?.last4 || null,
       cardholderName: extractCardholderName(charge, pi),
+      stripePaymentMethodId,
+      stripeCustomerId,
+      tokenSaved,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     },
     { merge: true },
@@ -926,7 +1447,35 @@ async function runConfirmDepositCollection(request) {
     depositId,
     paymentIntentId,
     status,
+    amountCapturable: pi.amount_capturable,
+    cardLast4: charge?.payment_method_details?.card_present?.last4 || null,
   });
+
+  let emailResult = null;
+  if (status === 'authorized' && row.sendEmailAfterAuth && row.customerEmail) {
+    emailResult = await sendDepositConfirmationEmail({
+      franchiseId,
+      toEmail: row.customerEmail,
+      subject: row.emailSubject,
+      html: row.emailBodyHtml,
+      depositRow: { ...row, currentHoldAmount: Number(pi.amount_capturable) || row.currentHoldAmount },
+      uid,
+    });
+    await docRef.set(
+      {
+        emailSentAt: admin.firestore.FieldValue.serverTimestamp(),
+        emailSentOk: emailResult.sent === true,
+        emailSentMessage: emailResult.message || '',
+      },
+      { merge: true },
+    );
+    await writeAudit(franchiseId, uid, 'deposit_email_sent', {
+      depositId,
+      sent: emailResult.sent,
+      message: emailResult.message,
+      to: row.customerEmail,
+    });
+  }
 
   return {
     depositId,
@@ -934,7 +1483,253 @@ async function runConfirmDepositCollection(request) {
     paymentIntentId,
     amountCapturable: pi.amount_capturable,
     cardholderName: extractCardholderName(charge, pi),
+    tokenSaved,
+    emailSent: emailResult?.sent === true,
+    emailMessage: emailResult?.message || null,
   };
+}
+
+async function runListTerminals(request) {
+  await assertFinancialCallable(request);
+  const franchiseId = normalizeFranchiseId(request.data?.franchiseId);
+  assertSwitzerlandFranchise(franchiseId);
+  const readers = await loadReadersForFranchise(franchiseId);
+  return { readers, franchiseId };
+}
+
+async function runUpsertTerminal(request) {
+  const { uid } = await assertFinancialCallable(request);
+  const data = request.data || {};
+  const franchiseId = normalizeFranchiseId(data.franchiseId);
+  assertSwitzerlandFranchise(franchiseId);
+
+  const readerId = String(data.readerId || '').trim();
+  const locationId = String(data.locationId || '').trim();
+  const readerLabel = String(data.readerLabel || data.label || '').trim();
+  const isDefault = data.isDefault === true;
+  const terminalDocId = String(data.terminalId || data.id || '').trim();
+
+  if (!readerId || !readerId.startsWith('tmr_')) {
+    throw new HttpsError('invalid-argument', 'Reader ID must start with tmr_');
+  }
+  if (locationId && !locationId.startsWith('tml_')) {
+    throw new HttpsError('invalid-argument', 'Location ID must start with tml_');
+  }
+
+  let docRef;
+  if (terminalDocId && terminalDocId !== 'legacy') {
+    docRef = terminalsCol(franchiseId).doc(terminalDocId);
+  } else {
+    const existing = await terminalsCol(franchiseId).where('readerId', '==', readerId).limit(1).get();
+    docRef = existing.empty ? terminalsCol(franchiseId).doc() : existing.docs[0].ref;
+  }
+
+  if (isDefault) {
+    const all = await terminalsCol(franchiseId).get();
+    const batch = admin.firestore().batch();
+    all.docs.forEach((d) => batch.update(d.ref, { isDefault: false }));
+    await batch.commit();
+  }
+
+  const payload = {
+    readerId,
+    locationId,
+    readerLabel: readerLabel || readerId,
+    isDefault,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedBy: uid,
+  };
+  const existingSnap = await docRef.get();
+  if (!existingSnap.exists) {
+    payload.createdAt = admin.firestore.FieldValue.serverTimestamp();
+    payload.createdBy = uid;
+  }
+  await docRef.set(payload, { merge: true });
+
+  if (isDefault) {
+    await terminalConfigRef(franchiseId).set(
+      {
+        readerId,
+        locationId,
+        readerLabel: readerLabel || readerId,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedBy: uid,
+      },
+      { merge: true },
+    );
+  }
+
+  await writeAudit(franchiseId, uid, 'terminal_upserted', {
+    terminalId: docRef.id,
+    readerId,
+    readerLabel,
+    isDefault,
+  });
+  return { ok: true, terminalId: docRef.id, readerId };
+}
+
+async function runDeleteTerminal(request) {
+  const { uid } = await assertFinancialCallable(request);
+  const data = request.data || {};
+  const franchiseId = normalizeFranchiseId(data.franchiseId);
+  assertSwitzerlandFranchise(franchiseId);
+  const terminalId = String(data.terminalId || data.id || '').trim();
+  if (!terminalId || terminalId === 'legacy') {
+    throw new HttpsError('invalid-argument', 'terminalId required');
+  }
+  const docRef = terminalsCol(franchiseId).doc(terminalId);
+  const snap = await docRef.get();
+  if (!snap.exists) {
+    throw new HttpsError('not-found', 'Terminal not found');
+  }
+  const row = snap.data() || {};
+  await docRef.delete();
+  await writeAudit(franchiseId, uid, 'terminal_deleted', { terminalId, readerId: row.readerId });
+  return { ok: true };
+}
+
+async function runListDepositEmailTemplates(request) {
+  await assertFinancialCallable(request);
+  const franchiseId = normalizeFranchiseId(request.data?.franchiseId);
+  assertSwitzerlandFranchise(franchiseId);
+  const snap = await depositEmailTemplatesCol(franchiseId).orderBy('name', 'asc').get();
+  const templates = snap.docs.map((d) => {
+    const row = d.data() || {};
+    return {
+      id: d.id,
+      name: row.name || '',
+      subject: row.subject || '',
+      bodyHtml: row.bodyHtml || '',
+      createdAt: row.createdAt?.toDate?.()?.toISOString?.() || null,
+      updatedAt: row.updatedAt?.toDate?.()?.toISOString?.() || null,
+    };
+  });
+  return { templates };
+}
+
+async function runSaveDepositEmailTemplate(request) {
+  const { uid } = await assertFinancialCallable(request);
+  const data = request.data || {};
+  const franchiseId = normalizeFranchiseId(data.franchiseId);
+  assertSwitzerlandFranchise(franchiseId);
+  const name = String(data.name || '').trim();
+  const subject = String(data.subject || '').trim();
+  const bodyHtml = String(data.bodyHtml || data.body || '').trim();
+  const templateId = String(data.templateId || data.id || '').trim();
+
+  if (!name) {
+    throw new HttpsError('invalid-argument', 'Template name required');
+  }
+  if (!subject || !bodyHtml) {
+    throw new HttpsError('invalid-argument', 'Subject and HTML body required');
+  }
+
+  const docRef = templateId
+    ? depositEmailTemplatesCol(franchiseId).doc(templateId)
+    : depositEmailTemplatesCol(franchiseId).doc();
+  const existing = await docRef.get();
+  await docRef.set(
+    {
+      name,
+      subject,
+      bodyHtml,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedBy: uid,
+      ...(existing.exists ? {} : { createdAt: admin.firestore.FieldValue.serverTimestamp(), createdBy: uid }),
+    },
+    { merge: true },
+  );
+  await writeAudit(franchiseId, uid, 'deposit_email_template_saved', { templateId: docRef.id, name });
+  return { ok: true, templateId: docRef.id };
+}
+
+async function runDeleteDepositEmailTemplate(request) {
+  const { uid } = await assertFinancialCallable(request);
+  const data = request.data || {};
+  const franchiseId = normalizeFranchiseId(data.franchiseId);
+  assertSwitzerlandFranchise(franchiseId);
+  const templateId = String(data.templateId || data.id || '').trim();
+  if (!templateId) {
+    throw new HttpsError('invalid-argument', 'templateId required');
+  }
+  await depositEmailTemplatesCol(franchiseId).doc(templateId).delete();
+  await writeAudit(franchiseId, uid, 'deposit_email_template_deleted', { templateId });
+  return { ok: true };
+}
+
+async function runAttachDepositDocuments(request) {
+  const { uid } = await assertFinancialCallable(request);
+  const data = request.data || {};
+  const franchiseId = normalizeFranchiseId(data.franchiseId);
+  assertSwitzerlandFranchise(franchiseId);
+  const depositId = String(data.depositId || '').trim();
+  const documents = Array.isArray(data.documents) ? data.documents.slice(0, 50) : [];
+  if (!depositId) {
+    throw new HttpsError('invalid-argument', 'depositId required');
+  }
+  const docRef = depositsCol(franchiseId).doc(depositId);
+  const snap = await docRef.get();
+  if (!snap.exists) {
+    throw new HttpsError('not-found', 'Deposit not found');
+  }
+  const existing = Array.isArray(snap.data()?.documents) ? snap.data().documents : [];
+  const merged = [...existing, ...documents].slice(0, 50);
+  await docRef.set(
+    {
+      documents: merged,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+  await writeAudit(franchiseId, uid, 'deposit_documents_attached', {
+    depositId,
+    added: documents.length,
+    total: merged.length,
+  });
+  return { ok: true, documentCount: merged.length };
+}
+
+async function runSendDepositEmail(request) {
+  const { uid } = await assertFinancialCallable(request);
+  const data = request.data || {};
+  const franchiseId = normalizeFranchiseId(data.franchiseId);
+  assertSwitzerlandFranchise(franchiseId);
+  const depositId = String(data.depositId || '').trim();
+  if (!depositId) {
+    throw new HttpsError('invalid-argument', 'depositId required');
+  }
+  const docRef = depositsCol(franchiseId).doc(depositId);
+  const snap = await docRef.get();
+  if (!snap.exists) {
+    throw new HttpsError('not-found', 'Deposit not found');
+  }
+  const row = snap.data() || {};
+  const emailResult = await sendDepositConfirmationEmail({
+    franchiseId,
+    toEmail: data.toEmail || row.customerEmail,
+    subject: data.subject || row.emailSubject,
+    html: data.bodyHtml || row.emailBodyHtml,
+    depositRow: row,
+    uid,
+  });
+  await docRef.set(
+    {
+      emailSentAt: admin.firestore.FieldValue.serverTimestamp(),
+      emailSentOk: emailResult.sent === true,
+      emailSentMessage: emailResult.message || '',
+    },
+    { merge: true },
+  );
+  await writeAudit(franchiseId, uid, 'deposit_email_sent', {
+    depositId,
+    sent: emailResult.sent,
+    message: emailResult.message,
+    manual: true,
+  });
+  if (!emailResult.sent) {
+    throw new HttpsError('failed-precondition', emailResult.message || 'Email not sent');
+  }
+  return { ok: true, message: emailResult.message };
 }
 
 const callableOpts = { cors: true, secrets: [stripeCHSecretKey] };
@@ -945,11 +1740,20 @@ module.exports = {
   runSaveTerminalConfig,
   runTestTerminalConnection,
   runCreateTerminalConnectionToken,
+  runListTerminals,
+  runUpsertTerminal,
+  runDeleteTerminal,
+  runListDepositEmailTemplates,
+  runSaveDepositEmailTemplate,
+  runDeleteDepositEmailTemplate,
+  runAttachDepositDocuments,
+  runSendDepositEmail,
   runCreateDeposit,
   runListDeposits,
   runIncrementDeposit,
   runCaptureDeposit,
   runCancelDeposit,
+  runChargeSavedPaymentMethod,
   runCancelTerminalAction,
   runCancelPaymentHold,
   runGetDepositStatus,

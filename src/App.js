@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/exhaustive-deps */
-import React, { useState, useEffect, useMemo, useRef, useCallback, startTransition, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, startTransition } from 'react';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail } from 'firebase/auth';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, limit, Timestamp, where, getDoc, setDoc, onSnapshot, serverTimestamp, writeBatch, deleteField } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject, getBytes } from 'firebase/storage';
@@ -31,7 +31,6 @@ import {
     parseOfficeAmount,
 } from './utils/officeOpsAnalytics';
 import { DashboardCard } from './components/DashboardCard';
-import { FilesView } from './components/FilesView';
 import { reactListKey, recordListKey } from './utils/reactListKey';
 import {
     PalantirWorkbench,
@@ -47,9 +46,6 @@ import {
     PalantirTabRail,
     PalantirActionBar,
 } from './components/palantir/PalantirWorkbench';
-const ExcelWorkspaceView = lazy(() =>
-    import('./components/ExcelWorkspaceView').then((m) => ({ default: m.ExcelWorkspaceView }))
-);
 import { isSwissFranchiseId } from './utilities/fileLibraryHelpers';
 import { FrontDeskKioskView } from './components/FrontDeskKioskView';
 import { CustomerReturnFormView } from './components/CustomerReturnFormView';
@@ -209,6 +205,9 @@ import {
     pdfLangStrings,
     getExitBookingCode,
     canViewFinancialData,
+    canUseStripeFinance,
+    canViewStripeFinancialTotals as userCanViewStripeFinancialTotals,
+    canViewStripeReports as userCanViewStripeReports,
     isGarageOnlyRole,
     canAccessFrontDeskCustomersWeb,
     canManageVehicleCategoriesWeb,
@@ -220,10 +219,12 @@ import { useAdvancedSearch } from './hooks/useAdvancedSearch';
 import { LoginScreen } from './views/LoginScreen';
 import { Dashboard } from './views/DashboardView';
 import { StripeChargebacksView } from './components/financial/StripeChargebacksView';
+import { StripeCustomersView } from './components/financial/StripeCustomersView';
 import { StripeDailyReportsView } from './components/financial/StripeDailyReportsView';
 import { StripeMailOrderView } from './components/financial/StripeMailOrderView';
 import { StripePaymentsView } from './components/financial/StripePaymentsView';
 import { StripeTerminalSettingsSection } from './components/financial/StripeTerminalSettingsSection';
+import { StripeDepositEmailTemplatesSection } from './components/financial/StripeDepositEmailTemplatesSection';
 
 
 /**
@@ -1516,13 +1517,15 @@ function AppContent({ user, userProfile: initialUserProfile }) {
         });
     }, [user?.uid, effectiveFranchiseId, activities.length]);
     const canUseSwissFiles = useMemo(() => isSwissFranchiseId(effectiveFranchiseId), [effectiveFranchiseId]);
+    const canAccessStripeFinance = useMemo(
+        () => canUseStripeFinance(userProfile, effectiveFranchiseId),
+        [userProfile, effectiveFranchiseId],
+    );
     const canUseSwissOps = useMemo(() => isSwissFranchiseId(effectiveFranchiseId), [effectiveFranchiseId]);
     const canAccessCHPanel = useMemo(
         () => canAccessCHOperationsPanel(userProfile, effectiveFranchiseId),
         [userProfile, effectiveFranchiseId]
     );
-    const [excelBootstrap, setExcelBootstrap] = useState(null);
-
     // Franchise currency from Firestore (all amounts use `formatCurrency` → active ISO code).
     useEffect(() => {
         if (!effectiveFranchiseId) {
@@ -1568,6 +1571,14 @@ function AppContent({ user, userProfile: initialUserProfile }) {
         return () => unsub();
     }, [effectiveFranchiseId]);
 
+    const showStripeFinancialTotals = useMemo(
+        () => userCanViewStripeFinancialTotals(userProfile),
+        [userProfile],
+    );
+    const showStripeReports = useMemo(
+        () => userCanViewStripeReports(userProfile),
+        [userProfile],
+    );
     const canViewFinancials = useMemo(() => canViewFinancialData(userProfile), [userProfile]);
 
     // Only role globaladmin may keep a franchise override (client + rules).
@@ -1656,16 +1667,19 @@ function AppContent({ user, userProfile: initialUserProfile }) {
         if (currentView === 'reports' && !canViewFinancials) {
             setCurrentView('dashboard');
         }
-        if (currentView === 'stripeChargebacks' && (!canViewFinancials || !canUseSwissFiles)) {
+        if (currentView === 'stripeChargebacks' && !canAccessStripeFinance) {
             setCurrentView('dashboard');
         }
-        if (currentView === 'stripePayments' && (!canViewFinancials || !canUseSwissFiles)) {
+        if (currentView === 'stripePayments' && !canAccessStripeFinance) {
             setCurrentView('dashboard');
         }
-        if (currentView === 'stripeMailOrder' && (!canViewFinancials || !canUseSwissFiles)) {
+        if (currentView === 'stripeMailOrder' && !canAccessStripeFinance) {
             setCurrentView('dashboard');
         }
-        if (currentView === 'stripeDailyReports' && (!canViewFinancials || !canUseSwissFiles)) {
+        if (currentView === 'stripeCustomers' && !canAccessStripeFinance) {
+            setCurrentView('dashboard');
+        }
+        if (currentView === 'stripeDailyReports' && (!canAccessStripeFinance || !showStripeReports)) {
             setCurrentView('dashboard');
         }
         if (currentView === 'frontDeskCustomers' && !canAccessFrontDeskCustomers) {
@@ -1683,7 +1697,7 @@ function AppContent({ user, userProfile: initialUserProfile }) {
         if (currentView === 'swissOps' && !canUseSwissOps) {
             setCurrentView('dashboard');
         }
-    }, [currentView, canViewFinancials, canUseSwissFiles, canAccessFrontDeskCustomers, canAccessCHPanel, canUseSwissOps]);
+    }, [currentView, canViewFinancials, canAccessStripeFinance, showStripeReports, canUseSwissFiles, canAccessFrontDeskCustomers, canAccessCHPanel, canUseSwissOps]);
 
     const PLATFORM_ADMIN_VIEWS = useMemo(
         () =>
@@ -2401,18 +2415,6 @@ function AppContent({ user, userProfile: initialUserProfile }) {
         }
     }, [canUseParkedCheckout, currentView]);
 
-    useEffect(() => {
-        if (!canUseSwissFiles && currentView === 'files') {
-            setCurrentView('dashboard');
-        }
-    }, [canUseSwissFiles, currentView]);
-
-    useEffect(() => {
-        if (!canUseSwissFiles && currentView === 'excel') {
-            setCurrentView('dashboard');
-        }
-    }, [canUseSwissFiles, currentView]);
-
     if (isGarageOnlyUser) {
         return (
             <div className="min-h-screen bg-slate-900 text-white p-8 flex flex-col items-center justify-center">
@@ -2484,6 +2486,8 @@ function AppContent({ user, userProfile: initialUserProfile }) {
                     canUseOperations={canUseOperations}
                     canUseParkedCheckout={canUseParkedCheckout}
                     canUseSwissFiles={canUseSwissFiles}
+                    canAccessStripeFinance={canAccessStripeFinance}
+                    showStripeReports={showStripeReports}
                     canAccessFrontDeskCustomers={canAccessFrontDeskCustomers}
                     showPlatformAdmin={showPlatformAdmin}
                     showFranchiseUserAdmin={showFranchiseUserAdmin}
@@ -2504,6 +2508,8 @@ function AppContent({ user, userProfile: initialUserProfile }) {
                         canUseOperations={canUseOperations}
                         canUseParkedCheckout={canUseParkedCheckout}
                         canUseSwissFiles={canUseSwissFiles}
+                        canAccessStripeFinance={canAccessStripeFinance}
+                        showStripeReports={showStripeReports}
                         canAccessFrontDeskCustomers={canAccessFrontDeskCustomers}
                         canAccessCHPanel={canAccessCHPanel}
                         canUseSwissOps={canUseSwissOps}
@@ -2513,16 +2519,8 @@ function AppContent({ user, userProfile: initialUserProfile }) {
                                 : null
                         }
                     />
-                    <div
-                        className={`erpx-main flex-1 ${currentView === 'excel' ? 'overflow-hidden flex flex-col min-h-0 h-full' : 'overflow-y-auto'}`}
-                    >
-                        <div
-                            className={
-                                currentView === 'excel'
-                                    ? 'flex-1 h-full flex flex-col min-h-0'
-                                    : 'erpx-main-shell'
-                            }
-                        >
+                    <div className="erpx-main flex-1 overflow-y-auto">
+                        <div className="erpx-main-shell">
                             <AppRenderBoundary viewKey={currentView}>
                             <div className="erpx-view-stage">
                             <>
@@ -2668,22 +2666,27 @@ function AppContent({ user, userProfile: initialUserProfile }) {
                                         <OfficeReturnsView returns={officeReturns} />
                                     </div>
                                 )}
-                                {currentView === 'stripeChargebacks' && canViewFinancials && canUseSwissFiles && (
+                                {currentView === 'stripeChargebacks' && canAccessStripeFinance && (
                                     <div className="erpx-view-layer w-full min-w-0">
                                         <StripeChargebacksView franchiseId={effectiveFranchiseId || 'ch'} user={user} />
                                     </div>
                                 )}
-                                {currentView === 'stripePayments' && canViewFinancials && canUseSwissFiles && (
+                                {currentView === 'stripePayments' && canAccessStripeFinance && (
                                     <div className="erpx-view-layer w-full min-w-0">
-                                        <StripePaymentsView franchiseId={effectiveFranchiseId || 'ch'} />
+                                        <StripePaymentsView franchiseId={effectiveFranchiseId || 'ch'} showFinancialTotals={showStripeFinancialTotals} />
                                     </div>
                                 )}
-                                {currentView === 'stripeMailOrder' && canViewFinancials && canUseSwissFiles && (
+                                {currentView === 'stripeMailOrder' && canAccessStripeFinance && (
                                     <div className="erpx-view-layer w-full min-w-0">
-                                        <StripeMailOrderView franchiseId={effectiveFranchiseId || 'ch'} />
+                                        <StripeMailOrderView franchiseId={effectiveFranchiseId || 'ch'} showFinancialTotals={showStripeFinancialTotals} />
                                     </div>
                                 )}
-                                {currentView === 'stripeDailyReports' && canViewFinancials && canUseSwissFiles && (
+                                {currentView === 'stripeCustomers' && canAccessStripeFinance && (
+                                    <div className="erpx-view-layer w-full min-w-0">
+                                        <StripeCustomersView franchiseId={effectiveFranchiseId || 'ch'} showFinancialTotals={showStripeFinancialTotals} />
+                                    </div>
+                                )}
+                                {currentView === 'stripeDailyReports' && canAccessStripeFinance && showStripeReports && (
                                     <div className="erpx-view-layer w-full min-w-0">
                                         <StripeDailyReportsView franchiseId={effectiveFranchiseId || 'ch'} />
                                     </div>
@@ -2818,44 +2821,6 @@ function AppContent({ user, userProfile: initialUserProfile }) {
                                             effectiveFranchiseId={effectiveFranchiseId}
                                             functionsApp={functionsApp}
                                         />
-                                    </div>
-                                )}
-                                {currentView === 'files' && canUseSwissFiles && (
-                                    <div className="erpx-view-layer w-full min-w-0">
-                                        <FilesView
-                                            db={db}
-                                            storage={storage}
-                                            auth={auth}
-                                            user={user}
-                                            userProfile={userProfile}
-                                            franchiseId={effectiveFranchiseId || 'CH'}
-                                            onOpenInExcel={(payload) => {
-                                                setExcelBootstrap(payload);
-                                                setCurrentView('excel');
-                                            }}
-                                        />
-                                    </div>
-                                )}
-                                {currentView === 'excel' && canUseSwissFiles && (
-                                    <div className="erpx-view-layer erpx-view-layer-fill h-full min-h-0 flex flex-col flex-1 w-full">
-                                        <Suspense
-                                            fallback={
-                                                <div className="flex flex-1 items-center justify-center min-h-[200px] text-[#8E8E93] text-sm">
-                                                    Loading Excel…
-                                                </div>
-                                            }
-                                        >
-                                            <ExcelWorkspaceView
-                                                db={db}
-                                                storage={storage}
-                                                user={user}
-                                                userProfile={userProfile}
-                                                franchiseId={effectiveFranchiseId || 'CH'}
-                                                bootstrap={excelBootstrap}
-                                                onBootstrapConsumed={() => setExcelBootstrap(null)}
-                                                onSavedToFiles={() => setCurrentView('files')}
-                                            />
-                                        </Suspense>
                                     </div>
                                 )}
                             </>
@@ -3560,6 +3525,8 @@ function Sidebar({
     canUseOperations = false,
     canUseParkedCheckout = false,
     canUseSwissFiles = false,
+    canAccessStripeFinance = false,
+    showStripeReports = false,
     canAccessFrontDeskCustomers = true,
     showPlatformAdmin = false,
     showFranchiseUserAdmin = false,
@@ -3673,23 +3640,20 @@ function Sidebar({
                             {canAccessFrontDeskCustomers && (
                                 <NavButton collapsed={!showText} navKey="frontDeskCustomers" label="Front-desk customers" active={currentView === 'frontDeskCustomers'} onClick={() => goTo('frontDeskCustomers')} />
                             )}
-                            {canUseSwissFiles && (
-                                <NavButton collapsed={!showText} navKey="files" label="Files" active={currentView === 'files'} onClick={() => goTo('files')} />
-                            )}
-                            {canUseSwissFiles && (
-                                <NavButton collapsed={!showText} navKey="excel" label="Excel" active={currentView === 'excel'} onClick={() => goTo('excel')} />
-                            )}
-                            {canViewFinancials && canUseSwissFiles && (
+                            {canAccessStripeFinance && (
                                 <NavButton collapsed={!showText} navKey="stripeChargebacks" label="Chargebacks" active={currentView === 'stripeChargebacks'} onClick={() => goTo('stripeChargebacks')} />
                             )}
-                            {canViewFinancials && canUseSwissFiles && (
-                                <NavButton collapsed={!showText} navKey="stripePayments" label="Payments" active={currentView === 'stripePayments'} onClick={() => goTo('stripePayments')} />
+                            {canAccessStripeFinance && (
+                                <NavButton collapsed={!showText} navKey="stripePayments" label="Deposits" active={currentView === 'stripePayments'} onClick={() => goTo('stripePayments')} />
                             )}
-                            {canViewFinancials && canUseSwissFiles && (
+                            {canAccessStripeFinance && (
                                 <NavButton collapsed={!showText} navKey="stripeMailOrder" label="Mail order (Stripe)" active={currentView === 'stripeMailOrder'} onClick={() => goTo('stripeMailOrder')} />
                             )}
-                            {canViewFinancials && canUseSwissFiles && (
-                                <NavButton collapsed={!showText} navKey="stripeDailyReports" label="Daily reports (Stripe)" active={currentView === 'stripeDailyReports'} onClick={() => goTo('stripeDailyReports')} />
+                            {canAccessStripeFinance && (
+                                <NavButton collapsed={!showText} navKey="stripeCustomers" label="Customers" active={currentView === 'stripeCustomers'} onClick={() => goTo('stripeCustomers')} />
+                            )}
+                            {canAccessStripeFinance && showStripeReports && (
+                                <NavButton collapsed={!showText} navKey="stripeDailyReports" label="Stripe reports" active={currentView === 'stripeDailyReports'} onClick={() => goTo('stripeDailyReports')} />
                             )}
                         </SidebarSection>
                         <SidebarSection title="Planning" sectionKey="planning" collapsed={!showText} expanded={sectionExpanded('planning')} toggle={toggleSection}>
@@ -3803,6 +3767,8 @@ function Header({
     canUseOperations = false,
     canUseParkedCheckout = false,
     canUseSwissFiles = false,
+    canAccessStripeFinance = false,
+    showStripeReports = false,
     canAccessFrontDeskCustomers = true,
     canAccessCHPanel = false,
     canUseSwissOps = false,
@@ -3830,13 +3796,12 @@ function Header({
         shuttle: 'Shuttle',
         officeReturns: 'Office Returns',
         stripeChargebacks: 'Chargebacks',
-        stripePayments: 'Payments',
+        stripePayments: 'Deposits',
         stripeMailOrder: 'Mail order (Stripe)',
-        stripeDailyReports: 'Daily reports (Stripe)',
+        stripeCustomers: 'Customers',
+        stripeDailyReports: 'Stripe reports',
         workingTimetable: 'Working timetable',
         assistantNumbers: 'Assistant Numbers',
-        files: 'Files',
-        excel: 'Excel',
         frontDeskCustomers: 'Front-desk customers',
         operations: 'Operations',
         adminFranchises: 'Franchises',
@@ -3879,14 +3844,13 @@ function Header({
             { view: 'protocols', label: 'Protocols', keywords: 'protocol contract', popular: false },
             { view: 'shuttle', label: 'Shuttle', keywords: 'shuttle transfer', popular: false },
             { view: 'officeReturns', label: 'Office Returns', keywords: 'office iade return', popular: false },
-            ...(canViewFinancials && canUseSwissFiles ? [{ view: 'stripeChargebacks', label: 'Chargebacks', keywords: 'stripe dispute chargeback', popular: false }] : []),
-            ...(canViewFinancials && canUseSwissFiles ? [{ view: 'stripePayments', label: 'Payments', keywords: 'stripe terminal pos payment live', popular: false }] : []),
-            ...(canViewFinancials && canUseSwissFiles ? [{ view: 'stripeMailOrder', label: 'Mail order (Stripe)', keywords: 'stripe product payment link mail order', popular: false }] : []),
-            ...(canViewFinancials && canUseSwissFiles ? [{ view: 'stripeDailyReports', label: 'Daily reports (Stripe)', keywords: 'stripe kpi chart chargeback mail order analytics', popular: false }] : []),
+            ...(canAccessStripeFinance ? [{ view: 'stripeChargebacks', label: 'Chargebacks', keywords: 'stripe dispute chargeback', popular: false }] : []),
+            ...(canAccessStripeFinance ? [{ view: 'stripePayments', label: 'Deposits', keywords: 'stripe terminal pos deposit hold incremental', popular: false }] : []),
+            ...(canAccessStripeFinance ? [{ view: 'stripeMailOrder', label: 'Mail order (Stripe)', keywords: 'stripe product payment link mail order', popular: false }] : []),
+            ...(canAccessStripeFinance ? [{ view: 'stripeCustomers', label: 'Customers', keywords: 'stripe customer res deposit mail order timeline', popular: false }] : []),
+            ...(canAccessStripeFinance && showStripeReports ? [{ view: 'stripeDailyReports', label: 'Daily reports (Stripe)', keywords: 'stripe kpi chart chargeback mail order analytics', popular: false }] : []),
             { view: 'assistantNumbers', label: 'Assistant Numbers', keywords: 'phone assistant', popular: false },
             ...(canAccessFrontDeskCustomers ? [{ view: 'frontDeskCustomers', label: 'Front-desk customers', keywords: 'kiosk intake res plate', popular: false }] : []),
-            ...(canUseSwissFiles ? [{ view: 'files', label: 'Files', keywords: 'documents folder pdf zip upload library', popular: false }] : []),
-            ...(canUseSwissFiles ? [{ view: 'excel', label: 'Excel', keywords: 'spreadsheet workbook xlsx formulas', popular: false }] : []),
             { view: 'settings', label: 'Settings', keywords: 'config preferences', popular: false },
         ];
 
@@ -3935,7 +3899,7 @@ function Header({
         }
 
         return baseTargets;
-    }, [showPlatformAdmin, showFranchiseUserAdmin, canViewFinancials, canUseOperations, canUseParkedCheckout, canUseSwissFiles, canAccessFrontDeskCustomers, canAccessCHPanel, canUseSwissOps]);
+    }, [showPlatformAdmin, showFranchiseUserAdmin, canViewFinancials, canAccessStripeFinance, showStripeReports, canUseOperations, canUseParkedCheckout, canUseSwissFiles, canAccessFrontDeskCustomers, canAccessCHPanel, canUseSwissOps]);
 
     const normalizedQuery = searchQuery.trim().toLowerCase();
 
@@ -13070,7 +13034,8 @@ function OfficeOperationsView({ operations, cars, onRefresh, addActivity, user, 
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     });
 
-    const operationTypes = [
+    const operationTypes = useMemo(() => {
+        const all = [
         { value: 'Credit Card Receipt', label: 'Credit Card Receipt', icon: CreditCard, color: 'blue' },
         { value: 'POS Daily Closing', label: 'POS Daily Closing', icon: DollarSign, color: 'green' },
         { value: 'Fuel Receipt', label: 'Fuel Receipt', icon: Fuel, color: 'orange' },
@@ -13078,7 +13043,12 @@ function OfficeOperationsView({ operations, cars, onRefresh, addActivity, user, 
         { value: 'Additional Sales', label: 'Additional Sales', icon: ShoppingCart, color: 'purple' },
         { value: 'Banking Transaction', label: 'Banking Transaction', icon: CreditCard, color: 'green' },
         { value: 'Traffic Fine', label: 'Traffic Fine', icon: FileText, color: 'red' }
-    ];
+        ];
+        if (/^CH/i.test(String(franchiseId || ''))) {
+            return all.filter((t) => t.value !== 'POS Daily Closing');
+        }
+        return all;
+    }, [franchiseId]);
 
     // Helper function to get date from operation/banking transaction
     const getOperationDate = (item) => {
@@ -13703,7 +13673,9 @@ function AddOfficeOperationModal({ cars, onClose, onSuccess, addActivity, franch
     const [files, setFiles] = useState([]);
     const [loading, setLoading] = useState(false);
 
-    const operationTypes = ['Credit Card Receipt', 'POS Daily Closing', 'Fuel Receipt', 'Washing Expense', 'Additional Sales', 'Banking Transaction', 'Traffic Fine'];
+    const operationTypes = (/^CH/i.test(String(franchiseId || ''))
+        ? ['Credit Card Receipt', 'Fuel Receipt', 'Washing Expense', 'Additional Sales', 'Banking Transaction', 'Traffic Fine']
+        : ['Credit Card Receipt', 'POS Daily Closing', 'Fuel Receipt', 'Washing Expense', 'Additional Sales', 'Banking Transaction', 'Traffic Fine']);
 
     // ESC key handler
     React.useEffect(() => {
@@ -14074,7 +14046,9 @@ function EditOfficeOperationModal({ operation, cars, onClose, onSuccess, addActi
     const [photosToDelete, setPhotosToDelete] = useState(new Set());
     const [loading, setLoading] = useState(false);
 
-    const operationTypes = ['Credit Card Receipt', 'POS Daily Closing', 'Fuel Receipt', 'Washing Expense', 'Additional Sales', 'Banking Transaction', 'Traffic Fine'];
+    const operationTypes = (/^CH/i.test(String(franchiseId || ''))
+        ? ['Credit Card Receipt', 'Fuel Receipt', 'Washing Expense', 'Additional Sales', 'Banking Transaction', 'Traffic Fine']
+        : ['Credit Card Receipt', 'POS Daily Closing', 'Fuel Receipt', 'Washing Expense', 'Additional Sales', 'Banking Transaction', 'Traffic Fine']);
 
     // ESC key handler
     React.useEffect(() => {
@@ -15685,7 +15659,10 @@ function SettingsView({ userProfile, addActivity, viewFranchiseId }) {
             )}
 
             {/^CH/i.test(franchiseId) && canManageSmtp && (
+                <>
                 <StripeTerminalSettingsSection franchiseId={franchiseId} canManage={canManageSmtp} />
+                <StripeDepositEmailTemplatesSection franchiseId={franchiseId} canManage={canManageSmtp} />
+                </>
             )}
 
             {/* SMTP + Mail content — admin / superadmin only */}

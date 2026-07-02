@@ -2,7 +2,7 @@
  * Front-desk kiosk: unauthenticated callable writes to franchises/{franchiseId}/frontDeskCustomers
  * via Admin SDK (no external address API).
  */
-const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { onDocumentWritten, onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { setGlobalOptions } = require('firebase-functions/v2');
@@ -3664,7 +3664,43 @@ exports.stripeFinancialCreateMailOrderPaymentLink = onCall(
   stripeFinancialOpts,
   stripeFinancial.runCreateMailOrderPaymentLink
 );
+exports.stripeFinancialCreateMailOrderPayment = onCall(
+  stripeFinancialOpts,
+  stripeFinancial.runCreateMailOrderPayment
+);
+exports.stripeFinancialCreateDirectCardOperation = onCall(
+  stripeFinancialOpts,
+  stripeFinancial.runCreateDirectCardOperation
+);
+exports.stripeFinancialFinalizeDirectCardOperation = onCall(
+  stripeFinancialOpts,
+  stripeFinancial.runFinalizeDirectCardOperation
+);
+exports.stripeFinancialPersistDirectCardSnapshot = onCall(
+  stripeFinancialOpts,
+  stripeFinancial.runPersistDirectCardSnapshot
+);
+exports.stripeFinancialRetryDirectCardOperation = onCall(
+  stripeFinancialOpts,
+  stripeFinancial.runRetryDirectCardOperation
+);
+exports.stripeFinancialRetryDirectCardSavedPayment = onCall(
+  stripeFinancialOpts,
+  stripeFinancial.runRetryDirectCardSavedPayment
+);
+exports.stripeFinancialSendMailOrderEmail = onCall(
+  stripeFinancialOpts,
+  stripeFinancial.runSendMailOrderEmail
+);
+exports.stripeFinancialAttachMailOrderDocuments = onCall(
+  stripeFinancialOpts,
+  stripeFinancial.runAttachMailOrderDocuments
+);
 exports.stripeFinancialListMailOrders = onCall(stripeFinancialOpts, stripeFinancial.runListMailOrders);
+exports.stripeFinancialMailOrderCheckout = onRequest(
+  stripeFinancial.httpOpts,
+  stripeFinancial.runMailOrderCheckoutRedirect,
+);
 exports.stripeFinancialListPayments = onCall(stripeFinancialOpts, stripeFinancial.runListPayments);
 exports.stripeFinancialListAudit = onCall(stripeFinancialOpts, stripeFinancial.runListAudit);
 
@@ -3706,6 +3742,10 @@ exports.stripeFinancialCancelDeposit = onCall(
   stripeTerminalOpts,
   stripeTerminalDeposits.runCancelDeposit,
 );
+exports.stripeFinancialChargeSavedPaymentMethod = onCall(
+  stripeTerminalOpts,
+  stripeTerminalDeposits.runChargeSavedPaymentMethod,
+);
 exports.stripeFinancialCancelTerminalAction = onCall(
   stripeTerminalOpts,
   stripeTerminalDeposits.runCancelTerminalAction,
@@ -3725,4 +3765,36 @@ exports.stripeFinancialGetDepositStatus = onCall(
 exports.stripeFinancialProcessDepositOnTerminal = onCall(
   stripeTerminalOpts,
   stripeTerminalDeposits.runProcessDepositOnTerminal,
+);
+exports.stripeFinancialListTerminals = onCall(
+  stripeTerminalOpts,
+  stripeTerminalDeposits.runListTerminals,
+);
+exports.stripeFinancialUpsertTerminal = onCall(
+  stripeTerminalOpts,
+  stripeTerminalDeposits.runUpsertTerminal,
+);
+exports.stripeFinancialDeleteTerminal = onCall(
+  stripeTerminalOpts,
+  stripeTerminalDeposits.runDeleteTerminal,
+);
+exports.stripeFinancialListDepositEmailTemplates = onCall(
+  stripeTerminalOpts,
+  stripeTerminalDeposits.runListDepositEmailTemplates,
+);
+exports.stripeFinancialSaveDepositEmailTemplate = onCall(
+  stripeTerminalOpts,
+  stripeTerminalDeposits.runSaveDepositEmailTemplate,
+);
+exports.stripeFinancialDeleteDepositEmailTemplate = onCall(
+  stripeTerminalOpts,
+  stripeTerminalDeposits.runDeleteDepositEmailTemplate,
+);
+exports.stripeFinancialAttachDepositDocuments = onCall(
+  stripeTerminalOpts,
+  stripeTerminalDeposits.runAttachDepositDocuments,
+);
+exports.stripeFinancialSendDepositEmail = onCall(
+  stripeTerminalOpts,
+  stripeTerminalDeposits.runSendDepositEmail,
 );

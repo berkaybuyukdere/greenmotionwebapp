@@ -9,6 +9,8 @@
     "@corbe30/fortune-excel": "^2.3.2",
     "@fortune-sheet/react": "^1.0.4",
     "@microsoft/signalr": "^9.0.6",
+    "@stripe/react-stripe-js": "^6.6.0",
+    "@stripe/stripe-js": "^9.8.0",
     "@stripe/terminal-js": "^0.24.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",

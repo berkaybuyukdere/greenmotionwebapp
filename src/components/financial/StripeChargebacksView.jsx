@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshCw, AlertTriangle } from 'lucide-react';
-import { PalantirWorkbench, PalantirCommandBar } from '../palantir/PalantirWorkbench';
 import {
   StripeFilterChips,
   StripeListToolbar,
@@ -11,9 +10,9 @@ import {
   stripeFinancialGetConfig,
   stripeFinancialListDisputes,
   stripeFinancialGetDispute,
-  stripeFinancialListAudit,
 } from '../../services/stripeFinancialApi';
 import { formatCurrency } from '../../utilities/dateFormatters';
+import { StripeChargebackDetailDrawer } from './StripeChargebackDetailDrawer';
 
 const STATUS_VARIANT = {
   warning_needs_response: 'warning',
@@ -54,7 +53,6 @@ export function StripeChargebacksView({ franchiseId, user }) {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(null);
   const [detail, setDetail] = useState(null);
-  const [audit, setAudit] = useState([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [stripeMode, setStripeMode] = useState('unset');
@@ -69,8 +67,6 @@ export function StripeChargebacksView({ franchiseId, user }) {
       setStripeMode(cfg?.mode || 'unset');
       const res = await stripeFinancialListDisputes({ franchiseId, limit: 100 });
       setDisputes(res.disputes || []);
-      const auditRes = await stripeFinancialListAudit({ franchiseId, limit: 25 });
-      setAudit(auditRes.entries || []);
     } catch (e) {
       setError(e?.message || 'Failed to load chargebacks');
       setDisputes([]);
@@ -202,52 +198,12 @@ export function StripeChargebacksView({ franchiseId, user }) {
       </div>
 
       {detailOpen && selected && (
-        <PalantirWorkbench onClose={closeDetail} size="fit">
-          <PalantirCommandBar
-            eyebrow="Chargeback"
-            title={detail?.id || selected.id}
-            subtitle={detail?.reason || selected.reason || 'Dispute detail'}
-            onClose={closeDetail}
-          />
-          <div className="p-5 max-h-[70vh] overflow-y-auto">
-            {detailLoading ? (
-              <p className="text-sm text-[var(--erpx-ink-muted)]">Loading…</p>
-            ) : (
-              <dl className="space-y-2 text-sm">
-                <div className="flex justify-between gap-2">
-                  <dt className="text-[var(--erpx-ink-muted)]">Status</dt>
-                  <dd>{detail?.status}</dd>
-                </div>
-                <div className="flex justify-between gap-2">
-                  <dt className="text-[var(--erpx-ink-muted)]">Amount</dt>
-                  <dd>{formatStripeMoney(detail?.amount, detail?.currency)}</dd>
-                </div>
-                <div className="flex justify-between gap-2">
-                  <dt className="text-[var(--erpx-ink-muted)]">Reason</dt>
-                  <dd>{detail?.reason}</dd>
-                </div>
-                <div className="flex justify-between gap-2">
-                  <dt className="text-[var(--erpx-ink-muted)]">Charge</dt>
-                  <dd className="font-mono text-xs break-all">{detail?.charge}</dd>
-                </div>
-                <div className="flex justify-between gap-2">
-                  <dt className="text-[var(--erpx-ink-muted)]">Payment intent</dt>
-                  <dd className="font-mono text-xs break-all">{detail?.paymentIntent || '—'}</dd>
-                </div>
-                <div className="flex justify-between gap-2">
-                  <dt className="text-[var(--erpx-ink-muted)]">Created</dt>
-                  <dd>{formatUnix(detail?.created)}</dd>
-                </div>
-                {detail?.evidenceDetails?.due_by && (
-                  <div className="flex justify-between gap-2">
-                    <dt className="text-[var(--erpx-ink-muted)]">Evidence due</dt>
-                    <dd>{formatUnix(detail.evidenceDetails.due_by)}</dd>
-                  </div>
-                )}
-              </dl>
-            )}
-          </div>
-        </PalantirWorkbench>
+        <StripeChargebackDetailDrawer
+          open={detailOpen}
+          dispute={detail || selected}
+          loading={detailLoading}
+          onClose={closeDetail}
+        />
       )}
     </div>
   );

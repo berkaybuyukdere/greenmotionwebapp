@@ -11,6 +11,14 @@ const BADGE_CLASS = {
     purple: 'gm-badge gm-badge-purple',
     deposit: 'gm-badge gm-badge-deposit',
     wheelsys: 'gm-badge gm-badge-wheelsys',
+    paid: 'gm-badge pal-fin-badge-paid',
+    unpaid: 'gm-badge pal-fin-badge-unpaid',
+    traffic_fine: 'gm-badge pal-fin-badge-traffic',
+    damage: 'gm-badge pal-fin-badge-damage',
+    hold: 'gm-badge pal-fin-badge-hold',
+    increased: 'gm-badge pal-fin-badge-increased',
+    captured: 'gm-badge pal-fin-badge-captured',
+    captured_increased: 'gm-badge pal-fin-badge-captured-increased',
 };
 
 /** Stripe transactions.html / accounting.html status pill */
@@ -425,6 +433,7 @@ export function StripeDataTable({
     loading = false,
     emptyMessage = 'No records',
     onRowClick,
+    selectedRowId = null,
     dense = false,
 }) {
     const wrapClass = dense ? 'pal-fin-table-wrap' : 'gm-card overflow-hidden';
@@ -464,10 +473,13 @@ export function StripeDataTable({
                                 </td>
                             </tr>
                         ) : (
-                            rows.map((row) => (
+                            rows.map((row) => {
+                                const rowId = row.id || JSON.stringify(row);
+                                const isSelected = selectedRowId != null && String(selectedRowId) === String(row.id);
+                                return (
                                 <tr
-                                    key={row.id || JSON.stringify(row)}
-                                    className={onRowClick ? 'pal-fin-table-row-clickable' : ''}
+                                    key={rowId}
+                                    className={`${onRowClick ? 'pal-fin-table-row-clickable' : ''}${isSelected ? ' pal-fin-row-selected' : ''}`}
                                     onClick={onRowClick ? () => onRowClick(row) : undefined}
                                 >
                                     {columns.map((col) => (
@@ -476,7 +488,8 @@ export function StripeDataTable({
                                         </td>
                                     ))}
                                 </tr>
-                            ))
+                                );
+                            })
                         )}
                     </tbody>
                 </table>

@@ -1,5 +1,6 @@
 import { normalizeRoleKey } from './userAccess';
 import { formatCurrency } from './dateFormatters';
+import { isSwissFranchiseId } from './fileLibraryHelpers';
 import { _franchiseLegalBundle, emptyFranchiseLegalBundle } from '../firebase/authScope';
 import {
     swissStyleReportPdfEnabled,
@@ -167,6 +168,33 @@ export function getExitBookingCode(exit) {
 export function canViewFinancialData(userProfile) {
     const r = String(userProfile?.role || '').toLowerCase().trim();
     return r === 'globaladmin' || r === 'superadmin' || r === 'admin' || r === 'manager';
+}
+
+/** Stripe Terminal / mail-order / deposits (CH franchise operational staff). */
+export function canUseStripeFinance(userProfile, franchiseId) {
+    if (isGarageOnlyRole(userProfile)) return false;
+    if (!isSwissFranchiseId(franchiseId)) return false;
+    const r = normalizeRoleKey(userProfile?.role);
+    return (
+        r === 'globaladmin' ||
+        r === 'superadmin' ||
+        r === 'admin' ||
+        r === 'manager' ||
+        r === 'staff' ||
+        r === 'shuttle' ||
+        r === 'viewer'
+    );
+}
+
+/** Stripe KPI totals (deposits/mail order) — admin and above only (matches iOS FinancialAccess). */
+export function canViewStripeFinancialTotals(userProfile) {
+    const r = normalizeRoleKey(userProfile?.role);
+    return r === 'globaladmin' || r === 'superadmin' || r === 'admin';
+}
+
+/** Stripe daily reports dashboard — admin and above only. */
+export function canViewStripeReports(userProfile) {
+    return canViewStripeFinancialTotals(userProfile);
 }
 
 export function isGarageOnlyRole(userProfile) {

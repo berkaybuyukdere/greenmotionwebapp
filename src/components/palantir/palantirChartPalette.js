@@ -26,6 +26,7 @@ export const PAL_NAV_TONES = {
     office: { fg: 'var(--vs-violet, var(--erpx-brand))', bg: 'var(--pal-tag-bg)' },
     officeReturns: { fg: 'var(--erpx-ink-muted)', bg: 'var(--erpx-subtle)' },
     frontDeskCustomers: { fg: 'var(--pal-brand)', bg: 'var(--pal-tag-bg)' },
+    stripeCustomers: { fg: 'var(--pal-brand)', bg: 'var(--pal-tag-bg)' },
     files: { fg: 'var(--erpx-ink-muted)', bg: 'var(--erpx-subtle)' },
     excel: { fg: 'var(--erpx-ink-muted)', bg: 'var(--erpx-subtle)' },
     workingTimetable: { fg: 'var(--vs-violet, var(--erpx-brand))', bg: 'var(--pal-tag-bg)' },

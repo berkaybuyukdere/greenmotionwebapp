@@ -74,12 +74,20 @@ export function StripePaymentDetailDrawer({
   const isDeposit = transaction?.flowType === 'deposit' || Boolean(deposit);
   const canCancel = ['hold', 'pending'].includes(bucket);
   const canManageDeposit =
-    deposit && ['authorized', 'pending_collection'].includes(deposit.status);
+    Boolean(deposit) &&
+    (bucket === 'hold' || ['authorized', 'pending_collection'].includes(deposit?.status));
 
   const currentHoldCents =
     deposit?.currentHoldAmount || deposit?.initialAmount || transaction?.depositCurrentHold || 0;
   const currentHoldChf = currentHoldCents / 100;
   const maxAuthChf = (deposit?.maxAuthAmount || transaction?.depositMaxAuthAmount || 0) / 100;
+  const canIncreaseToMax = maxAuthChf > currentHoldChf && canManageDeposit;
+
+  const applyIncreaseToMax = () => {
+    setShowIncreasePanel(true);
+    setTotalAmountChf(maxAuthChf.toFixed(2));
+    setError('');
+  };
 
   const increasePreview = useMemo(() => {
     const total = Number(totalAmountChf);
@@ -172,7 +180,7 @@ export function StripePaymentDetailDrawer({
       >
         <header className="pal-pay-drawer-header">
           <div>
-            <p className="pal-fin-eyebrow">Payment preview</p>
+            <p className="pal-fin-eyebrow">Deposit preview</p>
             <p className="pal-pay-drawer-amount">{amountDisplay}</p>
             <div className="pal-pay-drawer-badges">
               <StripeStatusBadge
@@ -198,13 +206,19 @@ export function StripePaymentDetailDrawer({
           <DetailRow label="Customer" value={transaction.customerName} />
           <DetailRow label="Email" value={transaction.customerEmail} />
           <DetailRow label="Plate" value={transaction.plate} mono />
-          <DetailRow label="Reference" value={transaction.reference || transaction.displayDescription} />
+          <DetailRow label="RES code" value={transaction.reference || deposit?.resCode || transaction.displayDescription} mono />
           <DetailRow label="Date" value={formatDate(transaction.createdAt)} />
           {isDeposit && (
             <DetailRow
               label="Deposit hold"
               value={formatMoney(currentHoldCents, transaction.currency)}
             />
+          )}
+          {(deposit?.tokenSaved || transaction?.tokenSaved) && (
+            <div className="pal-pay-detail-row">
+              <span className="pal-pay-detail-label">Token</span>
+              <span className="pal-fin-token-saved-badge">Token saved</span>
+            </div>
           )}
           {transaction.depositSource === 'wheelsys' && (
             <DetailRow label="Origin" value="WheelSys rental flow" />
@@ -224,11 +238,23 @@ export function StripePaymentDetailDrawer({
             <DetailRow label="Cancel note" value={deposit.cancelReason} />
           )}
 
+          {deposit?.emailSentAt && (
+            <DetailRow
+              label="Email"
+              value={deposit.emailSentOk ? `Sent ${new Date(deposit.emailSentAt).toLocaleString()}` : deposit.emailSentMessage || 'Failed'}
+            />
+          )}
+
           {canManageDeposit && (
             <div className="pal-pay-drawer-section">
               <p className="pal-fin-eyebrow">Deposit actions</p>
               {!showIncreasePanel ? (
                 <div className="pal-pay-drawer-actions">
+                  {canIncreaseToMax && (
+                    <button type="button" className="gm-btn gm-btn-primary gm-btn-sm" disabled={busy} onClick={applyIncreaseToMax}>
+                      <TrendingUp size={14} /> Increase to {maxAuthChf.toFixed(0)} CHF
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="gm-btn gm-btn-secondary gm-btn-sm"
@@ -239,7 +265,7 @@ export function StripePaymentDetailDrawer({
                       setError('');
                     }}
                   >
-                    <TrendingUp size={14} /> Increase deposit amount
+                    <TrendingUp size={14} /> Custom increase
                   </button>
                   <button
                     type="button"

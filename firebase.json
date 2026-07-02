@@ -74,6 +74,10 @@
         "destination": "/index.html"
       },
       {
+        "source": "/pay/mo/**",
+        "function": "stripeFinancialMailOrderCheckout"
+      },
+      {
         "source": "/domain-redirect.js",
         "destination": "/domain-redirect.js"
       },

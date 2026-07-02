@@ -41,6 +41,7 @@ const NAV_ICONS = {
     office: DollarSign,
     officeReturns: ArrowLeft,
     frontDeskCustomers: Users,
+    stripeCustomers: Users,
     files: FolderOpen,
     excel: Table2,
     workingTimetable: Clock,
