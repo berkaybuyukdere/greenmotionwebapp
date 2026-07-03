@@ -886,9 +886,9 @@ async function runCancelDeposit(request) {
   return { ok: true };
 }
 
-/** Off-session charge using card saved during a prior deposit (admin+). */
+/** Off-session charge using card saved during a prior deposit (staff+). */
 async function runChargeSavedPaymentMethod(request) {
-  const { uid } = await assertFinancialAdminCallable(request);
+  const { uid } = await assertFinancialCallable(request);
   const data = request.data || {};
   const franchiseId = normalizeFranchiseId(data.franchiseId);
   assertSwitzerlandFranchise(franchiseId);

@@ -186,6 +186,21 @@ export function canUseStripeFinance(userProfile, franchiseId) {
     );
 }
 
+/** Stripe operational actions (deposits, mail order, direct charge, charge saved card). */
+export function canPerformStripeOperations(userProfile, franchiseId) {
+    if (isGarageOnlyRole(userProfile)) return false;
+    if (!isSwissFranchiseId(franchiseId)) return false;
+    const r = normalizeRoleKey(userProfile?.role);
+    return (
+        r === 'globaladmin' ||
+        r === 'superadmin' ||
+        r === 'admin' ||
+        r === 'manager' ||
+        r === 'staff' ||
+        r === 'shuttle'
+    );
+}
+
 /** Stripe KPI totals (deposits/mail order) — admin and above only (matches iOS FinancialAccess). */
 export function canViewStripeFinancialTotals(userProfile) {
     const r = normalizeRoleKey(userProfile?.role);

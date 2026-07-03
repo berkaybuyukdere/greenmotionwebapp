@@ -34,7 +34,7 @@ function CountSignal({ icon: Icon, count, label, tone }) {
   );
 }
 
-export function StripeCustomersView({ franchiseId, showFinancialTotals = false }) {
+export function StripeCustomersView({ franchiseId, showFinancialTotals = false, canPerformOperations = false }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [stripeMode, setStripeMode] = useState('unset');
@@ -148,7 +148,7 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false }
         label: 'Unpaid mail',
         count: groups.filter((g) => g.mailOrders.some((o) => o.status !== 'paid')).length,
       },
-      ...(showFinancialTotals
+      ...(canPerformOperations
         ? [
             {
               id: 'direct_unpaid',
@@ -192,14 +192,16 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false }
             <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
             Refresh
           </button>
-          <button
-            type="button"
-            className="gm-btn gm-btn-primary gm-btn-sm pal-fin-action-btn"
-            onClick={() => setShowNewOperation(true)}
-          >
-            <Plus size={15} />
-            New operation
-          </button>
+          {canPerformOperations && (
+            <button
+              type="button"
+              className="gm-btn gm-btn-primary gm-btn-sm pal-fin-action-btn"
+              onClick={() => setShowNewOperation(true)}
+            >
+              <Plus size={15} />
+              New operation
+            </button>
+          )}
         </div>
       </header>
 
@@ -314,7 +316,7 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false }
                         <td>
                           <div className="pal-cust-signals">
                             <CountSignal icon={Lock} count={row.deposits.length} label="Deposits" tone={hasHold ? 'hold' : 'neutral'} />
-                            {showFinancialTotals && (row.directOrders || []).length > 0 && (
+                            {canPerformOperations && (row.directOrders || []).length > 0 && (
                               <CountSignal
                                 icon={CreditCard}
                                 count={(row.directOrders || []).length}
@@ -353,6 +355,7 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false }
           group={workbenchGroupLive}
           franchiseId={franchiseId}
           showFinancialTotals={showFinancialTotals}
+          canPerformOperations={canPerformOperations}
           auditEntries={audit}
           onClose={() => setWorkbenchGroup(null)}
           onChanged={load}
