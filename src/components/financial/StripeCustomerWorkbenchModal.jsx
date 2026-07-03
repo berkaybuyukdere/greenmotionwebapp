@@ -119,6 +119,7 @@ export function StripeCustomerWorkbenchModal({
   group,
   franchiseId,
   showFinancialTotals = false,
+  canPerformOperations = false,
   auditEntries = [],
   onClose,
   onChanged,
@@ -181,7 +182,7 @@ export function StripeCustomerWorkbenchModal({
     Boolean(primaryDeposit) &&
     ['authorized', 'pending_collection'].includes(primaryDeposit.status);
 
-  const canChargeSaved = Boolean(showFinancialTotals && chargeDeposit?.id);
+  const canChargeSaved = Boolean(canPerformOperations && chargeDeposit?.id);
   const showActionsTab = canManageDeposit || canChargeSaved;
 
   const currentHoldChf = (primaryDeposit?.currentHoldAmount || primaryDeposit?.initialAmount || 0) / 100;
@@ -297,7 +298,7 @@ export function StripeCustomerWorkbenchModal({
   const tabs = [
     { id: 'overview', label: 'Overview' },
     { id: 'deposits', label: `Deposits (${group.deposits.length})` },
-    ...(showFinancialTotals
+    ...(canPerformOperations
       ? [{ id: 'direct', label: `Direct (${directOrders.length})` }]
       : []),
     { id: 'mail', label: `Mail (${mailOrders.length})` },
@@ -330,7 +331,7 @@ export function StripeCustomerWorkbenchModal({
             </p>
             <div className="pal-cust-signal-row pal-cust-signal-row-modal">
               <PalantirSignal label="Deposits" value={group.deposits.length} tone={activeDeposits.length ? 'warn' : undefined} />
-              {showFinancialTotals && (
+              {canPerformOperations && (
                 <PalantirSignal label="Direct" value={directOrders.length} tone={unpaidDirect ? 'bad' : 'ok'} />
               )}
               <PalantirSignal label="Mail" value={mailOrders.length} />
@@ -386,7 +387,7 @@ export function StripeCustomerWorkbenchModal({
                   </span>
                 </div>
               )}
-              {chargeableDeposits.length > 0 && !activeDeposits.length && showFinancialTotals && (
+              {chargeableDeposits.length > 0 && !activeDeposits.length && canPerformOperations && (
                 <div className="pal-cust-highlight pal-cust-highlight-token">
                   <CreditCard size={14} />
                   <span>
@@ -435,7 +436,7 @@ export function StripeCustomerWorkbenchModal({
             </div>
           )}
 
-          {tab === 'direct' && showFinancialTotals && (
+          {tab === 'direct' && canPerformOperations && (
             <div className="pal-cust-mail-tab">
               <div className="pal-cust-timeline pal-cust-timeline-modal">
                 {directOrders.length === 0 ? (
@@ -643,7 +644,7 @@ export function StripeCustomerWorkbenchModal({
                   )}
                   <div className="pal-cust-secure-note">
                     <Shield size={14} />
-                    <span>Admin only · logged to audit trail</span>
+                    <span>Logged to audit trail</span>
                   </div>
                   <label className="pal-cust-field">
                     <span>Amount (CHF)</span>
@@ -664,12 +665,12 @@ export function StripeCustomerWorkbenchModal({
                 </section>
               )}
 
-              {!canManageDeposit && !canChargeSaved && showFinancialTotals && chargeableDeposits.length === 0 && (
+              {!canManageDeposit && !canChargeSaved && canPerformOperations && chargeableDeposits.length === 0 && (
                 <p className="pal-cust-empty">
                   No chargeable deposit — complete a terminal deposit (card on POS) first.
                 </p>
               )}
-              {!canManageDeposit && !canChargeSaved && !showFinancialTotals && (
+              {!canManageDeposit && !canChargeSaved && !canPerformOperations && (
                 <p className="pal-cust-empty">No actions available for this customer.</p>
               )}
             </div>

@@ -207,6 +207,7 @@ import {
     getExitBookingCode,
     canViewFinancialData,
     canUseStripeFinance,
+    canPerformStripeOperations as userCanPerformStripeOperations,
     canViewStripeFinancialTotals as userCanViewStripeFinancialTotals,
     canViewStripeReports as userCanViewStripeReports,
     isGarageOnlyRole,
@@ -1576,6 +1577,10 @@ function AppContent({ user, userProfile: initialUserProfile }) {
         () => userCanViewStripeFinancialTotals(userProfile),
         [userProfile],
     );
+    const canPerformStripeOperations = useMemo(
+        () => userCanPerformStripeOperations(userProfile, effectiveFranchiseId),
+        [userProfile, effectiveFranchiseId],
+    );
     const showStripeReports = useMemo(
         () => userCanViewStripeReports(userProfile),
         [userProfile],
@@ -2678,17 +2683,29 @@ function AppContent({ user, userProfile: initialUserProfile }) {
                                 )}
                                 {currentView === 'stripePayments' && canAccessStripeFinance && (
                                     <div className="erpx-view-layer w-full min-w-0">
-                                        <StripePaymentsView franchiseId={effectiveFranchiseId || 'ch'} showFinancialTotals={showStripeFinancialTotals} />
+                                        <StripePaymentsView
+                                            franchiseId={effectiveFranchiseId || 'ch'}
+                                            showFinancialTotals={showStripeFinancialTotals}
+                                            canPerformOperations={canPerformStripeOperations}
+                                        />
                                     </div>
                                 )}
                                 {currentView === 'stripeMailOrder' && canAccessStripeFinance && (
                                     <div className="erpx-view-layer w-full min-w-0">
-                                        <StripeMailOrderView franchiseId={effectiveFranchiseId || 'ch'} showFinancialTotals={showStripeFinancialTotals} />
+                                        <StripeMailOrderView
+                                            franchiseId={effectiveFranchiseId || 'ch'}
+                                            showFinancialTotals={showStripeFinancialTotals}
+                                            canPerformOperations={canPerformStripeOperations}
+                                        />
                                     </div>
                                 )}
                                 {currentView === 'stripeCustomers' && canAccessStripeFinance && (
                                     <div className="erpx-view-layer w-full min-w-0">
-                                        <StripeCustomersView franchiseId={effectiveFranchiseId || 'ch'} showFinancialTotals={showStripeFinancialTotals} />
+                                        <StripeCustomersView
+                                            franchiseId={effectiveFranchiseId || 'ch'}
+                                            showFinancialTotals={showStripeFinancialTotals}
+                                            canPerformOperations={canPerformStripeOperations}
+                                        />
                                     </div>
                                 )}
                                 {currentView === 'stripeDailyReports' && canAccessStripeFinance && showStripeReports && (

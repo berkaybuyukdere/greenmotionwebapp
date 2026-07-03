@@ -70,7 +70,7 @@ function ReminderCell({ reminder, slotLabel }) {
   );
 }
 
-export function StripeMailOrderView({ franchiseId, showFinancialTotals = true }) {
+export function StripeMailOrderView({ franchiseId, showFinancialTotals = true, canPerformOperations = true }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [configured, setConfigured] = useState(true);
@@ -341,7 +341,7 @@ export function StripeMailOrderView({ franchiseId, showFinancialTotals = true })
             <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
             Refresh
           </button>
-          <button type="button" className="gm-btn gm-btn-primary gm-btn-sm pal-fin-action-btn" onClick={() => { setShowNewPayment(true); setError(''); }}>
+          <button type="button" className="gm-btn gm-btn-primary gm-btn-sm pal-fin-action-btn" onClick={() => { setShowNewPayment(true); setError(''); }} disabled={!canPerformOperations}>
             <Plus size={15} />
             New payment
           </button>

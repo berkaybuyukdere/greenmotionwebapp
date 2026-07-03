@@ -105,7 +105,7 @@ function SummaryCard({ label, count, total, currency, variant }) {
   );
 }
 
-export function StripePaymentsView({ franchiseId, showFinancialTotals = true }) {
+export function StripePaymentsView({ franchiseId, showFinancialTotals = true, canPerformOperations = true }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [configured, setConfigured] = useState(true);
@@ -349,6 +349,7 @@ export function StripePaymentsView({ franchiseId, showFinancialTotals = true }) 
             type="button"
             className="gm-btn gm-btn-primary gm-btn-sm pal-fin-action-btn"
             onClick={() => setShowDepositModal(true)}
+            disabled={!canPerformOperations}
           >
             <Plus size={15} /> New deposit
           </button>
