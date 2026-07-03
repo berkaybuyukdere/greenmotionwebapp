@@ -11,6 +11,7 @@ import {
   stripeFinancialGetConfig,
 } from '../../services/stripeFinancialApi';
 import { buildStripeCustomerGroups } from '../../utilities/stripeCustomerGroups';
+import { sumMailOrderDailyKpi } from '../../utilities/stripeDailyTotals';
 
 function formatStripeMoney(minor, currency = 'chf') {
   if (minor == null) return '—';
@@ -40,6 +41,8 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false }
   const [syncedAt, setSyncedAt] = useState('');
   const [deposits, setDeposits] = useState([]);
   const [mailOrders, setMailOrders] = useState([]);
+  const [depositDailySummary, setDepositDailySummary] = useState(null);
+  const [mailDailySummary, setMailDailySummary] = useState(null);
   const [audit, setAudit] = useState([]);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
@@ -61,6 +64,8 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false }
       setStripeMode(cfg?.mode || 'unset');
       setDeposits(depRes.deposits || []);
       setMailOrders(mailRes.orders || []);
+      setDepositDailySummary(depRes.dailySummary || null);
+      setMailDailySummary(mailRes.dailySummary || null);
       setAudit(auditRes.entries || []);
       setSyncedAt(new Date().toISOString());
     } catch (e) {
@@ -100,6 +105,8 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false }
     }
     return { customers: groups.length, activeHolds, holdVol, unpaidMail, unpaidVol };
   }, [groups]);
+
+  const todayMailKpi = useMemo(() => sumMailOrderDailyKpi(mailOrders), [mailOrders]);
 
   const filtered = useMemo(() => {
     let rows = groups;
@@ -152,7 +159,7 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false }
         : []),
       { id: 'deposits', label: 'With deposits', count: groups.filter((g) => g.deposits.length > 0).length },
     ],
-    [groups],
+    [groups, showFinancialTotals],
   );
 
   const openWorkbench = (row) => {
@@ -185,35 +192,51 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false }
             <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
             Refresh
           </button>
-          {showFinancialTotals && (
-            <button
-              type="button"
-              className="gm-btn gm-btn-primary gm-btn-sm pal-fin-action-btn"
-              onClick={() => setShowNewOperation(true)}
-            >
-              <Plus size={15} />
-              New operation
-            </button>
-          )}
+          <button
+            type="button"
+            className="gm-btn gm-btn-primary gm-btn-sm pal-fin-action-btn"
+            onClick={() => setShowNewOperation(true)}
+          >
+            <Plus size={15} />
+            New operation
+          </button>
         </div>
       </header>
 
-      <PalantirFinKpiRow>
-        <PalantirFinKpiCard label="Customers" value={kpi.customers} sub="Unique RES / email groups" tone="default" />
-        <PalantirFinKpiCard
-          label="Active holds"
-          value={kpi.activeHolds}
-          sub={showFinancialTotals ? formatStripeMoney(kpi.holdVol) : `${kpi.activeHolds} open`}
-          tone="hold"
-        />
-        <PalantirFinKpiCard
-          label="Unpaid mail"
-          value={kpi.unpaidMail}
-          sub={showFinancialTotals ? formatStripeMoney(kpi.unpaidVol) : 'Awaiting payment'}
-          tone="unpaid"
-        />
-        <PalantirFinKpiCard label="Deposits" value={deposits.length} sub="Terminal records" tone="revenue" />
-      </PalantirFinKpiRow>
+      {showFinancialTotals ? (
+        <PalantirFinKpiRow>
+          <PalantirFinKpiCard label="Customers" value={kpi.customers} sub="Unique RES / email groups" tone="default" />
+          <PalantirFinKpiCard
+            label="Active holds"
+            value={kpi.activeHolds}
+            sub={formatStripeMoney(kpi.holdVol)}
+            tone="hold"
+          />
+          <PalantirFinKpiCard
+            label="Unpaid mail"
+            value={kpi.unpaidMail}
+            sub={formatStripeMoney(kpi.unpaidVol)}
+            tone="unpaid"
+          />
+          <PalantirFinKpiCard label="Deposits" value={deposits.length} sub="Terminal records" tone="revenue" />
+        </PalantirFinKpiRow>
+      ) : (
+        <PalantirFinKpiRow>
+          <PalantirFinKpiCard
+            label="Today · Deposits"
+            value={depositDailySummary?.count ?? 0}
+            sub={`${depositDailySummary?.count ?? 0} hold${depositDailySummary?.count === 1 ? '' : 's'} today`}
+            tone="hold"
+          />
+          <PalantirFinKpiCard
+            label="Today · Unpaid mail"
+            value={todayMailKpi.unpaidCount}
+            sub={`${todayMailKpi.paidCount} paid today`}
+            tone="unpaid"
+          />
+          <PalantirFinKpiCard label="Customers" value={kpi.customers} sub="Unique RES / email groups" tone="default" />
+        </PalantirFinKpiRow>
+      )}
 
       {error && <div className="pal-fin-alert">{error}</div>}
 
@@ -245,7 +268,7 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false }
       <div className="pal-fin-grid-single">
         <div className="pal-fin-main pal-fin-main-full">
           <div className="pal-fin-table-wrap">
-            <table className="pal-fin-table pal-fin-table-dense pal-cust-table">
+            <table className="pal-fin-table pal-fin-table-dense pal-cust-table pal-cust-table-symmetric">
               <thead>
                 <tr>
                   <th>Customer</th>
@@ -340,6 +363,7 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false }
       {showNewOperation && (
         <StripeCustomerNewOperationModal
           franchiseId={franchiseId}
+          categories={showFinancialTotals ? ['traffic_fine', 'damage', 'extra', 'walk_in'] : ['walk_in', 'damage', 'extra']}
           onClose={() => setShowNewOperation(false)}
           onSuccess={(item) => {
             setCenterFeedback({ type: 'success', ...item, at: new Date().toISOString() });

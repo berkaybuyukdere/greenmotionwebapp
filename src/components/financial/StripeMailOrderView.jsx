@@ -26,6 +26,7 @@ import {
 } from '../../services/stripeFinancialApi';
 import { formatCurrency } from '../../utilities/dateFormatters';
 import { isPaymentLinkMailOrder } from '../../utilities/stripeCustomerGroups';
+import { resolveMailOrderCustomerLabel, sumMailOrderDailyKpi } from '../../utilities/stripeDailyTotals';
 import {
   MAIL_ORDER_REMINDER_SMTP_ENABLED,
   MAIL_ORDER_LINK_VALID_DAYS,
@@ -54,6 +55,79 @@ const emptyForm = {
   unitAmountMajor: '',
   currency: 'chf',
 };
+
+const CATEGORY_OPTIONS = [
+  { id: 'traffic_fine', title: 'Traffic fines', sub: 'SMTP · traffic fines mailbox', tone: 'traffic' },
+  { id: 'damage', title: 'Damage', sub: 'SMTP · damage mailbox', tone: 'damage' },
+  { id: 'extra', title: 'Extra', sub: 'Misc. charges · damage mailbox', tone: 'extra' },
+];
+
+function categoryBtnClass(category, active, tone) {
+  const base = 'pal-fin-category-btn';
+  if (!active) return base;
+  const toneClass =
+    tone === 'traffic'
+      ? 'pal-fin-category-btn-active-traffic'
+      : tone === 'damage' || tone === 'extra'
+        ? 'pal-fin-category-btn-active-damage'
+        : '';
+  return `${base} pal-fin-category-btn-active ${toneClass}`.trim();
+}
+
+function categoryLabel(category) {
+  if (category === 'traffic_fine') return 'Traffic fines';
+  if (category === 'damage') return 'Damage';
+  if (category === 'extra') return 'Extra';
+  return category || '—';
+}
+
+function mailPreviewSubject({ category, resNo }) {
+  const res = formatResCodeForSubmit(resNo) || 'RES-—';
+  const label = category === 'traffic_fine' ? 'Traffic fine' : category === 'extra' ? 'Extra charge' : 'Damage';
+  return `${label} payment request — ${res}`;
+}
+
+function MailComposePreview({ to, subject, body, onBodyChange, files = [] }) {
+  return (
+    <section className="pal-fin-mail-compose" aria-label="E-mail preview">
+      <div className="pal-fin-mail-compose-toolbar">E-mail preview</div>
+      <div className="pal-fin-mail-compose-fields">
+        <div className="pal-fin-mail-compose-row">
+          <span className="pal-fin-mail-compose-label">To</span>
+          <span className="text-sm text-[var(--erpx-ink-secondary)]">{to || '—'}</span>
+        </div>
+        <div className="pal-fin-mail-compose-row">
+          <span className="pal-fin-mail-compose-label">Subject</span>
+          <span className="text-sm font-medium text-[var(--erpx-ink)]">{subject || '—'}</span>
+        </div>
+        <div className="pal-fin-mail-compose-row pal-fin-mail-compose-row-body">
+          <span className="pal-fin-mail-compose-label">Body</span>
+          <textarea
+            className="pal-fin-mail-compose-input pal-fin-mail-compose-textarea"
+            value={body}
+            onChange={(e) => onBodyChange?.(e.target.value)}
+            placeholder="Message body for the customer e-mail…"
+          />
+        </div>
+      </div>
+      <div className="pal-fin-mail-compose-preview">
+        {body?.trim() ? body : 'Message body for the customer e-mail…'}
+        {'\n\n'}
+        [Pay button — amount shown after send]
+      </div>
+      {files.length > 0 && (
+        <div className="pal-fin-mail-compose-attachments">
+          <span className="pal-fin-mail-compose-label">Attachments</span>
+          <ul>
+            {files.map((f) => (
+              <li key={f.name}>{f.name}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  );
+}
 
 function ReminderCell({ reminder, slotLabel }) {
   const display = getMailOrderReminderDisplay(reminder, slotLabel);
@@ -149,6 +223,7 @@ export function StripeMailOrderView({ franchiseId, showFinancialTotals = true })
     let unpaidVol = 0;
     let trafficCount = 0;
     let damageCount = 0;
+    let extraCount = 0;
     for (const o of mailOrders) {
       const amt = Number(o.amount) || 0;
       if (o.status === 'paid') {
@@ -159,10 +234,13 @@ export function StripeMailOrderView({ franchiseId, showFinancialTotals = true })
         unpaidVol += amt;
       }
       if (o.category === 'traffic_fine') trafficCount += 1;
+      else if (o.category === 'extra') extraCount += 1;
       else damageCount += 1;
     }
-    return { paidCount, unpaidCount, paidVol, unpaidVol, trafficCount, damageCount };
+    return { paidCount, unpaidCount, paidVol, unpaidVol, trafficCount, damageCount, extraCount };
   }, [mailOrders]);
+
+  const todayKpi = useMemo(() => sumMailOrderDailyKpi(mailOrders), [mailOrders]);
 
   const formDirty = useMemo(
     () =>
@@ -231,9 +309,10 @@ export function StripeMailOrderView({ franchiseId, showFinancialTotals = true })
     setError('');
     try {
       const unitAmount = Math.round(major * 100);
+      const apiCategory = form.category === 'extra' ? 'damage' : form.category;
       const result = await stripeFinancialCreateMailOrderPayment({
         franchiseId,
-        category: form.category,
+        category: apiCategory,
         resNo,
         customerName,
         customerEmail,
@@ -271,7 +350,7 @@ export function StripeMailOrderView({ franchiseId, showFinancialTotals = true })
         header: 'Customer',
         render: (row) => (
           <div>
-            <div>{row.customerName || '—'}</div>
+            <div>{resolveMailOrderCustomerLabel(row)}</div>
             <div className="pal-fin-product-desc">{row.customerEmail}</div>
           </div>
         ),
@@ -283,7 +362,7 @@ export function StripeMailOrderView({ franchiseId, showFinancialTotals = true })
           <StripeStatusBadge
             sharp
             variant={row.category === 'traffic_fine' ? 'traffic_fine' : 'damage'}
-            label={row.category === 'traffic_fine' ? 'Traffic fines' : 'Damage'}
+            label={categoryLabel(row.category)}
           />
         ),
       },
@@ -356,33 +435,48 @@ export function StripeMailOrderView({ franchiseId, showFinancialTotals = true })
       )}
       {error && !showNewPayment && <div className="pal-fin-alert">{error}</div>}
 
-      {showFinancialTotals && (
-      <PalantirFinKpiRow>
-        <PalantirFinKpiCard
-          label="Unpaid"
-          value={formatStripeMoney(kpi.unpaidVol, 'chf')}
-          sub={`${kpi.unpaidCount} open payment${kpi.unpaidCount === 1 ? '' : 's'}`}
-          tone="unpaid"
-        />
-        <PalantirFinKpiCard
-          label="Paid"
-          value={formatStripeMoney(kpi.paidVol, 'chf')}
-          sub={`${kpi.paidCount} completed`}
-          tone="paid"
-        />
-        <PalantirFinKpiCard
-          label="Traffic fines"
-          value={kpi.trafficCount}
-          sub="Mail order records"
-          tone="default"
-        />
-        <PalantirFinKpiCard
-          label="Damage"
-          value={kpi.damageCount}
-          sub="Mail order records"
-          tone="revenue"
-        />
-      </PalantirFinKpiRow>
+      {showFinancialTotals ? (
+        <PalantirFinKpiRow>
+          <PalantirFinKpiCard
+            label="Unpaid"
+            value={formatStripeMoney(kpi.unpaidVol, 'chf')}
+            sub={`${kpi.unpaidCount} open payment${kpi.unpaidCount === 1 ? '' : 's'}`}
+            tone="unpaid"
+          />
+          <PalantirFinKpiCard
+            label="Paid"
+            value={formatStripeMoney(kpi.paidVol, 'chf')}
+            sub={`${kpi.paidCount} completed`}
+            tone="paid"
+          />
+          <PalantirFinKpiCard
+            label="Traffic fines"
+            value={kpi.trafficCount}
+            sub="Mail order records"
+            tone="default"
+          />
+          <PalantirFinKpiCard
+            label="Damage"
+            value={kpi.damageCount}
+            sub="Mail order records"
+            tone="revenue"
+          />
+        </PalantirFinKpiRow>
+      ) : (
+        <PalantirFinKpiRow>
+          <PalantirFinKpiCard
+            label="Today · Unpaid"
+            value={todayKpi.unpaidCount}
+            sub={`${todayKpi.unpaidCount} open today`}
+            tone="unpaid"
+          />
+          <PalantirFinKpiCard
+            label="Today · Paid"
+            value={todayKpi.paidCount}
+            sub={`${todayKpi.paidCount} completed today`}
+            tone="paid"
+          />
+        </PalantirFinKpiRow>
       )}
 
       <div className="pal-fin-toolbar">
@@ -446,26 +540,21 @@ export function StripeMailOrderView({ franchiseId, showFinancialTotals = true })
               </button>
             }
           />
-          <div className="p-6 max-w-2xl mx-auto w-full space-y-4 pal-fin-new-payment-body">
+          <div className="p-6 max-w-2xl mx-auto w-full space-y-3 pal-fin-new-payment-body pal-fin-new-payment-body-compact">
             {error && <div className="pal-fin-alert">{error}</div>}
 
-            <div className="pal-fin-category-toggle">
-              <button
-                type="button"
-                className={`pal-fin-category-btn ${form.category === 'traffic_fine' ? 'pal-fin-category-btn-active' : ''}`}
-                onClick={() => setForm((f) => ({ ...f, category: 'traffic_fine' }))}
-              >
-                <span className="pal-fin-category-btn-title">Traffic fines</span>
-                <span className="pal-fin-category-btn-sub">SMTP · traffic fines mailbox</span>
-              </button>
-              <button
-                type="button"
-                className={`pal-fin-category-btn ${form.category === 'damage' ? 'pal-fin-category-btn-active' : ''}`}
-                onClick={() => setForm((f) => ({ ...f, category: 'damage' }))}
-              >
-                <span className="pal-fin-category-btn-title">Damage</span>
-                <span className="pal-fin-category-btn-sub">SMTP · damage mailbox</span>
-              </button>
+            <div className="pal-fin-category-toggle pal-fin-category-toggle-3">
+              {CATEGORY_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  className={categoryBtnClass(opt.id, form.category === opt.id, opt.tone)}
+                  onClick={() => setForm((f) => ({ ...f, category: opt.id }))}
+                >
+                  <span className="pal-fin-category-btn-title">{opt.title}</span>
+                  <span className="pal-fin-category-btn-sub">{opt.sub}</span>
+                </button>
+              ))}
             </div>
 
             <label className="block">
@@ -488,10 +577,13 @@ export function StripeMailOrderView({ franchiseId, showFinancialTotals = true })
                 <input type="email" className="pal-fin-input" value={form.customerEmail} onChange={(e) => setForm((f) => ({ ...f, customerEmail: e.target.value }))} />
               </label>
             </div>
-            <label className="block">
-              <span className="pal-fin-field-label">Mail content</span>
-              <textarea className="pal-fin-input min-h-[100px]" value={form.mailContent} onChange={(e) => setForm((f) => ({ ...f, mailContent: e.target.value }))} placeholder="Message body for the customer e-mail…" />
-            </label>
+            <MailComposePreview
+              to={form.customerEmail}
+              subject={mailPreviewSubject({ category: form.category, resNo: form.resNo })}
+              body={form.mailContent}
+              onBodyChange={(value) => setForm((f) => ({ ...f, mailContent: value }))}
+              files={files}
+            />
             <div className="pal-fin-inline-form-row">
               <label className="block">
                 <span className="pal-fin-field-label">Price (CHF) *</span>

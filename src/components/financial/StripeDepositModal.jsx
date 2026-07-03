@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CreditCard, Loader2, X } from 'lucide-react';
+import { CheckCircle2, Loader2, X, XCircle } from 'lucide-react';
 import {
   stripeFinancialCreateDeposit,
   stripeFinancialConfirmDepositCollection,
@@ -16,12 +16,13 @@ import {
   normalizeResCodeInput,
   resCodeNumberPart,
 } from '../../utilities/resCodeInput';
+import { formatStripeDeclineForDisplay } from '../../utilities/stripeDeclineMessages';
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export function StripeDepositModal({ franchiseId, onClose, onSuccess }) {
+export function StripeDepositModal({ franchiseId, fleetCars = [], onClose, onSuccess }) {
   const [step, setStep] = useState('form');
   const [depositAmountChf, setDepositAmountChf] = useState('400');
   const [maxAuthAmountChf, setMaxAuthAmountChf] = useState('3000');
@@ -29,6 +30,8 @@ export function StripeDepositModal({ franchiseId, onClose, onSuccess }) {
   const [customerEmail, setCustomerEmail] = useState('');
   const [resCode, setResCode] = useState(defaultResCodeValue);
   const [plate, setPlate] = useState('');
+  const [plateSuggestOpen, setPlateSuggestOpen] = useState(false);
+  const [declineDetail, setDeclineDetail] = useState(null);
   const [readers, setReaders] = useState([]);
   const [selectedReaderId, setSelectedReaderId] = useState('');
   const [error, setError] = useState('');
@@ -39,6 +42,32 @@ export function StripeDepositModal({ franchiseId, onClose, onSuccess }) {
   const depositIdRef = useRef('');
   const abortRef = useRef(false);
   const inFlightRef = useRef(false);
+  const plateOptions = useMemo(() => {
+    const seen = new Set();
+    const out = [];
+    for (const car of fleetCars || []) {
+      const p = String(car?.plaka || car?.plate || '').trim();
+      if (!p || p === '—' || seen.has(p.toLowerCase())) continue;
+      seen.add(p.toLowerCase());
+      out.push(p);
+    }
+    return out.sort((a, b) => a.localeCompare(b));
+  }, [fleetCars]);
+
+  const plateSuggestions = useMemo(() => {
+    const q = plate.trim().toLowerCase();
+    if (!q) return plateOptions.slice(0, 8);
+    return plateOptions.filter((p) => p.toLowerCase().includes(q)).slice(0, 8);
+  }, [plate, plateOptions]);
+
+  const showPlateSuggest = plateSuggestOpen && plateSuggestions.length > 0;
+
+  const setDeclineError = (err) => {
+    const friendly = formatStripeDeclineForDisplay(err);
+    setDeclineDetail(friendly);
+    setError(friendly.displayText);
+    setStep('declined');
+  };
 
   useEffect(() => {
     stripeFinancialListTerminals({ franchiseId })
@@ -136,6 +165,7 @@ export function StripeDepositModal({ franchiseId, onClose, onSuccess }) {
 
   const handleStart = async () => {
     setError('');
+    setDeclineDetail(null);
     setStatusMessage('');
     setRetryDepositId('');
     if (!customerName.trim()) {
@@ -238,12 +268,10 @@ export function StripeDepositModal({ franchiseId, onClose, onSuccess }) {
       if (createdDepositId) {
         depositIdRef.current = createdDepositId;
         setRetryDepositId(createdDepositId);
-        setError(e?.message || 'Card declined on POS. Remove the card and try another payment method.');
-        setStep('form');
+        setDeclineError(e);
         return;
       }
-      setError(e?.message || 'Deposit failed');
-      setStep('form');
+      setDeclineError(e);
     }
   };
 
@@ -251,6 +279,7 @@ export function StripeDepositModal({ franchiseId, onClose, onSuccess }) {
     const depositId = retryDepositId || depositIdRef.current;
     if (!depositId || !selectedReaderId) return;
     setError('');
+    setDeclineDetail(null);
     abortRef.current = false;
     inFlightRef.current = true;
     setStep('terminal');
@@ -280,9 +309,9 @@ export function StripeDepositModal({ franchiseId, onClose, onSuccess }) {
       } else {
         depositIdRef.current = depositId;
         setRetryDepositId(depositId);
-        setError(e?.message || 'Card declined on POS.');
+        setDeclineError(e);
       }
-      setStep('form');
+      return;
     }
   };
 
@@ -343,9 +372,38 @@ export function StripeDepositModal({ franchiseId, onClose, onSuccess }) {
                 />
                 <small>Type reservation number only — RES- is added automatically.</small>
               </label>
-              <label className="pal-fin-field">
+              <label className="pal-fin-field pal-fin-plate-field">
                 <span>Plate</span>
-                <input value={plate} onChange={(e) => setPlate(e.target.value)} placeholder="ZG108875" className="pal-fin-mono" />
+                <input
+                  value={plate}
+                  onChange={(e) => {
+                    setPlate(e.target.value);
+                    setPlateSuggestOpen(true);
+                  }}
+                  onFocus={() => setPlateSuggestOpen(true)}
+                  onBlur={() => setTimeout(() => setPlateSuggestOpen(false), 150)}
+                  placeholder="ZG108875"
+                  className="pal-fin-mono"
+                  autoComplete="off"
+                />
+                {showPlateSuggest && (
+                  <ul className="pal-fin-plate-suggest" role="listbox">
+                    {plateSuggestions.map((p) => (
+                      <li key={p}>
+                        <button
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            setPlate(p);
+                            setPlateSuggestOpen(false);
+                          }}
+                        >
+                          {p}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </label>
               <label className="pal-fin-field pal-fin-field-full">
                 <span>Customer name *</span>
@@ -394,22 +452,40 @@ export function StripeDepositModal({ franchiseId, onClose, onSuccess }) {
         )}
 
         {showCancelDuringTerminal && (
-          <div className="pal-fin-modal-body pal-fin-modal-center">
-            <Loader2 className="animate-spin" size={32} />
-            <p className="pal-fin-modal-status">{statusMessage || 'Sending to terminal…'}</p>
-            <p className="text-caption">Ask the customer to tap or insert their card. POS shows DEPOSIT.</p>
+          <div className="pal-fin-modal-body pal-fin-terminal-state pal-fin-terminal-state-loading">
+            <div className="pal-fin-terminal-state-icon">
+              <Loader2 className="animate-spin" size={28} />
+            </div>
+            <p className="pal-fin-terminal-state-title">{statusMessage || 'Sending to terminal…'}</p>
+            <p className="pal-fin-terminal-state-detail">Ask the customer to tap or insert their card. POS shows DEPOSIT.</p>
             <p className="pal-fin-terminal-security-note">Cancel closes the POS screen and voids any pending authorization.</p>
           </div>
         )}
 
-        {step === 'done' && (
-          <div className="pal-fin-modal-body pal-fin-modal-center">
-            <CreditCard size={36} className="text-[var(--erpx-brand)]" />
-            <p className="pal-fin-modal-status">Deposit authorized</p>
-            <p className="text-caption">{Number(depositAmountChf).toFixed(2)} CHF hold on card · max {Number(maxAuthAmountChf).toFixed(2)} CHF</p>
-            {tokenSaved && (
-              <span className="pal-fin-token-saved-badge">Token saved</span>
+        {step === 'declined' && (
+          <div className="pal-fin-modal-body pal-fin-terminal-state pal-fin-terminal-state-declined">
+            <div className="pal-fin-terminal-state-icon">
+              <XCircle size={28} />
+            </div>
+            <p className="pal-fin-terminal-state-title">{declineDetail?.title || 'Card declined on POS'}</p>
+            <p className="pal-fin-terminal-state-detail">{declineDetail?.detail || error}</p>
+            {declineDetail?.nextSteps && (
+              <p className="pal-fin-terminal-state-detail">{declineDetail.nextSteps}</p>
             )}
+            {declineDetail?.code && <span className="pal-fin-decline-code">{declineDetail.code}</span>}
+          </div>
+        )}
+
+        {step === 'done' && (
+          <div className="pal-fin-modal-body pal-fin-terminal-state pal-fin-terminal-state-success">
+            <div className="pal-fin-terminal-state-icon">
+              <CheckCircle2 size={28} />
+            </div>
+            <p className="pal-fin-terminal-state-title">Deposit authorized</p>
+            <p className="pal-fin-terminal-state-detail">
+              {Number(depositAmountChf).toFixed(2)} CHF hold on card · max {Number(maxAuthAmountChf).toFixed(2)} CHF
+            </p>
+            {tokenSaved && <span className="pal-fin-token-saved-badge">Token saved</span>}
           </div>
         )}
 
@@ -430,6 +506,18 @@ export function StripeDepositModal({ franchiseId, onClose, onSuccess }) {
             <button type="button" className="gm-btn gm-btn-danger" disabled={aborting} onClick={() => abortSession({ closeModal: false })}>
               {aborting ? 'Cancelling…' : 'Cancel deposit & close POS'}
             </button>
+          )}
+          {step === 'declined' && (
+            <>
+              <button type="button" className="gm-btn gm-btn-secondary" onClick={() => { setStep('form'); setDeclineDetail(null); }}>
+                Back to form
+              </button>
+              {retryDepositId && (
+                <button type="button" className="gm-btn gm-btn-primary" onClick={retryOnTerminal}>
+                  Try another card on POS
+                </button>
+              )}
+            </>
           )}
           {step === 'done' && (
             <button type="button" className="gm-btn gm-btn-primary" onClick={onClose}>Done</button>

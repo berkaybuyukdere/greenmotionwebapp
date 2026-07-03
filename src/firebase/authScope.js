@@ -26,6 +26,23 @@ export function emptyFranchiseLegalBundle() {
 
 export let _franchiseLegalBundle = emptyFranchiseLegalBundle();
 
+/** Mutators — ES module imports are read-only; App.js must use these setters. */
+export function setCurrentAuthUser(value) {
+    _currentAuthUser = value;
+}
+
+export function setCurrentUserProfile(value) {
+    _currentUserProfile = value;
+}
+
+export function setFranchiseIdOverride(value) {
+    _franchiseIdOverride = value;
+}
+
+export function setFranchiseLegalBundle(value) {
+    _franchiseLegalBundle = value;
+}
+
 /** Get a demo-aware collection reference using the current auth state */
 export function collRef(baseName) {
     return getCollectionRef(db, baseName, _currentAuthUser, _currentUserProfile, _franchiseIdOverride);

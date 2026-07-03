@@ -122,6 +122,44 @@ async function assertFinancialCallable(request) {
 
 const STRIPE_FINANCE_ADMIN_ROLES = new Set(['globaladmin', 'superadmin', 'admin']);
 
+function canViewStripeFinancialTotals(profile) {
+  return STRIPE_FINANCE_ADMIN_ROLES.has(normalizeRoleKey(profile?.role));
+}
+
+function localDayKeyInTimezone(timeZone) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
+function isoDayKeyFromIso(iso, timeZone = 'Europe/Zurich') {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
+}
+
+function buildDailyFinancialSummary(rows, { amountField = 'amount', dayKey, timeZone = 'Europe/Zurich' } = {}) {
+  const today = dayKey || localDayKeyInTimezone(timeZone);
+  let count = 0;
+  let volume = 0;
+  for (const row of rows || []) {
+    const ts = row.createdAt || row.paidAt || row.linkSentAt || null;
+    if (isoDayKeyFromIso(ts, timeZone) !== today) continue;
+    count += 1;
+    volume += Number(row[amountField]) || 0;
+  }
+  return { dayKey: today, count, volume };
+}
+
 async function assertFinancialAdminCallable(request) {
   const ctx = await assertFinancialCallable(request);
   const role = normalizeRoleKey(ctx.profile.role);
@@ -552,18 +590,20 @@ async function runCreateDeposit(request) {
 }
 
 async function runListDeposits(request) {
-  await assertFinancialCallable(request);
+  const { profile } = await assertFinancialCallable(request);
   const franchiseId = normalizeFranchiseId(request.data?.franchiseId);
   assertSwitzerlandFranchise(franchiseId);
   const limit = Math.min(Math.max(Number(request.data?.limit) || 50, 1), 100);
+  const syncStripe = request.data?.syncStripe === true;
 
   const snap = await depositsCol(franchiseId).orderBy('createdAt', 'desc').limit(limit).get();
   const deposits = [];
+  const summarySource = [];
 
   for (const docSnap of snap.docs) {
     const row = docSnap.data() || {};
     let mapped = mapDepositDoc(docSnap.id, row);
-    if (row.paymentIntentId) {
+    if (syncStripe && row.paymentIntentId) {
       try {
         const pi = await stripeRequest(
           'GET',
@@ -584,10 +624,28 @@ async function runListDeposits(request) {
         /* keep firestore status */
       }
     }
+    summarySource.push(mapped);
+    if (!canViewStripeFinancialTotals(profile)) {
+      mapped = {
+        ...mapped,
+        initialAmount: null,
+        maxAuthAmount: null,
+        currentHoldAmount: null,
+        capturedAmount: null,
+      };
+    }
     deposits.push(mapped);
   }
 
-  return { deposits, timeZone: CH_TIMEZONE };
+  const visibility = canViewStripeFinancialTotals(profile) ? 'admin' : 'staff';
+  const dailySummary = buildDailyFinancialSummary(summarySource, {
+    amountField: 'currentHoldAmount',
+    timeZone: CH_TIMEZONE,
+  });
+  if (visibility === 'staff') {
+    dailySummary.volume = null;
+  }
+  return { deposits, timeZone: CH_TIMEZONE, visibility, dailySummary };
 }
 
 async function runIncrementDeposit(request) {

@@ -3114,3 +3114,313 @@
 .pal-cust-use-diff-card {
   align-self: flex-start;
 }
+
+/* Mail order — compact form + category accents */
+.pal-fin-category-toggle-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.pal-fin-category-toggle-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.pal-fin-category-btn-active-traffic {
+  border-color: #ea580c !important;
+  background: rgba(234, 88, 12, 0.08) !important;
+  box-shadow: inset 3px 0 0 #ea580c !important;
+}
+
+.pal-fin-category-btn-active-damage,
+.pal-fin-category-btn-active-extra {
+  border-color: var(--vs-violet, #6d5dfc) !important;
+  background: var(--vs-violet-dim, rgba(109, 93, 252, 0.1)) !important;
+  box-shadow: inset 3px 0 0 var(--vs-violet, #6d5dfc) !important;
+}
+
+.pal-fin-category-btn-active-walk {
+  border-color: var(--erpx-brand, #0969da) !important;
+  background: rgba(9, 105, 218, 0.08) !important;
+  box-shadow: inset 3px 0 0 var(--erpx-brand, #0969da) !important;
+}
+
+.pal-fin-new-payment-body-compact {
+  padding: 1rem 1.25rem !important;
+  gap: 0.65rem !important;
+}
+
+.pal-fin-new-payment-body-compact .pal-fin-inline-form-row {
+  gap: 0.65rem;
+}
+
+.pal-fin-new-payment-body-compact label.block {
+  margin: 0;
+}
+
+/* Palantir mail compose preview */
+.pal-fin-mail-compose {
+  border: 1px solid var(--erpx-border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--erpx-surface);
+}
+
+.pal-fin-mail-compose-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--erpx-border);
+  background: var(--erpx-subtle);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--erpx-ink-muted);
+}
+
+.pal-fin-mail-compose-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-bottom: 1px solid var(--erpx-border);
+}
+
+.pal-fin-mail-compose-row {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--erpx-border);
+  font-size: 12px;
+}
+
+.pal-fin-mail-compose-row:last-child {
+  border-bottom: none;
+}
+
+.pal-fin-mail-compose-row-body {
+  align-items: flex-start;
+}
+
+.pal-fin-mail-compose-row-body .pal-fin-mail-compose-label {
+  padding-top: 6px;
+}
+
+.pal-fin-mail-compose-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--erpx-ink-muted);
+}
+
+.pal-fin-mail-compose-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--erpx-ink);
+  padding: 2px 0;
+  outline: none;
+}
+
+.pal-fin-mail-compose-input::placeholder {
+  color: var(--erpx-ink-muted);
+}
+
+.pal-fin-mail-compose-textarea {
+  min-height: 88px;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.5;
+}
+
+.pal-fin-mail-compose-preview {
+  padding: 12px 14px;
+  background: var(--erpx-canvas);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--erpx-ink-secondary);
+  white-space: pre-wrap;
+}
+
+.pal-fin-mail-compose-attachments {
+  padding: 8px 12px;
+  border-top: 1px solid var(--erpx-border);
+  background: var(--erpx-subtle);
+}
+
+.pal-fin-mail-compose-attachments ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  font-size: 11px;
+  color: var(--erpx-ink-secondary);
+}
+
+/* Terminal deposit states */
+.pal-fin-terminal-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 28px 18px;
+  text-align: center;
+}
+
+.pal-fin-terminal-state-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 1px solid var(--erpx-border);
+  background: var(--erpx-subtle);
+}
+
+.pal-fin-terminal-state-loading .pal-fin-terminal-state-icon {
+  border-color: var(--erpx-brand);
+  color: var(--erpx-brand);
+}
+
+.pal-fin-terminal-state-success .pal-fin-terminal-state-icon {
+  border-color: var(--erpx-green-border);
+  background: var(--erpx-green-bg);
+  color: var(--erpx-green);
+}
+
+.pal-fin-terminal-state-declined .pal-fin-terminal-state-icon {
+  border-color: var(--erpx-red-border);
+  background: var(--erpx-red-bg);
+  color: var(--erpx-red);
+}
+
+.pal-fin-terminal-state-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--erpx-ink);
+}
+
+.pal-fin-terminal-state-detail {
+  margin: 0;
+  font-size: 12px;
+  color: var(--erpx-ink-muted);
+  max-width: 36ch;
+  line-height: 1.5;
+}
+
+/* Plate autocomplete */
+.pal-fin-plate-field {
+  position: relative;
+}
+
+.pal-fin-plate-suggest {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  border: 1px solid var(--erpx-border);
+  border-radius: 4px;
+  background: var(--erpx-surface);
+  box-shadow: 0 8px 24px rgba(8, 12, 20, 0.12);
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.pal-fin-plate-suggest li button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-family: var(--erpx-font-data, ui-monospace, monospace);
+  cursor: pointer;
+  color: var(--erpx-ink);
+}
+
+.pal-fin-plate-suggest li button:hover {
+  background: var(--erpx-subtle);
+}
+
+/* Daily reports — split table + day drawer */
+.pal-fin-report-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  gap: 14px;
+  align-items: start;
+  padding: 0 18px 18px;
+}
+
+.pal-fin-report-day-drawer {
+  border: 1px solid var(--erpx-border);
+  border-radius: 10px;
+  background: var(--erpx-surface);
+  position: sticky;
+  top: 12px;
+}
+
+.pal-fin-report-day-drawer-empty {
+  padding: 24px 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--erpx-ink-muted);
+}
+
+.pal-fin-report-type-grid {
+  display: grid;
+  gap: 8px;
+  padding: 0 14px 14px;
+}
+
+.pal-fin-report-type-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--erpx-border);
+  border-radius: 6px;
+  background: var(--erpx-canvas);
+}
+
+.pal-fin-report-type-card strong {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pal-fin-report-type-card span {
+  font-size: 11px;
+  color: var(--erpx-ink-muted);
+}
+
+.pal-cust-table-symmetric th,
+.pal-cust-table-symmetric td {
+  width: 33.33%;
+}
+
+.pal-cust-walk-in-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 1100px) {
+  .pal-fin-category-toggle-3,
+  .pal-fin-category-toggle-4 {
+    grid-template-columns: 1fr 1fr;
+  }
+  .pal-fin-report-split {
+    grid-template-columns: 1fr;
+  }
+  .pal-fin-report-day-drawer {
+    position: static;
+  }
+}

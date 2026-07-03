@@ -98,6 +98,8 @@ export function resolveFleetCarDisplay(
 
     if ((!marka || !model || !kategori) && linkedExits.length) {
         for (const exit of linkedExits) {
+            if (!marka) marka = String(exit.aracMarka || exit.marka || '').trim();
+            if (!model) model = String(exit.aracModel || exit.model || '').trim();
             const exitPlateKey = plateDedupeKeyForFranchise(
                 franchiseId,
                 exit.aracPlaka || exit.plaka || plaka
@@ -161,6 +163,34 @@ export function mergeHasarKayitlariFromCars(cars) {
     return merged;
 }
 
+/** Hide orphan Firestore stubs from list UI — does not delete or mutate data. */
+export function isEmptyFleetListStub(car, display, { damageCount = 0, checkoutCount = 0 } = {}) {
+    const empty = (v) => !String(v || '').trim() || v === '—';
+    const hasPlate = !empty(display?.plaka);
+    const hasVehicle = !empty(display?.vehicleLabel);
+    if (hasPlate || hasVehicle) return false;
+    if (damageCount > 0 || checkoutCount > 0 || activeDamageCount(car) > 0) return false;
+    // WheelSys category / id alone does not justify a blank list row.
+    return true;
+}
+
+function mergeFleetCarGroup(franchiseId, group) {
+    if (group.length === 1) return group[0];
+    const canonical = pickCanonicalFleetCar(group);
+    const canonicalId = String(canonical.documentId || canonical.id || '');
+    const duplicateIds = group
+        .map((c) => String(c.documentId || c.id || ''))
+        .filter((id) => id && id !== canonicalId);
+    const mergedAracIds = group.map((c) => c.id || c.documentId).filter(Boolean);
+    return {
+        ...canonical,
+        hasarKayitlari: mergeHasarKayitlariFromCars(group),
+        _fleetMergedCount: group.length,
+        _fleetDuplicateDocumentIds: duplicateIds,
+        _fleetMergedAracIds: mergedAracIds,
+    };
+}
+
 /**
  * One row per plate for lists, analytics, and KPIs.
  * @returns {Array<object>} vehicles with optional `_fleetMergedCount`, `_fleetDuplicateDocumentIds`
@@ -178,23 +208,41 @@ export function dedupeFleetCarsByPlate(franchiseId, cars) {
 
     const out = [];
     for (const group of groups.values()) {
-        if (group.length === 1) {
-            out.push(group[0]);
-            continue;
-        }
-        const canonical = pickCanonicalFleetCar(group);
-        const canonicalId = String(canonical.documentId || canonical.id || '');
-        const duplicateIds = group
-            .map((c) => String(c.documentId || c.id || ''))
-            .filter((id) => id && id !== canonicalId);
-        const mergedAracIds = group.map((c) => c.id || c.documentId).filter(Boolean);
-        out.push({
-            ...canonical,
-            hasarKayitlari: mergeHasarKayitlariFromCars(group),
-            _fleetMergedCount: group.length,
-            _fleetDuplicateDocumentIds: duplicateIds,
-            _fleetMergedAracIds: mergedAracIds,
+        out.push(mergeFleetCarGroup(franchiseId, group));
+    }
+    return out;
+}
+
+/**
+ * Display dedupe: merges by stored plate OR plate resolved from linked checkouts.
+ * No Firestore writes — damages from merged docs stay on the canonical row in memory.
+ */
+export function dedupeFleetCarsForDisplay(franchiseId, cars, { exitIslemleri = [] } = {}) {
+    if (!Array.isArray(cars) || cars.length === 0) return [];
+
+    const resolvePlateKey = (car) => {
+        const direct = plateDedupeKeyForFranchise(franchiseId, car?.plaka);
+        if (direct) return direct;
+        const display = resolveFleetCarDisplay(car, {
+            exitIslemleri,
+            fleetCars: cars,
+            franchiseId,
         });
+        const plaka = display.plaka && display.plaka !== '—' ? display.plaka : '';
+        return plaka ? plateDedupeKeyForFranchise(franchiseId, plaka) : '';
+    };
+
+    const groups = new Map();
+    for (const car of cars) {
+        const plateKey = resolvePlateKey(car);
+        const groupKey = plateKey || `__doc:${String(car.documentId || car.id || '')}`;
+        if (!groups.has(groupKey)) groups.set(groupKey, []);
+        groups.get(groupKey).push(car);
+    }
+
+    const out = [];
+    for (const group of groups.values()) {
+        out.push(mergeFleetCarGroup(franchiseId, group));
     }
     return out;
 }

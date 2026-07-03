@@ -46,6 +46,7 @@ import {
     matchingBranchStorageKey,
 } from '../utilities/turkeyGarageBranches';
 import { resolveOperationalFranchiseId } from '../utilities/franchiseIdResolve';
+import { resolveSessionFranchiseId } from '../utilities/userAccess';
 import {
     StripeCustomerCell,
     StripeStatusBadge,
@@ -704,26 +705,24 @@ export function FrontDeskCustomersView({
     const [turkeyGarageBranches, setTurkeyGarageBranches] = useState([]);
     const [turkeyBranchesLoading, setTurkeyBranchesLoading] = useState(false);
 
-    const collRef = useMemo(
-        () => getCollectionRef(db, 'frontDeskCustomers', user, userProfile, franchiseIdOverride),
-        [db, user, userProfile, franchiseIdOverride]
-    );
-
-    const kioskFranchiseId = useMemo(
+    /** Single franchise key for kiosk URL, Firestore listener, and handover — must match. */
+    const operationalFranchiseId = useMemo(
         () =>
             resolveOperationalFranchiseId(
-                franchiseIdOverride || userProfile?.franchiseId || userProfile?.countryCode || 'CH'
-            ),
-        [userProfile, franchiseIdOverride]
-    );
-
-    const handoverFranchiseId = useMemo(
-        () =>
-            resolveOperationalFranchiseId(
-                effectiveFranchiseIdProp || franchiseIdOverride || userProfile?.franchiseId || userProfile?.countryCode || 'CH'
+                effectiveFranchiseIdProp ||
+                    franchiseIdOverride ||
+                    resolveSessionFranchiseId(userProfile)
             ),
         [effectiveFranchiseIdProp, franchiseIdOverride, userProfile]
     );
+
+    const collRef = useMemo(
+        () => getCollectionRef(db, 'frontDeskCustomers', user, userProfile, operationalFranchiseId),
+        [db, user, userProfile, operationalFranchiseId]
+    );
+
+    const kioskFranchiseId = operationalFranchiseId;
+    const handoverFranchiseId = operationalFranchiseId;
 
     const isTurkeyHandover = handoverFranchiseId.startsWith('TR');
 
@@ -2085,7 +2084,7 @@ export function FrontDeskCustomersView({
                 </div>
             </div>
 
-            <div className="hidden md:block rounded-xl border border-[var(--erpx-border)] bg-[var(--erpx-surface)] shadow-[var(--erpx-shadow-sm)] overflow-x-auto">
+            <div className="hidden md:block gm-table-wrap rounded-xl overflow-x-auto">
                 <div className="flex flex-wrap items-center gap-2 px-3 py-3 border-b border-[var(--erpx-border)]">
                     {[
                         { id: 'pending', label: 'Pending' },

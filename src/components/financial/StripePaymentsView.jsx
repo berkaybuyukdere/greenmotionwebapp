@@ -105,7 +105,7 @@ function SummaryCard({ label, count, total, currency, variant }) {
   );
 }
 
-export function StripePaymentsView({ franchiseId, showFinancialTotals = true }) {
+export function StripePaymentsView({ franchiseId, showFinancialTotals = true, fleetCars = [] }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [configured, setConfigured] = useState(true);
@@ -115,6 +115,7 @@ export function StripePaymentsView({ franchiseId, showFinancialTotals = true }) 
   const [transactions, setTransactions] = useState([]);
   const [deposits, setDeposits] = useState([]);
   const [summary, setSummary] = useState(null);
+  const [dailySummary, setDailySummary] = useState(null);
   const [syncedAt, setSyncedAt] = useState('');
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
@@ -137,6 +138,7 @@ export function StripePaymentsView({ franchiseId, showFinancialTotals = true }) 
       ]);
       setTransactions(payRes.transactions || []);
       setSummary(payRes.summary || null);
+      setDailySummary(payRes.dailySummary || null);
       setDeposits(depRes.deposits || []);
       setAudit(
         (auditRes.entries || []).filter((a) =>
@@ -425,6 +427,23 @@ export function StripePaymentsView({ franchiseId, showFinancialTotals = true }) 
         </PalantirFinKpiRow>
       )}
 
+      {dailySummary && !showFinancialTotals && (
+        <PalantirFinKpiRow>
+          <PalantirFinKpiCard
+            label="Today · Deposits"
+            value={dailySummary.count ?? 0}
+            sub={`${dailySummary.count ?? 0} transaction${dailySummary.count === 1 ? '' : 's'} today`}
+            tone="hold"
+          />
+          <PalantirFinKpiCard
+            label="Today · Volume"
+            value={formatStripeMoney(dailySummary.volume, currency)}
+            sub={`Zurich day ${dailySummary.dayKey || dayKey}`}
+            tone="paid"
+          />
+        </PalantirFinKpiRow>
+      )}
+
       <StripeListToolbar
         searchValue={search}
         onSearchChange={setSearch}
@@ -453,6 +472,7 @@ export function StripePaymentsView({ franchiseId, showFinancialTotals = true }) 
       {showDepositModal && (
         <StripeDepositModal
           franchiseId={franchiseId}
+          fleetCars={fleetCars}
           onClose={() => setShowDepositModal(false)}
           onSuccess={load}
         />

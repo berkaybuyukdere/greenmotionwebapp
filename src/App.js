@@ -134,11 +134,13 @@ import {
 } from './utilities/fleetListImport';
 import {
     dedupeFleetCarsByPlate,
+    dedupeFleetCarsForDisplay,
     restoreFleetMergeSoftDeletes,
     isFleetMergeHiddenVehicle,
     findFleetCarByAracId,
     fleetCarMatchesAracId,
     resolveFleetCarDisplay,
+    isEmptyFleetListStub,
 } from './utilities/fleetVehicleDedupe';
 import { setActiveFranchiseCurrencyCode, getActiveFranchiseCurrencyCode } from './franchiseCurrency';
 import { FRANCHISE_DEFAULTS_BY_COUNTRY_ID } from './franchiseCountryDefaults';
@@ -167,6 +169,10 @@ import {
     _currentUserProfile,
     _franchiseIdOverride,
     _franchiseLegalBundle,
+    setCurrentAuthUser,
+    setCurrentUserProfile,
+    setFranchiseIdOverride,
+    setFranchiseLegalBundle,
     collRef,
     docRefHelper,
     isCurrentUserDemo,
@@ -1233,8 +1239,8 @@ function ErpxAppShell() {
         const finishSignedOut = () => {
             if (cancelled) return;
             setUser(null);
-            _currentAuthUser = null;
-            _currentUserProfile = null;
+            setCurrentAuthUser(null);
+            setCurrentUserProfile(null);
             setProfileLoading(false);
             markAuthChecked();
         };
@@ -1254,18 +1260,27 @@ function ErpxAppShell() {
             window.clearTimeout(safetyTimer);
             if (cancelled) return;
             setUser(nextUser);
-            _currentAuthUser = nextUser;
+            setCurrentAuthUser(nextUser);
             markAuthChecked();
             if (nextUser) {
                 setProfileLoading(true);
-                const profile = await loadUserProfile(nextUser.uid);
-                if (cancelled) return;
-                setUserProfile(profile || null);
-                _currentUserProfile = profile || null;
-                setProfileLoading(false);
+                try {
+                    const profile = await loadUserProfile(nextUser.uid);
+                    if (cancelled) return;
+                    setUserProfile(profile || null);
+                    setCurrentUserProfile(profile || null);
+                } catch (error) {
+                    console.error('Error syncing auth profile:', error);
+                    if (!cancelled) {
+                        setUserProfile(null);
+                        setCurrentUserProfile(null);
+                    }
+                } finally {
+                    if (!cancelled) setProfileLoading(false);
+                }
             } else {
                 setUserProfile(null);
-                _currentUserProfile = null;
+                setCurrentUserProfile(null);
                 setProfileLoading(false);
             }
         });
@@ -1485,10 +1500,10 @@ function AppContent({ user, userProfile: initialUserProfile }) {
         [effectiveFranchiseId]
     );
 
-    /** One row per plate — matches real fleet size; raw `cars` may include duplicate Firestore docs. */
+    /** One row per plate — merges exit-linked orphans; raw `cars` may include duplicate Firestore docs. */
     const fleetCars = useMemo(
-        () => dedupeFleetCarsByPlate(effectiveFranchiseId, cars),
-        [effectiveFranchiseId, cars]
+        () => dedupeFleetCarsForDisplay(effectiveFranchiseId, cars, { exitIslemleri }),
+        [effectiveFranchiseId, cars, exitIslemleri]
     );
 
     const dashboardBootstrapKpis = useMemo(
@@ -1540,11 +1555,11 @@ function AppContent({ user, userProfile: initialUserProfile }) {
                     const seg = String(effectiveFranchiseId).split('_')[0]?.toLowerCase() ?? '';
                     const def = FRANCHISE_DEFAULTS_BY_COUNTRY_ID[seg];
                     setActiveFranchiseCurrencyCode(def?.currency || 'CHF');
-                    _franchiseLegalBundle = emptyFranchiseLegalBundle();
+                    setFranchiseLegalBundle(emptyFranchiseLegalBundle());
                     return;
                 }
                 const data = snap.data() || {};
-                _franchiseLegalBundle = {
+                setFranchiseLegalBundle({
                     pdfLegalTextTr: String(data.pdfLegalTextTr || '').trim(),
                     pdfLegalTextEn: String(data.pdfLegalTextEn || '').trim(),
                     pdfLegalTextCheckoutTr: String(data.pdfLegalTextCheckoutTr || '').trim(),
@@ -1553,7 +1568,7 @@ function AppContent({ user, userProfile: initialUserProfile }) {
                     pdfLegalTextReturnEn: String(data.pdfLegalTextReturnEn || '').trim(),
                     pdfLegalTextDamageTr: String(data.pdfLegalTextDamageTr || '').trim(),
                     pdfLegalTextDamageEn: String(data.pdfLegalTextDamageEn || '').trim(),
-                };
+                });
                 const c = data.currency;
                 if (c && typeof c === 'string') {
                     setActiveFranchiseCurrencyCode(c);
@@ -1565,7 +1580,7 @@ function AppContent({ user, userProfile: initialUserProfile }) {
             },
             () => {
                 setActiveFranchiseCurrencyCode('CHF');
-                _franchiseLegalBundle = emptyFranchiseLegalBundle();
+                setFranchiseLegalBundle(emptyFranchiseLegalBundle());
             }
         );
         return () => unsub();
@@ -1812,7 +1827,7 @@ function AppContent({ user, userProfile: initialUserProfile }) {
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
-            _currentAuthUser = user;
+            setCurrentAuthUser(user);
 
             if (sessionGuardUnsub.current) {
                 sessionGuardUnsub.current();
@@ -1836,13 +1851,13 @@ function AppContent({ user, userProfile: initialUserProfile }) {
                     profile = await loadUserProfile(user.uid);
                 }
                 setUserProfile(profile || null);
-                _currentUserProfile = profile || null;
+                setCurrentUserProfile(profile || null);
                 await runSessionGate(user.uid, profile);
             } else {
                 const signedOutUid = _currentAuthUser?.uid;
-                _currentUserProfile = null;
-                _currentAuthUser = null;
-                _franchiseIdOverride = null;
+                setCurrentUserProfile(null);
+                setCurrentAuthUser(null);
+                setFranchiseIdOverride(null);
                 globalAdminRestoreUidRef.current = '';
                 if (signedOutUid) clearDashboardBootstrapForUser(signedOutUid);
                 localStorage.removeItem(SESSION_TOKEN_KEY);
@@ -2125,8 +2140,8 @@ function AppContent({ user, userProfile: initialUserProfile }) {
     // Attach realtime listeners when auth profile or global-admin "view as" franchise changes.
     useEffect(() => {
         if (!user || !userProfile) {
-            _franchiseIdOverride = null;
-            _currentUserProfile = null;
+            setFranchiseIdOverride(null);
+            setCurrentUserProfile(null);
             if (realtimeListenersCleanupRef.current) {
                 realtimeListenersCleanupRef.current();
                 realtimeListenersCleanupRef.current = null;
@@ -2134,13 +2149,13 @@ function AppContent({ user, userProfile: initialUserProfile }) {
             return;
         }
 
-        _currentUserProfile = userProfile;
+        setCurrentUserProfile(userProfile);
         if (isGlobalAdmin(userProfile) && globalAdminFranchiseContext) {
-            _franchiseIdOverride = String(globalAdminFranchiseContext).toUpperCase();
+            setFranchiseIdOverride(String(globalAdminFranchiseContext).toUpperCase());
         } else if (userNeedsLoginFranchiseOverride(userProfile)) {
-            _franchiseIdOverride = resolveSessionFranchiseId(userProfile);
+            setFranchiseIdOverride(resolveSessionFranchiseId(userProfile));
         } else {
-            _franchiseIdOverride = null;
+            setFranchiseIdOverride(null);
         }
 
         if (realtimeListenersCleanupRef.current) {
@@ -2192,8 +2207,12 @@ function AppContent({ user, userProfile: initialUserProfile }) {
 
     const fleetMergeRestoreAttemptedRef = useRef('');
 
+    /** Legacy merge-restore disabled — it re-exposed duplicate UUID rows and inflated the Vehicles list. */
+    const FLEET_MERGE_AUTO_RESTORE = false;
+
     /** Silently undo prior merge soft-deletes so iOS + web show every vehicle UUID again. */
     useEffect(() => {
+        if (!FLEET_MERGE_AUTO_RESTORE) return;
         const fid = String(effectiveFranchiseId || '').toUpperCase();
         if (!fid || !user?.uid || fleetMergeHiddenCars.length === 0) return;
         if (fleetMergeRestoreAttemptedRef.current === fid) return;
@@ -2533,6 +2552,7 @@ function AppContent({ user, userProfile: initialUserProfile }) {
                                     <div className="erpx-view-layer w-full min-w-0">
                                         <CarsView
                                             cars={fleetCars}
+                                            rawFleetCars={cars}
                                             exitIslemleri={exitIslemleri}
                                             returns={returns}
                                             officeOperations={officeOperations}
@@ -2673,7 +2693,7 @@ function AppContent({ user, userProfile: initialUserProfile }) {
                                 )}
                                 {currentView === 'stripePayments' && canAccessStripeFinance && (
                                     <div className="erpx-view-layer w-full min-w-0">
-                                        <StripePaymentsView franchiseId={effectiveFranchiseId || 'ch'} showFinancialTotals={showStripeFinancialTotals} />
+                                        <StripePaymentsView franchiseId={effectiveFranchiseId || 'ch'} showFinancialTotals={showStripeFinancialTotals} fleetCars={fleetCars} />
                                     </div>
                                 )}
                                 {currentView === 'stripeMailOrder' && canAccessStripeFinance && (
@@ -2816,8 +2836,8 @@ function AppContent({ user, userProfile: initialUserProfile }) {
                                             storage={storage}
                                             user={user}
                                             userProfile={userProfile}
-                                            franchiseIdOverride={globalAdminFranchiseContext || null}
-                                            cars={cars}
+                                            franchiseIdOverride={globalAdminFranchiseContext || effectiveFranchiseId || null}
+                                            cars={fleetCars}
                                             effectiveFranchiseId={effectiveFranchiseId}
                                             functionsApp={functionsApp}
                                         />
@@ -7772,6 +7792,7 @@ function vehicleCategoryDocIdFromName(name) {
 
 function CarsView({
     cars,
+    rawFleetCars = [],
     exitIslemleri = [],
     returns = [],
     officeOperations = [],
@@ -8055,10 +8076,24 @@ function CarsView({
                 const n = checkoutCountLookup.byId.get(id);
                 if (n) return n;
             }
+            const mergedIds = car._fleetMergedAracIds || [];
+            for (const id of mergedIds) {
+                const n = checkoutCountLookup.byId.get(String(id));
+                if (n) return n;
+            }
             const plate = car.plaka && String(car.plaka).toLowerCase().trim();
-            return plate ? checkoutCountLookup.byPlate.get(plate) || 0 : 0;
+            if (plate) return checkoutCountLookup.byPlate.get(plate) || 0;
+            const displayPlate = resolveFleetCarDisplay(car, {
+                exitIslemleri,
+                fleetCars: rawFleetCars.length ? rawFleetCars : cars,
+                franchiseId,
+            }).plaka;
+            const resolved = displayPlate && displayPlate !== '—'
+                ? String(displayPlate).toLowerCase().trim()
+                : '';
+            return resolved ? checkoutCountLookup.byPlate.get(resolved) || 0 : 0;
         },
-        [checkoutCountLookup]
+        [checkoutCountLookup, exitIslemleri, rawFleetCars, cars, franchiseId]
     );
 
     const countActiveDamages = React.useCallback(
@@ -8067,8 +8102,8 @@ function CarsView({
     );
 
     const fleetDisplayContext = React.useMemo(
-        () => ({ exitIslemleri, fleetCars: cars, franchiseId }),
-        [exitIslemleri, cars, franchiseId]
+        () => ({ exitIslemleri, fleetCars: rawFleetCars.length ? rawFleetCars : cars, franchiseId }),
+        [exitIslemleri, rawFleetCars, cars, franchiseId]
     );
 
     const fleetDisplayForCar = React.useCallback(
@@ -8081,6 +8116,12 @@ function CarsView({
         if (fleetCategoryFilter !== 'all') {
             rows = rows.filter((c) => (c.kategori || 'Unknown') === fleetCategoryFilter);
         }
+        rows = rows.filter((car) => {
+            const display = fleetDisplayForCar(car);
+            const dmg = countActiveDamages(car);
+            const checkouts = getCheckoutCountForCar(car);
+            return !isEmptyFleetListStub(car, display, { damageCount: dmg, checkoutCount: checkouts });
+        });
         return [...rows].sort((a, b) => {
             const catCmp = (a.kategori || '').localeCompare(b.kategori || '');
             if (catCmp !== 0) return catCmp;
@@ -8091,7 +8132,7 @@ function CarsView({
             if (emptyA !== emptyB) return emptyA ? 1 : -1;
             return plateA.localeCompare(plateB, undefined, { sensitivity: 'base' });
         });
-    }, [searchResults, fleetCategoryFilter, fleetDisplayForCar]);
+    }, [searchResults, fleetCategoryFilter, fleetDisplayForCar, countActiveDamages, getCheckoutCountForCar]);
 
     const toggleCatMgrLabel = (label) => {
         setCatMgrSelected((prev) => (prev.includes(label) ? prev.filter((x) => x !== label) : [...prev, label]));

@@ -26,6 +26,47 @@ const STRIPE_FINANCE_ROLES = new Set([
   'viewer',
 ]);
 
+const STRIPE_FINANCE_ADMIN_ROLES = new Set(['globaladmin', 'superadmin', 'admin']);
+
+function canViewStripeFinancialTotals(profile) {
+  return STRIPE_FINANCE_ADMIN_ROLES.has(normalizeRoleKey(profile?.role));
+}
+
+function isoDayKeyFromIso(iso, timeZone = 'Europe/Zurich') {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
+}
+
+function buildDailyFinancialSummary(rows, { amountField = 'amount', dayKey, timeZone = 'Europe/Zurich' } = {}) {
+  const today = dayKey || localDayKeyInTimezone(timeZone);
+  let count = 0;
+  let volume = 0;
+  for (const row of rows || []) {
+    const ts = row.createdAt || row.paidAt || row.linkSentAt || null;
+    if (isoDayKeyFromIso(ts, timeZone) !== today) continue;
+    count += 1;
+    volume += Number(row[amountField]) || 0;
+  }
+  return { dayKey: today, count, volume };
+}
+
+function redactMailOrderForStaff(row, profile) {
+  if (canViewStripeFinancialTotals(profile)) return row;
+  return { ...row, amount: null };
+}
+
+function redactPaymentForStaff(row, profile) {
+  if (canViewStripeFinancialTotals(profile)) return row;
+  return { ...row, amount: null, holdAmount: null, capturedAmount: null };
+}
+
 function normalizeRoleKey(role) {
   return String(role || '')
     .toLowerCase()
@@ -522,8 +563,13 @@ async function runGetConfig(request) {
   };
 }
 
+function redactDisputeForStaff(dispute, profile) {
+  if (canViewStripeFinancialTotals(profile)) return dispute;
+  return { ...dispute, amount: null };
+}
+
 async function runListDisputes(request) {
-  const { uid } = await assertFinancialCallable(request);
+  const { uid, profile } = await assertFinancialCallable(request);
   const data = request.data || {};
   const franchiseId = normalizeFranchiseId(data.franchiseId);
   assertSwitzerlandFranchise(franchiseId);
@@ -534,7 +580,7 @@ async function runListDisputes(request) {
   if (startingAfter) params.starting_after = startingAfter;
 
   const result = await stripeRequest('GET', '/disputes', params);
-  const disputes = (result.data || []).map(mapDispute);
+  const disputes = (result.data || []).map(mapDispute).map((d) => redactDisputeForStaff(d, profile));
   await writeAudit(franchiseId, uid, 'list_disputes', { count: disputes.length });
   return {
     disputes,
@@ -544,7 +590,7 @@ async function runListDisputes(request) {
 }
 
 async function runGetDispute(request) {
-  const { uid } = await assertFinancialCallable(request);
+  const { uid, profile } = await assertFinancialCallable(request);
   const data = request.data || {};
   const franchiseId = normalizeFranchiseId(data.franchiseId);
   assertSwitzerlandFranchise(franchiseId);
@@ -555,7 +601,7 @@ async function runGetDispute(request) {
     expand: ['charge', 'charge.payment_intent', 'charge.customer'],
   });
   await writeAudit(franchiseId, uid, 'get_dispute', { disputeId });
-  return { dispute: mapDispute(d) };
+  return { dispute: redactDisputeForStaff(mapDispute(d), profile) };
 }
 
 async function runListProducts(request) {
@@ -1547,11 +1593,12 @@ async function runRetryDirectCardSavedPayment(request) {
 }
 
 async function runListMailOrders(request) {
-  const { uid } = await assertFinancialCallable(request);
+  const { uid, profile } = await assertFinancialCallable(request);
   const data = request.data || {};
   const franchiseId = normalizeFranchiseId(data.franchiseId);
   assertSwitzerlandFranchise(franchiseId);
   const limit = Math.min(Math.max(Number(data.limit) || 100, 1), 200);
+  const syncStripe = data.syncStripe === true;
 
   const snap = await mailOrdersCol(franchiseId)
     .orderBy('createdAt', 'desc')
@@ -1594,21 +1641,28 @@ async function runListMailOrders(request) {
       reminder2Status: row.reminder2Status || 'planned',
       reminderSendingEnabled: row.reminderSendingEnabled === true,
       category: row.category || '',
-      customerName: row.customerName || '',
+      customerName: row.customerName || row.cardholderName || '',
       emailSentAt: row.emailSentAt?.toDate?.()?.toISOString?.() || null,
       emailSentOk: row.emailSentOk === true,
       documents: row.documents || [],
     });
   });
 
-  const orders = await Promise.all(rows.map((row) => syncMailOrderPaymentStatus(row)));
-  const enriched = orders.map((row) => {
+  const syncedRows = syncStripe
+    ? await Promise.all(rows.map((row) => syncMailOrderPaymentStatus(row)))
+    : rows;
+  const visibility = canViewStripeFinancialTotals(profile) ? 'admin' : 'staff';
+  const dailySummary = buildDailyFinancialSummary(syncedRows, { amountField: 'amount' });
+  if (visibility === 'staff') {
+    dailySummary.volume = null;
+  }
+  const enriched = syncedRows.map((row) => {
     const safe = enrichMailOrderRow(row);
     delete safe.accessToken;
-    return safe;
+    return redactMailOrderForStaff(safe, profile);
   });
-  await writeAudit(franchiseId, uid, 'list_mail_orders', { count: enriched.length });
-  return { orders: enriched };
+  await writeAudit(franchiseId, uid, 'list_mail_orders', { count: enriched.length, visibility });
+  return { orders: enriched, visibility, dailySummary };
 }
 
 const CH_TIMEZONE = 'Europe/Zurich';
@@ -1814,7 +1868,7 @@ function buildSummary(transactions) {
 }
 
 async function runListPayments(request) {
-  const { uid } = await assertFinancialCallable(request);
+  const { uid, profile } = await assertFinancialCallable(request);
   const data = request.data || {};
   const franchiseId = normalizeFranchiseId(data.franchiseId);
   assertSwitzerlandFranchise(franchiseId);
@@ -1932,17 +1986,8 @@ async function runListPayments(request) {
     if (!createdAt) continue;
     if (!dayFilter(Math.floor(createdAt.getTime() / 1000))) continue;
 
-    let synced = row;
-    synced = await syncMailOrderPaymentStatus({
-      id: docSnap.id,
-      franchiseId,
-      ...row,
-      checkoutSessionId: row.checkoutSessionId || row.stripeSessionId,
-      status: row.status === 'paid' ? 'paid' : 'unpaid',
-    });
-
     const sessionId = row.checkoutSessionId || row.stripeSessionId;
-    const piKey = synced.stripePaymentIntentId || synced.paymentIntentId;
+    const piKey = row.stripePaymentIntentId || row.paymentIntentId;
     if (piKey && byKey.has(piKey)) continue;
     const key = sessionId || `mail_${docSnap.id}`;
     if (byKey.has(key)) continue;
@@ -1952,17 +1997,17 @@ async function runListPayments(request) {
       paymentIntentId: piKey || null,
       chargeId: null,
       checkoutSessionId: sessionId,
-      bucket: synced.status === 'paid' ? 'successful' : 'pending',
-      status: synced.status === 'paid' ? 'paid' : 'unpaid',
-      statusLabel: synced.status === 'paid' ? 'Succeeded' : 'Pending',
+      bucket: row.status === 'paid' ? 'successful' : 'pending',
+      status: row.status === 'paid' ? 'paid' : 'unpaid',
+      statusLabel: row.status === 'paid' ? 'Succeeded' : 'Pending',
       amount: row.amount,
-      amountReceived: synced.status === 'paid' ? row.amount : 0,
+      amountReceived: row.status === 'paid' ? row.amount : 0,
       currency: row.currency || 'chf',
       channel: 'mail_order',
       channelLabel: 'Mail order',
       flowType: null,
       paymentMethod: 'link',
-      customerName: row.customerName || '',
+      customerName: row.customerName || row.cardholderName || '',
       description: row.productName || row.description || '',
       customerEmail: row.customerEmail || '',
       plate: row.plate || '',
@@ -2025,10 +2070,28 @@ async function runListPayments(request) {
   }
 
   const summary = buildSummary(transactions);
+  const visibility = canViewStripeFinancialTotals(profile) ? 'admin' : 'staff';
+  const dailySummary = buildDailyFinancialSummary(transactions, {
+    amountField: 'amountReceived',
+    dayKey,
+    timeZone,
+  });
+  const safeTransactions = visibility === 'admin'
+    ? transactions
+    : transactions.map((tx) => redactPaymentForStaff(tx, profile));
+  const safeSummary = visibility === 'admin'
+    ? summary
+    : {
+        successful: { count: dailySummary.count, amount: dailySummary.volume },
+        hold: { count: 0, amount: 0 },
+        pending: { count: 0, amount: 0 },
+        cancelled: { count: 0, amount: 0 },
+      };
 
   await writeAudit(franchiseId, uid, 'list_payments', {
     dayKey,
     count: transactions.length,
+    visibility,
   });
 
   return {
@@ -2037,8 +2100,10 @@ async function runListPayments(request) {
     startDayKey: range.startDayKey,
     endDayKey: range.endDayKey,
     timeZone,
-    transactions,
-    summary,
+    transactions: safeTransactions,
+    summary: safeSummary,
+    dailySummary,
+    visibility,
     syncedAt: new Date().toISOString(),
   };
 }
