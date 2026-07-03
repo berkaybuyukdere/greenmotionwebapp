@@ -127,24 +127,28 @@ export function StripePaymentsView({ franchiseId, showFinancialTotals = true, fl
     if (!franchiseId) return;
     setLoading(true);
     setError('');
+    // Audit feeds a side panel only — fetch it without gating the table render.
+    stripeFinancialListAudit({ franchiseId, limit: 50 })
+      .then((auditRes) => {
+        setAudit(
+          (auditRes.entries || []).filter((a) =>
+            String(a.action || '').includes('deposit') || String(a.action || '').includes('terminal'),
+          ),
+        );
+      })
+      .catch(() => {});
     try {
-      const cfg = await stripeFinancialGetConfig({ franchiseId });
-      setConfigured(cfg?.configured !== false);
-      setStripeMode(cfg?.mode || 'unset');
-      const [payRes, depRes, auditRes] = await Promise.all([
+      const [cfg, payRes, depRes] = await Promise.all([
+        stripeFinancialGetConfig({ franchiseId }),
         stripeFinancialListPayments({ franchiseId, dayKey, period }),
         stripeFinancialListDeposits({ franchiseId, limit: 30 }),
-        stripeFinancialListAudit({ franchiseId, limit: 50 }),
       ]);
+      setConfigured(cfg?.configured !== false);
+      setStripeMode(cfg?.mode || 'unset');
       setTransactions(payRes.transactions || []);
       setSummary(payRes.summary || null);
       setDailySummary(payRes.dailySummary || null);
       setDeposits(depRes.deposits || []);
-      setAudit(
-        (auditRes.entries || []).filter((a) =>
-          String(a.action || '').includes('deposit') || String(a.action || '').includes('terminal'),
-        ),
-      );
       setSyncedAt(payRes.syncedAt || new Date().toISOString());
     } catch (e) {
       setError(e?.message || 'Failed to load payments');

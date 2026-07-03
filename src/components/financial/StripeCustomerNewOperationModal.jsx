@@ -8,7 +8,7 @@ import {
   useStripe,
   useElements,
 } from '@stripe/react-stripe-js';
-import { Upload, X, CreditCard, Shield, Terminal } from 'lucide-react';
+import { Upload, CreditCard, Shield, Terminal } from 'lucide-react';
 import { ref, uploadBytes } from 'firebase/storage';
 import { setDoc, getDoc, Timestamp } from 'firebase/firestore';
 import { storage } from '../../firebase/client';
@@ -28,6 +28,10 @@ import {
 } from '../../services/stripeFinancialApi';
 import { formatStripeDeclineForDisplay } from '../../utilities/stripeDeclineMessages';
 import { StripeDepositModal } from './StripeDepositModal';
+import {
+  PalantirWorkbench,
+  PalantirCommandBar,
+} from '../palantir/PalantirWorkbench';
 
 const CARD_ELEMENT_OPTIONS = {
   style: {
@@ -694,41 +698,32 @@ export function StripeCustomerNewOperationModal({
 
   const needsStripeElements = categories.some((c) => c !== 'walk_in') || categories.includes('walk_in');
 
+  // Same workbench shell as the Mail Order "New payment" form so both
+  // operation forms share one design and size.
   return (
-    <div className="pal-fin-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="cust-new-op-title">
-      <div className="pal-fin-modal pal-fin-modal-wide pal-cust-new-op-modal">
-        <header className="pal-fin-modal-header">
-          <div>
-            <p className="pal-fin-eyebrow">Customers · Operations</p>
-            <h2 id="cust-new-op-title" className="pal-fin-modal-title">
-              New operation
-            </h2>
-            <p className="pal-fin-modal-sub">
-              Charge card, send payment mail, or authorize a walk-in deposit on POS.
-            </p>
-          </div>
-          <button type="button" className="pal-fin-modal-close" onClick={onClose} aria-label="Close">
-            <X size={18} />
-          </button>
-        </header>
-
-        <div className="pal-fin-modal-body pal-cust-new-op-body">
-          {loading && <p className="pal-cust-empty">Loading Stripe…</p>}
-          {loadError && <div className="pal-fin-alert">{loadError}</div>}
-          {!loading && !loadError && stripePromise && needsStripeElements && (
-            <Elements stripe={stripePromise}>
-              <DirectCardChargeForm
-                franchiseId={franchiseId}
-                initialGroup={initialGroup}
-                categories={categories}
-                onClose={onClose}
-                onSuccess={onSuccess}
-                onError={onError}
-              />
-            </Elements>
-          )}
-        </div>
+    <PalantirWorkbench onClose={onClose} size="large">
+      <PalantirCommandBar
+        eyebrow="Customers · Operations"
+        title="New operation"
+        subtitle="Charge card, send payment mail, or authorize a walk-in deposit on POS."
+        onClose={onClose}
+      />
+      <div className="p-6 max-w-2xl mx-auto w-full space-y-3 pal-fin-new-payment-body pal-fin-new-payment-body-compact">
+        {loading && <p className="pal-cust-empty">Loading Stripe…</p>}
+        {loadError && <div className="pal-fin-alert">{loadError}</div>}
+        {!loading && !loadError && stripePromise && needsStripeElements && (
+          <Elements stripe={stripePromise}>
+            <DirectCardChargeForm
+              franchiseId={franchiseId}
+              initialGroup={initialGroup}
+              categories={categories}
+              onClose={onClose}
+              onSuccess={onSuccess}
+              onError={onError}
+            />
+          </Elements>
+        )}
       </div>
-    </div>
+    </PalantirWorkbench>
   );
 }

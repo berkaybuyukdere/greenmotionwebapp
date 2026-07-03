@@ -1897,9 +1897,21 @@ async function runListPayments(request) {
       ? isUnixInDayRange(unixSec, timeZone, range.startDayKey, range.endDayKey)
       : isUnixOnLocalDay(unixSec, timeZone, dayKey);
 
-  const [chargesRes, intentsRes] = await Promise.all([
+  // Firestore reads are independent of the Stripe list calls — run all four
+  // together so total latency is max() of them instead of their sum.
+  const [chargesRes, intentsRes, mailSnap, depSnapSettled] = await Promise.all([
     stripeRequest('GET', '/charges', { limit: 100, 'created[gte]': createdGte }),
     stripeRequest('GET', '/payment_intents', { limit: 100, 'created[gte]': createdGte }),
+    mailOrdersCol(franchiseId).orderBy('createdAt', 'desc').limit(100).get(),
+    admin
+      .firestore()
+      .collection('franchises')
+      .doc(franchiseId)
+      .collection('stripeDeposits')
+      .orderBy('createdAt', 'desc')
+      .limit(200)
+      .get()
+      .catch(() => null),
   ]);
 
   const byKey = new Map();
@@ -1988,11 +2000,6 @@ async function runListPayments(request) {
     });
   }
 
-  const mailSnap = await mailOrdersCol(franchiseId)
-    .orderBy('createdAt', 'desc')
-    .limit(100)
-    .get();
-
   for (const docSnap of mailSnap.docs) {
     const row = docSnap.data() || {};
     const createdAt = row.createdAt?.toDate?.();
@@ -2038,17 +2045,9 @@ async function runListPayments(request) {
     .sort((a, b) => b.created - a.created);
 
   try {
-    const depSnap = await admin
-      .firestore()
-      .collection('franchises')
-      .doc(franchiseId)
-      .collection('stripeDeposits')
-      .orderBy('createdAt', 'desc')
-      .limit(200)
-      .get();
-
+    const depSnap = depSnapSettled;
     const depByPi = new Map();
-    for (const docSnap of depSnap.docs) {
+    for (const docSnap of depSnap?.docs || []) {
       const row = docSnap.data() || {};
       if (row.paymentIntentId) {
         depByPi.set(row.paymentIntentId, { id: docSnap.id, ...row });

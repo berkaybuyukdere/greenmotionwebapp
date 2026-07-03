@@ -3121,9 +3121,9 @@
 
 .pal-fin-category-btn-active-damage,
 .pal-fin-category-btn-active-extra {
-  border-color: var(--vs-violet, #6d5dfc) !important;
-  background: var(--vs-violet-dim, rgba(109, 93, 252, 0.1)) !important;
-  box-shadow: inset 3px 0 0 var(--vs-violet, #6d5dfc) !important;
+  border-color: var(--erpx-amber) !important;
+  background: var(--erpx-amber-bg) !important;
+  box-shadow: inset 3px 0 0 var(--erpx-amber) !important;
 }
 
 .pal-fin-category-btn-active-walk {
