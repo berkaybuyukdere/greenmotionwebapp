@@ -12,6 +12,25 @@
 import { isAracSoftDeletedForList } from './firebaseHelpers';
 import { plateDedupeKeyForFranchise } from './fleetListImport';
 
+/** Resolved plate key for fleet list eligibility (plaka or WheelSys canonical). */
+export function fleetCarPlateKey(car, franchiseId = '') {
+    const plaka = String(car?.plaka || '').trim();
+    if (plaka) return plateDedupeKeyForFranchise(franchiseId, plaka);
+    const wheelsys = String(car?.wheelsysPlateCanonical || '').trim();
+    if (wheelsys) return plateDedupeKeyForFranchise(franchiseId, wheelsys);
+    return '';
+}
+
+/** WheelSys-aligned fleet rows must have a resolvable license plate. */
+export function hasListableFleetPlate(car, franchiseId = '') {
+    return Boolean(fleetCarPlateKey(car, franchiseId));
+}
+
+export function filterListableFleetCars(franchiseId, cars) {
+    if (!Array.isArray(cars) || cars.length === 0) return [];
+    return cars.filter((car) => hasListableFleetPlate(car, franchiseId));
+}
+
 function carTimestamp(car) {
     const v = car?.kayitTarihi || car?.createdAt;
     if (!v) return 0;
@@ -59,7 +78,7 @@ export function resolveFleetCarDisplay(
         [car?.id, car?.documentId].filter(Boolean).map((x) => String(x))
     );
 
-    let plaka = String(car?.plaka || '').trim();
+    let plaka = String(car?.plaka || car?.wheelsysPlateCanonical || '').trim();
     let marka = String(car?.marka || '').trim();
     let model = String(car?.model || '').trim();
     let kategori = String(car?.kategori || '').trim();
@@ -82,13 +101,13 @@ export function resolveFleetCarDisplay(
         if (!marka) marka = String(doc.marka || '').trim();
         if (!model) model = String(doc.model || '').trim();
         if (!kategori) kategori = String(doc.kategori || '').trim();
-        if (!plaka) plaka = String(doc.plaka || '').trim();
+        if (!plaka) plaka = String(doc.plaka || doc.wheelsysPlateCanonical || '').trim();
     };
 
     if (plateKey && (!marka || !model || !kategori)) {
         const siblings = (fleetCars || []).filter((c) => {
             if (c === car) return false;
-            const sibPlate = String(c?.plaka || '').trim();
+            const sibPlate = String(c?.plaka || c?.wheelsysPlateCanonical || '').trim();
             if (!sibPlate) return false;
             return plateDedupeKeyForFranchise(franchiseId, sibPlate) === plateKey;
         });
@@ -106,7 +125,7 @@ export function resolveFleetCarDisplay(
             );
             if (!exitPlateKey) continue;
             const match = (fleetCars || []).find((c) => {
-                const sibPlate = String(c?.plaka || '').trim();
+                const sibPlate = String(c?.plaka || c?.wheelsysPlateCanonical || '').trim();
                 return sibPlate && plateDedupeKeyForFranchise(franchiseId, sibPlate) === exitPlateKey;
             });
             if (match) {
@@ -199,9 +218,10 @@ export function dedupeFleetCarsByPlate(franchiseId, cars) {
     if (!Array.isArray(cars) || cars.length === 0) return [];
 
     const groups = new Map();
-    for (const car of cars) {
-        const plateKey = plateDedupeKeyForFranchise(franchiseId, car?.plaka);
-        const groupKey = plateKey || `__doc:${String(car.documentId || car.id || '')}`;
+    for (const car of filterListableFleetCars(franchiseId, cars)) {
+        const plateKey = fleetCarPlateKey(car, franchiseId);
+        if (!plateKey) continue;
+        const groupKey = plateKey;
         if (!groups.has(groupKey)) groups.set(groupKey, []);
         groups.get(groupKey).push(car);
     }
@@ -297,6 +317,7 @@ export function isFleetMergeHiddenVehicle(row) {
  * Undo fleet merge soft-deletes — restores iOS/web visibility without removing merged damages on canonical.
  */
 export async function restoreFleetMergeSoftDeletes({
+    franchiseId = '',
     hiddenCars,
     docRefHelper,
     updateDoc,
@@ -304,7 +325,9 @@ export async function restoreFleetMergeSoftDeletes({
     Timestamp,
     auth,
 }) {
-    const targets = (hiddenCars || []).filter(isFleetMergeHiddenVehicle);
+    const targets = (hiddenCars || [])
+        .filter(isFleetMergeHiddenVehicle)
+        .filter((car) => hasListableFleetPlate(car, franchiseId));
     if (!targets.length) {
         return { restoredDocs: 0, plates: [] };
     }

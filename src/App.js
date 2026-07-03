@@ -141,6 +141,7 @@ import {
     fleetCarMatchesAracId,
     resolveFleetCarDisplay,
     isEmptyFleetListStub,
+    filterListableFleetCars,
 } from './utilities/fleetVehicleDedupe';
 import { setActiveFranchiseCurrencyCode, getActiveFranchiseCurrencyCode } from './franchiseCurrency';
 import { FRANCHISE_DEFAULTS_BY_COUNTRY_ID } from './franchiseCountryDefaults';
@@ -1903,7 +1904,10 @@ function AppContent({ user, userProfile: initialUserProfile }) {
                     documentId: doc.id
                 };
             });
-            const vehicles = allVehicles.filter((v) => !isAracSoftDeletedForList(v));
+            const vehicles = filterListableFleetCars(
+                franchiseId,
+                allVehicles.filter((v) => !isAracSoftDeletedForList(v))
+            );
             startTransition(() => {
                 setFleetMergeHiddenCars(allVehicles.filter(isFleetMergeHiddenVehicle));
                 setCars(vehicles);
@@ -2224,6 +2228,7 @@ function AppContent({ user, userProfile: initialUserProfile }) {
             (async () => {
                 try {
                     const result = await restoreFleetMergeSoftDeletes({
+                    franchiseId: effectiveFranchiseId,
                     hiddenCars: fleetMergeHiddenCars,
                     docRefHelper,
                     updateDoc,
