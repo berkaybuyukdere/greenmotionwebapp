@@ -33,6 +33,7 @@ import '../styles/palantir-panel.css';
 import '../styles/palantir-dashboard.css';
 import '../styles/palantir-analytics.css';
 import { getCollectionRef, isAracSoftDeletedForList } from '../utilities/firebaseHelpers';
+import { filterListableFleetCars } from '../utilities/fleetVehicleDedupe';
 import {
   buildCHPanelSnapshot,
   auditRowsFromLogs,
@@ -477,9 +478,12 @@ export function CHOperationsPanelView({
     const officeRef = getCollectionRef(db, 'office_operations', authUser, userProfile, franchiseId);
 
     const unsubCars = onSnapshot(araclarRef, (snap) => {
-      const vehicles = snap.docs
-        .map((d) => ({ id: d.id, documentId: d.id, ...d.data() }))
-        .filter((v) => !isAracSoftDeletedForList(v));
+      const vehicles = filterListableFleetCars(
+        franchiseId,
+        snap.docs
+          .map((d) => ({ id: d.id, documentId: d.id, ...d.data() }))
+          .filter((v) => !isAracSoftDeletedForList(v))
+      );
       setCars(vehicles);
       setLoadingFleet(false);
     });
