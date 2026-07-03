@@ -9,6 +9,7 @@ import { PalantirPageIcon } from './palantir/PalantirNavIcon';
 import { useClientPagination } from './palantir/useClientPagination';
 import { PalantirTablePager } from './palantir/PalantirTablePager';
 import { useToast } from './ToastNotification';
+import ZoomableImageOverlay from './ZoomableImageOverlay';
 import {
     dedupePendingExitsByWeakKey,
     dedupePendingReturnsByKey,
@@ -1032,26 +1033,11 @@ export function OperationsHubView({
             )}
 
             {imagePreviewUrl && (
-                <div
-                    className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4"
-                    onClick={() => setImagePreviewUrl(null)}
-                    role="presentation"
-                >
-                    <button
-                        type="button"
-                        className="absolute top-4 right-4 p-2 rounded-lg bg-white/10 text-white hover:bg-white/20"
-                        onClick={() => setImagePreviewUrl(null)}
-                        aria-label="Close preview"
-                    >
-                        <X size={22} />
-                    </button>
-                    <img
-                        src={imagePreviewUrl}
-                        alt=""
-                        className="max-w-full max-h-[90vh] object-contain rounded-sap-sm shadow-2xl"
-                        onClick={(e) => e.stopPropagation()}
-                    />
-                </div>
+                <ZoomableImageOverlay
+                    images={imagePreviewUrl.images}
+                    startIndex={imagePreviewUrl.startIndex}
+                    onClose={() => setImagePreviewUrl(null)}
+                />
             )}
             <OpsPdfOverlay state={returnPdfOverlay} />
         </div>
@@ -1103,12 +1089,12 @@ function ExitDetailBody({ ex, plate, car, onOpenPhoto, onPdfEnglish, onPdfTurkis
                 <div>
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--erpx-ink-muted)] mb-2">Photos</p>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {photos.map((url) => (
+                        {photos.map((url, photoIndex) => (
                             <button
                                 key={url}
                                 type="button"
                                 className="block aspect-video rounded-sap-sm overflow-hidden bg-black/5 border border-sap-border-light dark:border-sap-borderDark-light p-0 cursor-zoom-in"
-                                onClick={() => onOpenPhoto(url)}
+                                onClick={() => onOpenPhoto({ images: photos, startIndex: photoIndex })}
                             >
                                 <img src={url} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
                             </button>
@@ -1191,12 +1177,12 @@ function ReturnDetailBody({ r, plate, car, exits = [], onOpenPhoto, onPdfEnglish
                 <div>
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--erpx-ink-muted)] mb-2">Photos</p>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {photos.map((url) => (
+                        {photos.map((url, photoIndex) => (
                             <button
                                 key={url}
                                 type="button"
                                 className="block aspect-video rounded-sap-sm overflow-hidden bg-black/5 border border-sap-border-light dark:border-sap-borderDark-light p-0 cursor-zoom-in"
-                                onClick={() => onOpenPhoto(url)}
+                                onClick={() => onOpenPhoto({ images: photos, startIndex: photoIndex })}
                             >
                                 <img src={url} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
                             </button>

@@ -118,20 +118,33 @@ async function resolvePublishableKey(franchiseId) {
   ).trim();
 }
 
+// Per-instance profile cache: a warm Functions instance serves many calls in a
+// row from the same staff member; re-reading users/{uid} on each adds latency.
+const PROFILE_CACHE_TTL_MS = 60 * 1000;
+const profileCache = new Map();
+
 async function assertFinancialCallable(request) {
   if (!request.auth?.uid) {
     throw new HttpsError('unauthenticated', 'Sign in required');
   }
-  const snap = await admin.firestore().collection('users').doc(request.auth.uid).get();
-  if (!snap.exists) {
-    throw new HttpsError('permission-denied', 'User profile missing');
+  const uid = request.auth.uid;
+  const cached = profileCache.get(uid);
+  let profile;
+  if (cached && cached.expiresAt > Date.now()) {
+    profile = cached.profile;
+  } else {
+    const snap = await admin.firestore().collection('users').doc(uid).get();
+    if (!snap.exists) {
+      throw new HttpsError('permission-denied', 'User profile missing');
+    }
+    profile = snap.data() || {};
+    profileCache.set(uid, { profile, expiresAt: Date.now() + PROFILE_CACHE_TTL_MS });
   }
-  const profile = snap.data() || {};
   const role = normalizeRoleKey(profile.role);
   if (!STRIPE_FINANCE_ROLES.has(role)) {
     throw new HttpsError('permission-denied', 'Stripe finance access required.');
   }
-  return { uid: request.auth.uid, profile };
+  return { uid, profile };
 }
 
 function normalizeFranchiseId(raw) {
@@ -755,13 +768,13 @@ async function runDeleteProduct(request) {
     product: productId,
     limit: 100,
   });
-  for (const price of pricesRes.data || []) {
+  await Promise.all((pricesRes.data || []).map(async (price) => {
     try {
       await stripeRequest('DELETE', `/prices/${encodeURIComponent(price.id)}`, null);
     } catch (_) {
       await stripeRequest('POST', `/prices/${encodeURIComponent(price.id)}`, { active: false });
     }
-  }
+  }));
 
   let hardDeleted = false;
   let message = '';

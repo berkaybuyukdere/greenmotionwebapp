@@ -104,20 +104,33 @@ function normalizeRoleKey(role) {
   return String(role || '').toLowerCase().trim().replace(/[\s_-]+/g, '');
 }
 
+// Per-instance profile cache: a warm Functions instance serves many calls in a
+// row from the same staff member; re-reading users/{uid} on each adds latency.
+const PROFILE_CACHE_TTL_MS = 60 * 1000;
+const profileCache = new Map();
+
 async function assertFinancialCallable(request) {
   if (!request.auth?.uid) {
     throw new HttpsError('unauthenticated', 'Sign in required');
   }
-  const snap = await admin.firestore().collection('users').doc(request.auth.uid).get();
-  if (!snap.exists) {
-    throw new HttpsError('permission-denied', 'User profile missing');
+  const uid = request.auth.uid;
+  const cached = profileCache.get(uid);
+  let profile;
+  if (cached && cached.expiresAt > Date.now()) {
+    profile = cached.profile;
+  } else {
+    const snap = await admin.firestore().collection('users').doc(uid).get();
+    if (!snap.exists) {
+      throw new HttpsError('permission-denied', 'User profile missing');
+    }
+    profile = snap.data() || {};
+    profileCache.set(uid, { profile, expiresAt: Date.now() + PROFILE_CACHE_TTL_MS });
   }
-  const profile = snap.data() || {};
   const role = normalizeRoleKey(profile.role);
   if (!STRIPE_FINANCE_ROLES.has(role)) {
     throw new HttpsError('permission-denied', 'Stripe finance access required.');
   }
-  return { uid: request.auth.uid, profile };
+  return { uid, profile };
 }
 
 const STRIPE_FINANCE_ADMIN_ROLES = new Set(['globaladmin', 'superadmin', 'admin']);
@@ -597,33 +610,47 @@ async function runListDeposits(request) {
   const syncStripe = request.data?.syncStripe === true;
 
   const snap = await depositsCol(franchiseId).orderBy('createdAt', 'desc').limit(limit).get();
+
+  const baseRows = snap.docs.map((docSnap) => ({
+    row: docSnap.data() || {},
+    mapped: mapDepositDoc(docSnap.id, docSnap.data() || {}),
+  }));
+
+  // Stripe sync runs in bounded parallel batches instead of one request per
+  // row in series — 100 rows used to mean 100 sequential round-trips.
+  if (syncStripe) {
+    const SYNC_CONCURRENCY = 10;
+    for (let i = 0; i < baseRows.length; i += SYNC_CONCURRENCY) {
+      const batch = baseRows.slice(i, i + SYNC_CONCURRENCY);
+      await Promise.all(batch.map(async (entry) => {
+        if (!entry.row.paymentIntentId) return;
+        try {
+          const pi = await stripeRequest(
+            'GET',
+            `/payment_intents/${encodeURIComponent(entry.row.paymentIntentId)}`,
+            null,
+          );
+          entry.mapped = {
+            ...entry.mapped,
+            stripeStatus: pi.status,
+            currentHoldAmount: Number(pi.amount_capturable) || entry.mapped.currentHoldAmount,
+            cardBrand: pi.charges?.data?.[0]?.payment_method_details?.card_present?.brand || null,
+            cardLast4: pi.charges?.data?.[0]?.payment_method_details?.card_present?.last4 || null,
+          };
+          if (pi.status === 'requires_capture') entry.mapped.status = 'authorized';
+          if (pi.status === 'succeeded') entry.mapped.status = 'captured';
+          if (pi.status === 'canceled') entry.mapped.status = 'cancelled';
+        } catch {
+          /* keep firestore status */
+        }
+      }));
+    }
+  }
+
   const deposits = [];
   const summarySource = [];
-
-  for (const docSnap of snap.docs) {
-    const row = docSnap.data() || {};
-    let mapped = mapDepositDoc(docSnap.id, row);
-    if (syncStripe && row.paymentIntentId) {
-      try {
-        const pi = await stripeRequest(
-          'GET',
-          `/payment_intents/${encodeURIComponent(row.paymentIntentId)}`,
-          null,
-        );
-        mapped = {
-          ...mapped,
-          stripeStatus: pi.status,
-          currentHoldAmount: Number(pi.amount_capturable) || mapped.currentHoldAmount,
-          cardBrand: pi.charges?.data?.[0]?.payment_method_details?.card_present?.brand || null,
-          cardLast4: pi.charges?.data?.[0]?.payment_method_details?.card_present?.last4 || null,
-        };
-        if (pi.status === 'requires_capture') mapped.status = 'authorized';
-        if (pi.status === 'succeeded') mapped.status = 'captured';
-        if (pi.status === 'canceled') mapped.status = 'cancelled';
-      } catch {
-        /* keep firestore status */
-      }
-    }
+  for (const entry of baseRows) {
+    let mapped = entry.mapped;
     summarySource.push(mapped);
     if (!canViewStripeFinancialTotals(profile)) {
       mapped = {

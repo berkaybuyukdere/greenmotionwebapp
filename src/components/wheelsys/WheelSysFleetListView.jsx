@@ -87,11 +87,20 @@ export default function WheelSysFleetListView({ franchiseId = 'CH', userProfile 
     }
   }, [fid, station]);
 
-  const refreshFleet = useCallback(async () => {
+  const fleetFetchInFlightRef = useRef(false);
+
+  const refreshFleet = useCallback(async (options = {}) => {
+    // Full-fleet fetch is expensive — ignore repeat clicks while one is running.
+    if (fleetFetchInFlightRef.current) return;
+    fleetFetchInFlightRef.current = true;
     setFleetLoading(true);
     setFleetError('');
     try {
-      const data = await wheelsysGetVehicleFleet({ franchiseId: fid, station });
+      const data = await wheelsysGetVehicleFleet({
+        franchiseId: fid,
+        station,
+        force: options.force === true,
+      });
       setVehicles(Array.isArray(data.vehicles) ? data.vehicles : []);
       setStats(data.stats || null);
       setDuplicateWarnings(Array.isArray(data.duplicateWarnings) ? data.duplicateWarnings : []);
@@ -102,6 +111,7 @@ export default function WheelSysFleetListView({ franchiseId = 'CH', userProfile 
       setVehicles([]);
       setStats(null);
     } finally {
+      fleetFetchInFlightRef.current = false;
       setFleetLoading(false);
     }
   }, [fid, station]);
@@ -209,7 +219,7 @@ export default function WheelSysFleetListView({ franchiseId = 'CH', userProfile 
           <button
             type="button"
             className="inline-flex items-center gap-2 rounded-md border border-[var(--erpx-border)] px-3 py-2 text-sm hover:bg-white/5 disabled:opacity-50"
-            onClick={refreshFleet}
+            onClick={() => refreshFleet({ force: true })}
             disabled={fleetLoading}
           >
             <RefreshCw size={14} className={fleetLoading ? 'animate-spin' : ''} />
@@ -245,7 +255,7 @@ export default function WheelSysFleetListView({ franchiseId = 'CH', userProfile 
         onSessionSaved={async () => {
           autoFleetFetchedRef.current = true;
           await refreshSession();
-          await refreshFleet();
+          await refreshFleet({ force: true });
         }}
       />
 

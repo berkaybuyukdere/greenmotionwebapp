@@ -22,19 +22,20 @@
     --erpx-radius-xl: 0;
     --erpx-shadow-focus: 0 0 0 2px var(--vs-violet-border);
 
-    /* Muted semantics — no traffic-light colors in chrome */
-    --erpx-green: var(--vs-ink-muted);
-    --erpx-green-bg: var(--vs-surface-high);
-    --erpx-green-border: var(--vs-border-strong);
-    --erpx-amber: var(--vs-ink-muted);
-    --erpx-amber-bg: var(--vs-surface-high);
-    --erpx-amber-border: var(--vs-border-strong);
-    --erpx-red: var(--vs-ink-muted);
-    --erpx-red-bg: var(--vs-surface-high);
-    --erpx-red-border: var(--vs-border-strong);
-    --erpx-info: var(--vs-ink-muted);
-    --erpx-info-bg: var(--vs-surface-high);
-    --erpx-info-border: var(--vs-border-strong);
+    /* Restrained semantics — desaturated Blueprint-style intent colors so
+       success/warning/danger states stay readable without traffic-light chrome */
+    --erpx-green: #1c7a4d;
+    --erpx-green-bg: rgba(28, 122, 77, 0.08);
+    --erpx-green-border: rgba(28, 122, 77, 0.32);
+    --erpx-amber: #a86a1c;
+    --erpx-amber-bg: rgba(168, 106, 28, 0.08);
+    --erpx-amber-border: rgba(168, 106, 28, 0.32);
+    --erpx-red: #c2413f;
+    --erpx-red-bg: rgba(194, 65, 63, 0.08);
+    --erpx-red-border: rgba(194, 65, 63, 0.32);
+    --erpx-info: #2f6fd0;
+    --erpx-info-bg: rgba(47, 111, 208, 0.08);
+    --erpx-info-border: rgba(47, 111, 208, 0.32);
 }
 
 /* ─── Light theme ─── */
@@ -127,6 +128,20 @@
     --erpx-sidebar-active-text: #c4b5fd;
     --erpx-sidebar-divider: var(--vs-border);
     --erpx-sidebar-text: var(--vs-ink-muted);
+
+    /* Brighter intent variants for dark surfaces */
+    --erpx-green: #3da875;
+    --erpx-green-bg: rgba(61, 168, 117, 0.12);
+    --erpx-green-border: rgba(61, 168, 117, 0.38);
+    --erpx-amber: #d99a4e;
+    --erpx-amber-bg: rgba(217, 154, 78, 0.12);
+    --erpx-amber-border: rgba(217, 154, 78, 0.38);
+    --erpx-red: #e07472;
+    --erpx-red-bg: rgba(224, 116, 114, 0.12);
+    --erpx-red-border: rgba(224, 116, 114, 0.38);
+    --erpx-info: #6d9ee8;
+    --erpx-info-bg: rgba(109, 158, 232, 0.12);
+    --erpx-info-border: rgba(109, 158, 232, 0.38);
 }
 
 /* ─── Sharp chrome ─── */

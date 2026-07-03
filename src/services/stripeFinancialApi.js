@@ -31,8 +31,23 @@ export function stripeFinancialChargeSavedPaymentMethod({ franchiseId, depositId
   });
 }
 
+// Config (publishable key + mode) changes rarely but every financial view
+// fetches it on mount — cache per franchise for a few minutes so page loads
+// skip one callable round-trip. In-flight requests are shared so parallel
+// mounts don't duplicate the call.
+const CONFIG_CACHE_TTL_MS = 5 * 60 * 1000;
+const configCache = new Map();
+
 export function stripeFinancialGetConfig({ franchiseId } = {}) {
-  return call('stripeFinancialGetConfig', { franchiseId });
+  const key = String(franchiseId || '').toUpperCase();
+  const cached = configCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.promise;
+  const promise = call('stripeFinancialGetConfig', { franchiseId }).catch((err) => {
+    configCache.delete(key);
+    throw err;
+  });
+  configCache.set(key, { promise, expiresAt: Date.now() + CONFIG_CACHE_TTL_MS });
+  return promise;
 }
 
 export function stripeFinancialListDisputes({ franchiseId, limit = 50, startingAfter } = {}) {

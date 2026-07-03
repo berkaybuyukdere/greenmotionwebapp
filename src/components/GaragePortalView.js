@@ -59,6 +59,7 @@ import { getCollectionRef } from '../utilities/firebaseHelpers';
 import { downloadGarageServiceJobPdf } from '../utilities/garageJobPdf';
 import { useToast } from './ToastNotification';
 import { AnimatedButton } from './AnimatedButton';
+import ZoomableImageOverlay from './ZoomableImageOverlay';
 import * as XLSX from 'xlsx';
 
 function mapLoginError(err) {
@@ -779,15 +780,30 @@ function JobCardBody({ job, done, plate, purpose, completingId, onDownloadPdf, o
 }
 
 function PhotoGrid({ urls }) {
+    const [preview, setPreview] = useState(null);
     if (!urls?.length) return <p className="text-xs text-slate-500">No photos.</p>;
     return (
-        <div className="grid grid-cols-3 gap-2">
-            {urls.map((url) => (
-                <a key={url} href={url} target="_blank" rel="noreferrer" className="block">
-                    <img src={url} alt="" className="h-20 w-full object-cover rounded" />
-                </a>
-            ))}
-        </div>
+        <>
+            <div className="grid grid-cols-3 gap-2">
+                {urls.map((url, index) => (
+                    <button
+                        key={url}
+                        type="button"
+                        className="block p-0 border-0 bg-transparent cursor-zoom-in"
+                        onClick={() => setPreview({ startIndex: index })}
+                    >
+                        <img src={url} alt="" className="h-20 w-full object-cover rounded" loading="lazy" decoding="async" />
+                    </button>
+                ))}
+            </div>
+            {preview && (
+                <ZoomableImageOverlay
+                    images={urls}
+                    startIndex={preview.startIndex}
+                    onClose={() => setPreview(null)}
+                />
+            )}
+        </>
     );
 }
 

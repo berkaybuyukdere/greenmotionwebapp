@@ -3389,7 +3389,7 @@ function ImageGallery({ images, onClose, startIndex = 0, returnData, car, pdfFra
             setStage('generating', { progress: 85 });
             pdf.save(fileName);
             },
-            { toast, fileLabel: fileName }
+            { toast, fileLabel: returnPdfFileLabel(returnData, car) }
             );
 
             setIsGeneratingPDF(false);
@@ -4250,6 +4250,7 @@ function AnalyticsView({ cars, returns, officeOperations = [], exits = [] }) {
         { value: 'Additional Sales', label: 'Additional Sales' },
         { value: 'Banking Transaction', label: 'Banking' },
         { value: 'Traffic Fine', label: 'Traffic Fine' },
+        { value: 'Traffic Accident', label: 'Traffic Accident' },
     ]), []);
 
     const officeSeries = useMemo(() => {
@@ -9530,6 +9531,10 @@ function EditDamageModal({ car, damage, onClose, onSuccess, addActivity }) {
     const [loading, setLoading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
     const [photosToDelete, setPhotosToDelete] = useState([]);
+    const [photoGallery, setPhotoGallery] = useState(null);
+
+    const newFilePreviewUrls = React.useMemo(() => newFiles.map((f) => URL.createObjectURL(f)), [newFiles]);
+    React.useEffect(() => () => newFilePreviewUrls.forEach((u) => URL.revokeObjectURL(u)), [newFilePreviewUrls]);
 
     const handleSubmit = async () => {
         if (!resKodu || !km) {
@@ -9650,16 +9655,16 @@ function EditDamageModal({ car, damage, onClose, onSuccess, addActivity }) {
         setPhotosToDelete(photosToDelete.filter(i => i !== index));
     };
 
-    // ESC key handler
+    // ESC key handler — the fullscreen photo gallery owns Escape while open
     React.useEffect(() => {
         const handleEsc = (e) => {
-            if (e.key === 'Escape') {
+            if (e.key === 'Escape' && !photoGallery) {
                 onClose();
             }
         };
         document.addEventListener('keydown', handleEsc);
         return () => document.removeEventListener('keydown', handleEsc);
-    }, [onClose]);
+    }, [onClose, photoGallery]);
 
     return (
         <div
@@ -9798,13 +9803,21 @@ function EditDamageModal({ car, damage, onClose, onSuccess, addActivity }) {
                                                     }`}
                                                 >
                                                     <div className="relative">
-                                                        <div className="aspect-[4/3] w-full overflow-hidden">
-                                                            <img
-                                                                src={photo}
-                                                                alt={`${isHandover ? 'Handover' : 'Return'} ${index + 1}`}
-                                                                className={`w-full h-full object-cover ${isDeleted ? 'opacity-60' : ''}`}
-                                                            />
-                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            className="block w-full p-0 border-0 bg-transparent cursor-zoom-in"
+                                                            onClick={() =>
+                                                                setPhotoGallery({ images: existingPhotos, startIndex: index })
+                                                            }
+                                                        >
+                                                            <div className="aspect-[4/3] w-full overflow-hidden">
+                                                                <img
+                                                                    src={photo}
+                                                                    alt={`${isHandover ? 'Handover' : 'Return'} ${index + 1}`}
+                                                                    className={`w-full h-full object-cover ${isDeleted ? 'opacity-60' : ''}`}
+                                                                />
+                                                            </div>
+                                                        </button>
                                                         <div
                                                             className={`absolute top-2 left-2 px-2.5 py-0.5 rounded-full text-[10px] font-semibold ${
                                                                 isHandover
@@ -9928,9 +9941,26 @@ function EditDamageModal({ car, damage, onClose, onSuccess, addActivity }) {
                                                             : 'border-orange-500 bg-orange-50 dark:bg-orange-900/20'
                                                     }`}
                                                 >
-                                                    <div className="flex items-center justify-between">
-                                                        <div className="flex-1">
-                                                            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <button
+                                                            type="button"
+                                                            className="shrink-0 p-0 border-0 bg-transparent cursor-zoom-in"
+                                                            onClick={() =>
+                                                                setPhotoGallery({
+                                                                    images: newFilePreviewUrls,
+                                                                    startIndex: index,
+                                                                })
+                                                            }
+                                                            title="Click to inspect"
+                                                        >
+                                                            <img
+                                                                src={newFilePreviewUrls[index]}
+                                                                alt={file.name}
+                                                                className="w-14 h-14 object-cover rounded-lg border border-black/10 dark:border-white/10"
+                                                            />
+                                                        </button>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">
                                                                 {file.name}
                                                             </p>
                                                             <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -10019,6 +10049,13 @@ function EditDamageModal({ car, damage, onClose, onSuccess, addActivity }) {
                     </div>
                 </div>
             </div>
+            {photoGallery && (
+                <ImageGallery
+                    images={photoGallery.images}
+                    startIndex={photoGallery.startIndex}
+                    onClose={() => setPhotoGallery(null)}
+                />
+            )}
         </div>
     );
 }
@@ -11330,6 +11367,10 @@ function AddDamageModal({ car, onClose, onSuccess, addActivity }) {
     const [files, setFiles] = useState([]);
     const [loading, setLoading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
+    const [photoGallery, setPhotoGallery] = useState(null);
+
+    const filePreviewUrls = React.useMemo(() => files.map((f) => URL.createObjectURL(f)), [files]);
+    React.useEffect(() => () => filePreviewUrls.forEach((u) => URL.revokeObjectURL(u)), [filePreviewUrls]);
 
     const handleSubmit = async () => {
         if (!resKodu || !km) {
@@ -11396,19 +11437,19 @@ function AddDamageModal({ car, onClose, onSuccess, addActivity }) {
         }
     };
 
-    // ESC key handler
+    // ESC key handler — the fullscreen photo gallery owns Escape while open
     React.useEffect(() => {
         const handleEsc = (e) => {
-            if (e.key === 'Escape') {
+            if (e.key === 'Escape' && !photoGallery) {
                 onClose();
             }
         };
         document.addEventListener('keydown', handleEsc);
         return () => document.removeEventListener('keydown', handleEsc);
-    }, [onClose]);
+    }, [onClose, photoGallery]);
 
     return (
-        <div 
+        <div
             className="fixed inset-0 pal-wb-overlay flex items-center justify-center p-sap-3 sm:p-sap-4 z-[60]"
             onClick={(e) => {
                 if (e.target === e.currentTarget) {
@@ -11416,7 +11457,7 @@ function AddDamageModal({ car, onClose, onSuccess, addActivity }) {
                 }
             }}
         >
-            <div 
+            <div
                 className="pal-modal p-sap-3 sm:p-sap-4 w-full max-w-[95vw] sm:max-w-md max-h-[95vh] overflow-y-auto"
                 onClick={(e) => e.stopPropagation()}
             >
@@ -11465,11 +11506,38 @@ function AddDamageModal({ car, onClose, onSuccess, addActivity }) {
                             </label>
                         </div>
                         {files.length > 0 && (
-                            <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                            <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-2">
                                 <p className="text-blue-900 text-sm font-medium flex items-center gap-2">
                                     <ImageIcon size={16} />
-                                    {files.length} file(s) selected
+                                    {files.length} file(s) selected — click a photo to inspect
                                 </p>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {filePreviewUrls.map((url, index) => (
+                                        <div key={url} className="relative group">
+                                            <button
+                                                type="button"
+                                                className="block w-full p-0 border-0 bg-transparent cursor-zoom-in"
+                                                onClick={() =>
+                                                    setPhotoGallery({ images: filePreviewUrls, startIndex: index })
+                                                }
+                                            >
+                                                <img
+                                                    src={url}
+                                                    alt={`Selected ${index + 1}`}
+                                                    className="h-20 w-full object-cover rounded-lg border border-blue-200"
+                                                />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setFiles(files.filter((_, i) => i !== index))}
+                                                className="absolute -top-1.5 -right-1.5 w-5 h-5 flex items-center justify-center rounded-full bg-red-500 hover:bg-red-600 text-white shadow"
+                                                title="Remove photo"
+                                            >
+                                                <X size={11} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         )}
                         {uploadProgress > 0 && uploadProgress < 100 && (
@@ -11485,17 +11553,24 @@ function AddDamageModal({ car, onClose, onSuccess, addActivity }) {
                         )}
                     </div>
                     <div className="flex gap-3 pt-4">
-                        <button onClick={onClose} disabled={loading} 
+                        <button onClick={onClose} disabled={loading}
                                 className="pal-btn pal-btn-ghost flex-1 disabled:opacity-50">
                             Cancel
                         </button>
-                        <button onClick={handleSubmit} disabled={loading} 
+                        <button onClick={handleSubmit} disabled={loading}
                                 className="pal-btn pal-btn-primary flex-1 disabled:opacity-50">
                             {loading ? 'Adding...' : 'Add Damage'}
                         </button>
                     </div>
                 </div>
             </div>
+            {photoGallery && (
+                <ImageGallery
+                    images={photoGallery.images}
+                    startIndex={photoGallery.startIndex}
+                    onClose={() => setPhotoGallery(null)}
+                />
+            )}
         </div>
     );
 }
@@ -13088,7 +13163,8 @@ function OfficeOperationsView({ operations, cars, onRefresh, addActivity, user, 
         { value: 'Washing Expense', label: 'Washing Expense', icon: Droplet, color: 'cyan' },
         { value: 'Additional Sales', label: 'Additional Sales', icon: ShoppingCart, color: 'purple' },
         { value: 'Banking Transaction', label: 'Banking Transaction', icon: CreditCard, color: 'green' },
-        { value: 'Traffic Fine', label: 'Traffic Fine', icon: FileText, color: 'red' }
+        { value: 'Traffic Fine', label: 'Traffic Fine', icon: FileText, color: 'red' },
+        { value: 'Traffic Accident', label: 'Traffic Accident', icon: AlertTriangle, color: 'orange' }
         ];
         if (/^CH/i.test(String(franchiseId || ''))) {
             return all.filter((t) => t.value !== 'POS Daily Closing');
@@ -13135,6 +13211,7 @@ function OfficeOperationsView({ operations, cars, onRefresh, addActivity, user, 
         'additional sales': ['additional sales', 'additional sale'],
         'banking transaction': ['banking transaction', 'banking'],
         'traffic fine': ['traffic fine', 'fine'],
+        'traffic accident': ['traffic accident', 'accident'],
     };
 
     const isSameType = (left, right) => {
@@ -13190,6 +13267,7 @@ function OfficeOperationsView({ operations, cars, onRefresh, addActivity, user, 
             additionalSales: ops.filter(op => op.type === 'Additional Sales').reduce((sum, op) => sum + amountOf(op), 0),
             banking: ops.filter(op => op.type === 'Banking Transaction').reduce((sum, op) => sum + amountOf(op), 0),
             trafficFines: ops.filter(op => op.type === 'Traffic Fine').reduce((sum, op) => sum + amountOf(op), 0),
+            trafficAccidents: ops.filter(op => op.type === 'Traffic Accident').reduce((sum, op) => sum + amountOf(op), 0),
             total: ops.reduce((sum, op) => sum + amountOf(op), 0),
             count: ops.length
         };
@@ -13215,6 +13293,7 @@ function OfficeOperationsView({ operations, cars, onRefresh, addActivity, user, 
         if (typeValue === 'Additional Sales') return totalsObj.additionalSales;
         if (typeValue === 'Banking Transaction') return totalsObj.banking;
         if (typeValue === 'Traffic Fine') return totalsObj.trafficFines;
+        if (typeValue === 'Traffic Accident') return totalsObj.trafficAccidents;
         return 0;
     };
 
@@ -13262,6 +13341,7 @@ function OfficeOperationsView({ operations, cars, onRefresh, addActivity, user, 
         if (typeValue === 'Additional Sales') return 'purple';
         if (typeValue === 'Banking Transaction') return 'success';
         if (typeValue === 'Traffic Fine') return 'danger';
+        if (typeValue === 'Traffic Accident') return 'warning';
         return 'default';
     };
 
@@ -13431,16 +13511,22 @@ function OfficeOperationsView({ operations, cars, onRefresh, addActivity, user, 
                                                 {operation.resCode || operation.referenceNumber}
                                             </span>
                                         )}
-                                        {operation.type === 'Traffic Fine' && operation.plate && (
+                                        {(operation.type === 'Traffic Fine' || operation.type === 'Traffic Accident') && operation.plate && (
                                             <span>
                                                 <Car size={12} aria-hidden />
                                                 {operation.plate}
                                             </span>
                                         )}
-                                        {operation.type === 'Traffic Fine' && operation.customerName && (
+                                        {(operation.type === 'Traffic Fine' || operation.type === 'Traffic Accident') && operation.customerName && (
                                             <span>
                                                 <Users size={12} aria-hidden />
                                                 {operation.customerName}
+                                            </span>
+                                        )}
+                                        {operation.source === 'stripe' && (
+                                            <span className="pal-fin-badge-traffic" style={{ padding: '1px 6px', borderRadius: 999 }}>
+                                                <CreditCard size={12} aria-hidden />
+                                                Stripe
                                             </span>
                                         )}
                                         {operation.type === 'Washing Expense' && (operation.washedBy || operation.performedBy) && (
@@ -13647,7 +13733,10 @@ function OfficeOperationDetailModal({ operation, onClose, onEdit, setShowImageGa
                 eyebrow="Office operation"
                 title={operation.type}
                 subtitle={formatDateTime(operation.date)}
-                badges={[{ label: formatFinancialAmount(operation.amount, canViewFinancials), accent: true }]}
+                badges={[
+                    { label: formatFinancialAmount(operation.amount, canViewFinancials), accent: true },
+                    ...(operation.source === 'stripe' ? [{ label: 'Stripe' }] : []),
+                ]}
                 onClose={onClose}
             />
             <PalantirWorkbenchGrid>
@@ -13655,6 +13744,15 @@ function OfficeOperationDetailModal({ operation, onClose, onEdit, setShowImageGa
                     <PalantirInspectorRow label="Type" value={operation.type} />
                     <PalantirInspectorRow label="Amount" value={formatFinancialAmount(operation.amount, canViewFinancials)} mono />
                     <PalantirInspectorRow label="Date" value={formatDateTime(operation.date)} />
+                    {operation.source === 'stripe' && (
+                        <PalantirInspectorRow label="Source" value="Stripe payment" />
+                    )}
+                    {(operation.customerName) && (
+                        <PalantirInspectorRow label="Customer" value={operation.customerName} />
+                    )}
+                    {(operation.resCode || operation.referenceNumber) && (
+                        <PalantirInspectorRow label="RES" value={operation.resCode || operation.referenceNumber} mono />
+                    )}
                     {operation.vehiclePlate && (
                         <PalantirInspectorRow label="Plate" value={operation.vehiclePlate} mono />
                     )}
@@ -13720,8 +13818,8 @@ function AddOfficeOperationModal({ cars, onClose, onSuccess, addActivity, franch
     const [loading, setLoading] = useState(false);
 
     const operationTypes = (/^CH/i.test(String(franchiseId || ''))
-        ? ['Credit Card Receipt', 'Fuel Receipt', 'Washing Expense', 'Additional Sales', 'Banking Transaction', 'Traffic Fine']
-        : ['Credit Card Receipt', 'POS Daily Closing', 'Fuel Receipt', 'Washing Expense', 'Additional Sales', 'Banking Transaction', 'Traffic Fine']);
+        ? ['Credit Card Receipt', 'Fuel Receipt', 'Washing Expense', 'Additional Sales', 'Banking Transaction', 'Traffic Fine', 'Traffic Accident']
+        : ['Credit Card Receipt', 'POS Daily Closing', 'Fuel Receipt', 'Washing Expense', 'Additional Sales', 'Banking Transaction', 'Traffic Fine', 'Traffic Accident']);
 
     // ESC key handler
     React.useEffect(() => {
@@ -13744,9 +13842,9 @@ function AddOfficeOperationModal({ cars, onClose, onSuccess, addActivity, franch
                 toast.warning('Please enter at least one POS amount');
                 return;
             }
-        } else if (formData.type === 'Traffic Fine') {
+        } else if (formData.type === 'Traffic Fine' || formData.type === 'Traffic Accident') {
             if (!formData.plate || !formData.customerName || !formData.amount) {
-                toast.warning('Please fill all required fields for Traffic Fine');
+                toast.warning(`Please fill all required fields for ${formData.type}`);
                 return;
             }
         } else if (formData.type === 'Washing Expense' && !formData.washedBy.trim()) {
@@ -13813,10 +13911,10 @@ function AddOfficeOperationModal({ cars, onClose, onSuccess, addActivity, franch
                 // Banking Transaction fields
                 resCode: formData.type === 'Banking Transaction' ? (formData.resCode || null) : null,
                 referenceNumber: formData.type === 'Banking Transaction' ? (formData.resCode || null) : null,
-                // Traffic Fine fields
-                plate: formData.type === 'Traffic Fine' ? formData.plate : null,
-                customerName: formData.type === 'Traffic Fine' ? formData.customerName : null,
-                status: formData.type === 'Traffic Fine' ? (formData.status || 'pending') : null
+                // Traffic Fine / Traffic Accident fields
+                plate: (formData.type === 'Traffic Fine' || formData.type === 'Traffic Accident') ? formData.plate : null,
+                customerName: (formData.type === 'Traffic Fine' || formData.type === 'Traffic Accident') ? formData.customerName : null,
+                status: (formData.type === 'Traffic Fine' || formData.type === 'Traffic Accident') ? (formData.status || 'pending') : null
                 ,
                 // Washing metadata
                 washedBy: formData.type === 'Washing Expense' ? (formData.washedBy.trim() || null) : null,
@@ -13950,7 +14048,7 @@ function AddOfficeOperationModal({ cars, onClose, onSuccess, addActivity, franch
                         </div>
                     )}
                     
-                    {formData.type === 'Traffic Fine' && (
+                    {(formData.type === 'Traffic Fine' || formData.type === 'Traffic Accident') && (
                         <div className="space-y-sap-3">
                             <div>
                                 <label className="block text-sap-xs font-medium text-sap-text-secondary dark:text-sap-textDark-secondary mb-sap-1">Plate *</label>
@@ -14093,8 +14191,8 @@ function EditOfficeOperationModal({ operation, cars, onClose, onSuccess, addActi
     const [loading, setLoading] = useState(false);
 
     const operationTypes = (/^CH/i.test(String(franchiseId || ''))
-        ? ['Credit Card Receipt', 'Fuel Receipt', 'Washing Expense', 'Additional Sales', 'Banking Transaction', 'Traffic Fine']
-        : ['Credit Card Receipt', 'POS Daily Closing', 'Fuel Receipt', 'Washing Expense', 'Additional Sales', 'Banking Transaction', 'Traffic Fine']);
+        ? ['Credit Card Receipt', 'Fuel Receipt', 'Washing Expense', 'Additional Sales', 'Banking Transaction', 'Traffic Fine', 'Traffic Accident']
+        : ['Credit Card Receipt', 'POS Daily Closing', 'Fuel Receipt', 'Washing Expense', 'Additional Sales', 'Banking Transaction', 'Traffic Fine', 'Traffic Accident']);
 
     // ESC key handler
     React.useEffect(() => {
@@ -14117,9 +14215,9 @@ function EditOfficeOperationModal({ operation, cars, onClose, onSuccess, addActi
                 toast.warning('Please enter at least one POS amount');
                 return;
             }
-        } else if (formData.type === 'Traffic Fine') {
+        } else if (formData.type === 'Traffic Fine' || formData.type === 'Traffic Accident') {
             if (!formData.plate || !formData.customerName || !formData.amount) {
-                toast.warning('Please fill all required fields for Traffic Fine');
+                toast.warning(`Please fill all required fields for ${formData.type}`);
                 return;
             }
         } else if (formData.type === 'Washing Expense' && !formData.washedBy.trim()) {
@@ -14192,10 +14290,10 @@ function EditOfficeOperationModal({ operation, cars, onClose, onSuccess, addActi
                 // Banking Transaction fields
                 resCode: formData.type === 'Banking Transaction' ? (formData.resCode || null) : null,
                 referenceNumber: formData.type === 'Banking Transaction' ? (formData.resCode || null) : null,
-                // Traffic Fine fields
-                plate: formData.type === 'Traffic Fine' ? formData.plate : null,
-                customerName: formData.type === 'Traffic Fine' ? formData.customerName : null,
-                status: formData.type === 'Traffic Fine' ? (formData.status || 'pending') : null,
+                // Traffic Fine / Traffic Accident fields
+                plate: (formData.type === 'Traffic Fine' || formData.type === 'Traffic Accident') ? formData.plate : null,
+                customerName: (formData.type === 'Traffic Fine' || formData.type === 'Traffic Accident') ? formData.customerName : null,
+                status: (formData.type === 'Traffic Fine' || formData.type === 'Traffic Accident') ? (formData.status || 'pending') : null,
                 // Washing metadata
                 washedBy: formData.type === 'Washing Expense' ? (formData.washedBy.trim() || null) : null,
                 washingDate: formData.type === 'Washing Expense' ? washingTimeInterval : null
@@ -14360,7 +14458,7 @@ function EditOfficeOperationModal({ operation, cars, onClose, onSuccess, addActi
                         </div>
                     )}
                     
-                    {formData.type === 'Traffic Fine' && (
+                    {(formData.type === 'Traffic Fine' || formData.type === 'Traffic Accident') && (
                         <div className="space-y-sap-3">
                             <div>
                                 <label className="block text-sap-xs font-medium text-sap-text-secondary dark:text-sap-textDark-secondary mb-sap-1">Plate *</label>
@@ -14800,8 +14898,7 @@ function AddShuttleEntryModal({ onClose, onSuccess, addActivity, franchiseId = '
 
         setLoading(true);
         try {
-            // Get current user
-            const auth = getAuth();
+            // Get current user (module-level auth instance from firebase/client)
             const user = auth.currentUser;
             if (!user) {
                 toast.error('User not authenticated');

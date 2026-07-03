@@ -60,11 +60,25 @@ export function wheelsysPollWebLogin({ sid } = {}) {
   return callEu('wheelsysPollWebLogin', { sid: String(sid || '').trim() });
 }
 
-export function wheelsysGetVehicleFleet({ franchiseId = 'CH', station = 'ZRH' } = {}) {
-  return callEu('wheelsysGetVehicleFleet', {
-    franchiseId: String(franchiseId || 'CH').toUpperCase(),
-    station: String(station || 'ZRH').toUpperCase(),
-  });
+// Full-fleet payloads are large and slow to produce; keep the last result per
+// franchise/station for a short window so navigating back to the view doesn't
+// re-download the entire fleet. Manual refresh passes force:true.
+const FLEET_CACHE_TTL_MS = 2 * 60 * 1000;
+const fleetCache = new Map();
+
+export function wheelsysGetVehicleFleet({ franchiseId = 'CH', station = 'ZRH', force = false } = {}) {
+  const fid = String(franchiseId || 'CH').toUpperCase();
+  const st = String(station || 'ZRH').toUpperCase();
+  const key = `${fid}/${st}`;
+  const cached = fleetCache.get(key);
+  if (!force && cached && cached.expiresAt > Date.now()) return cached.promise;
+  const promise = callEu('wheelsysGetVehicleFleet', { franchiseId: fid, station: st })
+    .catch((err) => {
+      fleetCache.delete(key);
+      throw err;
+    });
+  fleetCache.set(key, { promise, expiresAt: Date.now() + FLEET_CACHE_TTL_MS });
+  return promise;
 }
 
 export function wheelsysPreviewVehicleMasterSync({ franchiseId = 'CH', station = 'ZRH' } = {}) {

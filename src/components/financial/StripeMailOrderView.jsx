@@ -164,10 +164,12 @@ export function StripeMailOrderView({ franchiseId, showFinancialTotals = true })
     setLoading(true);
     setError('');
     try {
-      const cfg = await stripeFinancialGetConfig({ franchiseId });
+      const [cfg, mailRes] = await Promise.all([
+        stripeFinancialGetConfig({ franchiseId }),
+        stripeFinancialListMailOrders({ franchiseId, limit: 200 }),
+      ]);
       setConfigured(cfg?.configured !== false);
       setStripeMode(cfg?.mode || 'unset');
-      const mailRes = await stripeFinancialListMailOrders({ franchiseId, limit: 200 });
       setMailOrders((mailRes.orders || []).filter(isPaymentLinkMailOrder));
     } catch (e) {
       setError(e?.message || 'Failed to load mail orders');

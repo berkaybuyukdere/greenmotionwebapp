@@ -7,25 +7,27 @@ import { PDF_STAGE_META } from '../../utilities/pdfDownloadFlow';
  * Palantir-style PDF export overlay: photo → arrow → PDF transfer animation + throughput micro-text.
  */
 export default function PalantirPdfTransferOverlay({ state }) {
-    if (!state?.visible) return null;
-
-    const stage = state.stage || 'preparing';
+    const visible = Boolean(state?.visible);
+    const stage = state?.stage || 'preparing';
     const meta = PDF_STAGE_META[stage] || PDF_STAGE_META.preparing;
     const isCompleted = stage === 'completed';
     const isError = stage === 'error';
     const isCancelled = stage === 'cancelled';
-    const canCancel = Boolean(state.cancelable && state.onCancel && !isCompleted && !isError && !isCancelled);
-    const photoIndex = Number(state.photoIndex) || 0;
-    const photoTotal = Number(state.photoTotal) || 0;
+    const canCancel = Boolean(state?.cancelable && state?.onCancel && !isCompleted && !isError && !isCancelled);
+    const photoIndex = Number(state?.photoIndex) || 0;
+    const photoTotal = Number(state?.photoTotal) || 0;
     const isPhotoStage = stage === 'loading-photos' && photoTotal > 0;
-    const progress = Math.min(100, Math.max(0, Number(state.progress) || 0));
+    const progress = Math.min(100, Math.max(0, Number(state?.progress) || 0));
 
+    // Hooks must run unconditionally — the early return happens after them.
     const [tick, setTick] = useState(0);
     useEffect(() => {
-        if (isCompleted || isError) return undefined;
+        if (!visible || isCompleted || isError) return undefined;
         const id = window.setInterval(() => setTick((t) => t + 1), 900);
         return () => window.clearInterval(id);
-    }, [isCompleted, isError, stage]);
+    }, [visible, isCompleted, isError, stage]);
+
+    if (!visible) return null;
 
     let subtitle = state.message || meta.subtitle;
     if (isPhotoStage) {

@@ -10,7 +10,9 @@ import {
 } from '@stripe/react-stripe-js';
 import { Upload, X, CreditCard, Shield, Terminal } from 'lucide-react';
 import { ref, uploadBytes } from 'firebase/storage';
+import { setDoc, getDoc, Timestamp } from 'firebase/firestore';
 import { storage } from '../../firebase/client';
+import { docRefHelper } from '../../firebase/authScope';
 import {
   defaultResCodeValue,
   formatResCodeForSubmit,
@@ -77,6 +79,123 @@ function apiCategory(category) {
   if (category === 'extra') return 'damage';
   if (category === 'walk_in') return 'damage';
   return category;
+}
+
+/** Canonical `RES-{digits}` form, mirroring iOS TrafficAccidentContract.canonicalRES. */
+function canonicalResCode(raw) {
+  let s = String(raw || '').trim().toUpperCase();
+  if (s.startsWith('RES-')) s = s.slice(4);
+  else if (s.startsWith('RES')) s = s.slice(3).replace(/^[-_ ]+/, '');
+  const digits = s.replace(/\D/g, '');
+  return digits ? `RES-${digits}` : '';
+}
+
+/** Stable primary contract doc id, mirroring iOS TrafficAccidentContract.stableDocumentId. */
+async function trafficContractStableDocId(franchiseId, canonicalRes) {
+  const key = `${String(franchiseId).toUpperCase()}|${canonicalRes}|primary`;
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key));
+  const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return { docId: `tac_${hex.slice(0, 32)}`, idempotencyKey: key };
+}
+
+/**
+ * Mirror a completed Stripe charge into Office Operations so traffic fines
+ * land under "Traffic Fine" and damage charges under "Traffic Accident".
+ * Damage charges additionally create a `traffic_accident_contracts` record in
+ * the exact shape the iOS app's Traffic Accidents feature already reads, so
+ * they show up on iOS with no app change (RES-idempotent: an existing primary
+ * contract for the RES gets a supplement line instead of being overwritten).
+ * Fire-and-forget: a failure here must never break the payment flow itself.
+ */
+async function recordOfficeOperationForCharge({
+  franchiseId,
+  category,
+  resNo,
+  customerName,
+  amountMajor,
+  mailOrderId,
+  paymentIntentId,
+}) {
+  const officeType =
+    category === 'traffic_fine' ? 'Traffic Fine'
+      : category === 'damage' ? 'Traffic Accident'
+        : null;
+  if (!officeType) return;
+  const amount = Number(amountMajor) || 0;
+  const operationId = crypto.randomUUID();
+
+  try {
+    const iosTimeInterval = (Date.now() - new Date('2001-01-01T00:00:00Z').getTime()) / 1000;
+    await setDoc(docRefHelper('office_operations', operationId), {
+      id: operationId,
+      type: officeType,
+      date: iosTimeInterval,
+      amount,
+      photos: [],
+      vehiclePlate: null,
+      posCount: null,
+      posAmounts: null,
+      notes: '',
+      isCompleted: false,
+      resCode: resNo || null,
+      referenceNumber: resNo || null,
+      plate: null,
+      customerName: customerName || null,
+      status: 'done',
+      washedBy: null,
+      washingDate: null,
+      source: 'stripe',
+      stripeMailOrderId: mailOrderId || null,
+      stripePaymentIntentId: paymentIntentId || null,
+      franchiseId,
+    });
+  } catch (err) {
+    console.warn('[stripe] office operation mirror failed', err?.message);
+  }
+
+  if (category !== 'damage') return;
+  try {
+    const canonicalRes = canonicalResCode(resNo);
+    if (!canonicalRes) return;
+    const { docId, idempotencyKey } = await trafficContractStableDocId(franchiseId, canonicalRes);
+    const now = Timestamp.now();
+    const contractBase = {
+      photos: [],
+      amount,
+      resCode: canonicalRes,
+      paidAmount: amount,
+      createdAt: now,
+      createdTs: now,
+      contractIssueDate: now,
+      processedDate: now,
+      franchiseId: String(franchiseId).toUpperCase(),
+      createdByName: 'Stripe',
+      paymentMethod: 'officePayment',
+      linkedPaymentOfficeOperationDocumentId: operationId,
+      source: 'stripe',
+      stripePaymentIntentId: paymentIntentId || null,
+    };
+    const primaryRef = docRefHelper('traffic_accident_contracts', docId);
+    const existing = await getDoc(primaryRef);
+    if (!existing.exists()) {
+      await setDoc(primaryRef, {
+        ...contractBase,
+        id: crypto.randomUUID(),
+        documentId: docId,
+        idempotencyKey,
+      });
+    } else {
+      const supplementDocId = crypto.randomUUID();
+      await setDoc(docRefHelper('traffic_accident_contracts', supplementDocId), {
+        ...contractBase,
+        id: supplementDocId,
+        documentId: supplementDocId,
+        supplementOfDocumentId: docId,
+      });
+    }
+  } catch (err) {
+    console.warn('[stripe] traffic accident contract mirror failed', err?.message);
+  }
 }
 
 function MailComposePreview({ to, subject, onSubjectChange, body, onBodyChange, files = [] }) {
@@ -262,6 +381,16 @@ function DirectCardChargeForm({
         mailOrderId: created.mailOrderId,
         paymentIntentId: paymentIntent.id,
         sendEmail: Boolean(customerEmail),
+      });
+
+      await recordOfficeOperationForCharge({
+        franchiseId,
+        category: form.category,
+        resNo,
+        customerName,
+        amountMajor: major,
+        mailOrderId: created.mailOrderId,
+        paymentIntentId: paymentIntent.id,
       });
 
       const last4 = finalized.cardLast4 ? ` · · · · ${finalized.cardLast4}` : '';
