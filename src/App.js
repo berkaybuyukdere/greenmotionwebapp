@@ -46,6 +46,13 @@ import {
     PalantirTabRail,
     PalantirActionBar,
 } from './components/palantir/PalantirWorkbench';
+import {
+    FoundryPipeline,
+    FoundryDotTimeline,
+    buildCheckoutPipelineStages,
+    buildReturnPipelineStages,
+    buildVehicleTimelineEvents,
+} from './components/palantir/FoundryPipeline';
 import { isSwissFranchiseId } from './utilities/fileLibraryHelpers';
 import { FrontDeskKioskView } from './components/FrontDeskKioskView';
 import { CustomerReturnFormView } from './components/CustomerReturnFormView';
@@ -9205,6 +9212,15 @@ function VehicleDetailModal({ car, exitIslemleri = [], returns = [], officeOpera
                         </div>
                     </div>
 
+                    <FoundryDotTimeline
+                        title="Rental timeline"
+                        events={buildVehicleTimelineEvents({
+                            exits: relatedCheckouts,
+                            returns: relatedReturns,
+                            damages: car.hasarKayitlari || [],
+                        })}
+                    />
+
                     <div className="gm-segmented">
                         <button
                             onClick={() => setActiveTab('damage')}
@@ -12215,6 +12231,7 @@ function ReturnDetailModal({ return: ret, cars, onClose, onSoftDeleteReturn }) {
                 ].filter(Boolean)}
                 onClose={onClose}
             />
+            <FoundryPipeline stages={buildReturnPipelineStages(ret)} className="mx-4 mt-3" />
             <PalantirWorkbenchGrid>
                 <PalantirInspector title="Object inspector">
                     <PalantirInspectorRow label="Plate" value={ret.aracPlaka} mono />
@@ -12341,6 +12358,7 @@ function CheckoutDetailModal({ exit, cars, onClose, runPdfFlow, generateCheckout
                 ].filter(Boolean)}
                 onClose={onClose}
             />
+            <FoundryPipeline stages={buildCheckoutPipelineStages(exit)} className="mx-4 mt-3" />
             <PalantirWorkbenchGrid>
                 <PalantirInspector title="Object inspector">
                     <PalantirInspectorRow label="Plate" value={exit.aracPlaka} mono />

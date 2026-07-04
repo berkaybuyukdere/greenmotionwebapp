@@ -17,6 +17,7 @@
 @import './styles/palantir-toast.css';
 @import './styles/work-time-timetable-palantir.css';
 @import './styles/vehicle-sentinel-theme.css';
+@import './styles/foundry-theme.css';
 
 @tailwind base;
 @tailwind components;

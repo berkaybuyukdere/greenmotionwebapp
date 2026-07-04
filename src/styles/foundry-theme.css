@@ -1,0 +1,515 @@
+/**
+ * Vehicle Sentinel — Palantir Foundry theme
+ * Token remap sourced from the approved Foundry wireframe study
+ * (PalantirFoundry.zip · VehicleSentinel Web.dc.html).
+ *
+ * Loads LAST in index.css so it wins the cascade over every earlier
+ * palantir-*.css / vehicle-sentinel-theme.css declaration. Visual-only:
+ * no component markup or business logic depends on this file.
+ *
+ * Dark  — canvas #0B0E13 · surface #151A21 · accent #4C90F0
+ * Light — canvas #F2F5F8 · surface #FFFFFF · accent #215DB0
+ */
+
+/* ─── Shared (both themes) ─── */
+:root,
+.dark {
+    --fd-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --fd-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+
+    /* Foundry keeps sharp, technical corners */
+    --vs-radius: 0;
+    --erpx-radius-sm: 0;
+    --erpx-radius: 0;
+    --erpx-radius-lg: 0;
+    --erpx-radius-xl: 0;
+
+    --erpx-font-data: var(--fd-mono);
+}
+
+/* ─── Light theme (wireframe [data-theme="light"]) ─── */
+:root {
+    color-scheme: light;
+
+    --fd-bg: #F2F5F8;
+    --fd-surface: #FFFFFF;
+    --fd-high: #EBEFF3;
+    --fd-higher: #E2E8EE;
+    --fd-border: #D3DAE1;
+    --fd-border-strong: #B9C3CD;
+    --fd-text: #1C2127;
+    --fd-text2: #3F4854;
+    --fd-muted: #687585;
+    --fd-accent: #215DB0;
+    --fd-accent-dim: rgba(33, 93, 176, 0.10);
+    --fd-green: #1D7A50;
+    --fd-green-dim: rgba(29, 122, 80, 0.11);
+    --fd-amber: #946108;
+    --fd-amber-dim: rgba(148, 97, 8, 0.12);
+    --fd-red: #B0343A;
+    --fd-red-dim: rgba(176, 52, 58, 0.10);
+    --fd-purple: #634DBF;
+    --fd-purple-dim: rgba(99, 77, 191, 0.11);
+
+    /* vehicle-sentinel base tokens */
+    --vs-canvas: var(--fd-bg);
+    --vs-surface: var(--fd-surface);
+    --vs-surface-high: var(--fd-high);
+    --vs-border: var(--fd-border);
+    --vs-border-strong: var(--fd-border-strong);
+    --vs-ink: var(--fd-text);
+    --vs-ink-secondary: var(--fd-text2);
+    --vs-ink-muted: var(--fd-muted);
+    --vs-ink-disabled: #93A1B0;
+    --vs-violet: var(--fd-accent);
+    --vs-violet-dim: var(--fd-accent-dim);
+    --vs-violet-border: rgba(33, 93, 176, 0.35);
+
+    /* pal-* aliases */
+    --pal-bg: var(--fd-bg);
+    --pal-surface: var(--fd-surface);
+    --pal-surface-high: var(--fd-high);
+    --pal-border: var(--fd-border);
+    --pal-text: var(--fd-text);
+    --pal-muted: var(--fd-muted);
+    --pal-accent: var(--fd-accent);
+    --pal-accent-hover: #2D72D2;
+    --pal-brand: var(--fd-accent);
+    --pal-demo-brand: var(--fd-accent);
+    --pal-demo-brand2: #2D72D2;
+    --pal-tag-bg: var(--fd-accent-dim);
+
+    /* erpx core */
+    --erpx-canvas: var(--fd-bg);
+    --erpx-surface: var(--fd-surface);
+    --erpx-subtle: var(--fd-high);
+    --erpx-muted: var(--fd-higher);
+    --erpx-border: var(--fd-border);
+    --erpx-border-strong: var(--fd-border-strong);
+    --erpx-ink: var(--fd-text);
+    --erpx-ink-secondary: var(--fd-text2);
+    --erpx-ink-muted: var(--fd-muted);
+    --erpx-ink-disabled: #93A1B0;
+    --erpx-brand: var(--fd-accent);
+    --erpx-brand-dark: #1B4C90;
+    --erpx-brand-light: var(--fd-accent-dim);
+    --erpx-row-hover: var(--fd-high);
+    --erpx-shadow-focus: 0 0 0 2px rgba(33, 93, 176, 0.30);
+
+    /* semantics */
+    --erpx-green: var(--fd-green);
+    --erpx-green-bg: var(--fd-green-dim);
+    --erpx-green-border: rgba(29, 122, 80, 0.35);
+    --erpx-amber: var(--fd-amber);
+    --erpx-amber-bg: var(--fd-amber-dim);
+    --erpx-amber-border: rgba(148, 97, 8, 0.35);
+    --erpx-red: var(--fd-red);
+    --erpx-red-bg: var(--fd-red-dim);
+    --erpx-red-border: rgba(176, 52, 58, 0.35);
+    --erpx-info: var(--fd-accent);
+    --erpx-info-bg: var(--fd-accent-dim);
+    --erpx-info-border: rgba(33, 93, 176, 0.35);
+
+    /* sidebar */
+    --erpx-sidebar-bg: var(--fd-surface);
+    --erpx-sidebar-hover: var(--fd-high);
+    --erpx-sidebar-active: var(--fd-accent-dim);
+    --erpx-sidebar-active-text: var(--fd-accent);
+    --erpx-sidebar-divider: var(--fd-border);
+    --erpx-sidebar-text: var(--fd-muted);
+}
+
+/* ─── Dark theme (wireframe :root) ─── */
+.dark {
+    color-scheme: dark;
+
+    --fd-bg: #0B0E13;
+    --fd-surface: #151A21;
+    --fd-high: #1E252E;
+    --fd-higher: #252D38;
+    --fd-border: #2C3540;
+    --fd-border-strong: #3B4654;
+    --fd-text: #D6DEE8;
+    --fd-text2: #A9B4C0;
+    --fd-muted: #7D8A99;
+    --fd-accent: #4C90F0;
+    --fd-accent-dim: rgba(76, 144, 240, 0.14);
+    --fd-green: #3DC98A;
+    --fd-green-dim: rgba(61, 201, 138, 0.13);
+    --fd-amber: #E5A83B;
+    --fd-amber-dim: rgba(229, 168, 59, 0.13);
+    --fd-red: #E76A6E;
+    --fd-red-dim: rgba(231, 106, 110, 0.13);
+    --fd-purple: #9D7CD8;
+    --fd-purple-dim: rgba(157, 124, 216, 0.14);
+
+    --vs-canvas: var(--fd-bg);
+    --vs-surface: var(--fd-surface);
+    --vs-surface-high: var(--fd-high);
+    --vs-border: var(--fd-border);
+    --vs-border-strong: var(--fd-border-strong);
+    --vs-ink: var(--fd-text);
+    --vs-ink-secondary: var(--fd-text2);
+    --vs-ink-muted: var(--fd-muted);
+    --vs-ink-disabled: #5B6672;
+    --vs-violet: var(--fd-accent);
+    --vs-violet-dim: var(--fd-accent-dim);
+    --vs-violet-border: rgba(76, 144, 240, 0.38);
+
+    --pal-bg: var(--fd-bg);
+    --pal-surface: var(--fd-surface);
+    --pal-surface-high: var(--fd-high);
+    --pal-border: var(--fd-border);
+    --pal-text: var(--fd-text);
+    --pal-muted: var(--fd-muted);
+    --pal-accent: var(--fd-accent);
+    --pal-accent-hover: #6BA6F5;
+    --pal-brand: var(--fd-accent);
+    --pal-demo-brand: var(--fd-accent);
+    --pal-demo-brand2: #6BA6F5;
+    --pal-tag-bg: var(--fd-accent-dim);
+
+    --erpx-canvas: var(--fd-bg);
+    --erpx-surface: var(--fd-surface);
+    --erpx-subtle: var(--fd-high);
+    --erpx-muted: var(--fd-higher);
+    --erpx-border: var(--fd-border);
+    --erpx-border-strong: var(--fd-border-strong);
+    --erpx-ink: var(--fd-text);
+    --erpx-ink-secondary: var(--fd-text2);
+    --erpx-ink-muted: var(--fd-muted);
+    --erpx-ink-disabled: #5B6672;
+    --erpx-brand: var(--fd-accent);
+    --erpx-brand-dark: #6BA6F5;
+    --erpx-brand-light: var(--fd-accent-dim);
+    --erpx-row-hover: var(--fd-high);
+    --erpx-shadow-focus: 0 0 0 2px rgba(76, 144, 240, 0.32);
+
+    --erpx-green: var(--fd-green);
+    --erpx-green-bg: var(--fd-green-dim);
+    --erpx-green-border: rgba(61, 201, 138, 0.38);
+    --erpx-amber: var(--fd-amber);
+    --erpx-amber-bg: var(--fd-amber-dim);
+    --erpx-amber-border: rgba(229, 168, 59, 0.38);
+    --erpx-red: var(--fd-red);
+    --erpx-red-bg: var(--fd-red-dim);
+    --erpx-red-border: rgba(231, 106, 110, 0.38);
+    --erpx-info: var(--fd-accent);
+    --erpx-info-bg: var(--fd-accent-dim);
+    --erpx-info-border: rgba(76, 144, 240, 0.38);
+
+    --erpx-sidebar-bg: var(--fd-surface);
+    --erpx-sidebar-hover: var(--fd-high);
+    --erpx-sidebar-active: var(--fd-accent-dim);
+    --erpx-sidebar-active-text: var(--fd-accent);
+    --erpx-sidebar-divider: var(--fd-border);
+    --erpx-sidebar-text: var(--fd-muted);
+}
+
+/* ─── Foundry chrome conventions ───
+   The wireframe's signature treatments, applied to existing shell classes. */
+
+/* Sharp corners across chrome that hardcoded radii elsewhere */
+.pal-dash-kpi,
+.pal-dash-panel,
+.pal-dash-summary,
+.gm-stripe-metric-tile,
+.gm-op-list,
+.gm-op-icon,
+.pal-btn,
+.gm-btn,
+.gm-badge,
+.gm-filter-chip,
+.pal-analytics-kpi,
+.pal-analytics-data-panel,
+.pal-analytics-chart-panel,
+.pal-fin-summary-card,
+.pal-modal,
+.pal-wb-panel,
+.erpx-sidebar .gm-nav-item,
+.erpx-sidebar-logo {
+    border-radius: 0 !important;
+}
+
+/* Uppercase letter-spaced section headers — wireframe: 700 10px, .12em */
+.pal-dash-panel-title,
+.pal-wb-section-title,
+.pal-fin-eyebrow,
+.pal-analytics-panel-title {
+    font-family: var(--fd-sans);
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+/* Data values read in mono (wireframe uses mono for every number) */
+.pal-dash-kpi-value,
+.pal-analytics-kpi-value,
+.pal-fin-summary-count,
+.pal-fin-summary-total,
+.pal-wb-field-value.mono,
+.gm-badge,
+.pal-fin-status {
+    font-family: var(--fd-mono);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Wireframe status pills: mono caps, 1px colored border over a dim fill */
+.gm-badge {
+    border-width: 1px;
+    border-style: solid;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+    font-size: 10px;
+}
+
+/* Primary buttons: flat accent, uppercase, brightness hover (no gradients) */
+.pal-btn-primary,
+.gm-btn-primary {
+    background: var(--fd-accent) !important;
+    border: 1px solid var(--fd-accent) !important;
+    color: #fff !important;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    box-shadow: none !important;
+    filter: none;
+}
+
+.pal-btn-primary:hover:not(:disabled),
+.gm-btn-primary:hover:not(:disabled) {
+    background: var(--fd-accent) !important;
+    border-color: var(--fd-accent) !important;
+    filter: brightness(1.12);
+}
+
+/* Topbar + status surfaces sit on --surface with hairline borders */
+.erpx-topbar {
+    background: var(--fd-surface);
+    border-bottom: 1px solid var(--fd-border);
+    box-shadow: none;
+}
+
+/* Table headers: wireframe density (700 9px caps on --high strip) */
+.pal-fin-table thead th,
+.erpx-main table thead th {
+    background: var(--fd-high);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--fd-muted);
+}
+
+/* Sidebar nav: wireframe active state = accent-dim fill + 2px left accent rail */
+.pal-nav-item {
+    border-left: 2px solid transparent;
+}
+
+.pal-nav-item.active {
+    border-left: 2px solid var(--fd-accent);
+    background: var(--fd-accent-dim);
+    color: var(--fd-text);
+}
+
+/* Ghost / secondary buttons: hairline border, caps, border-strong hover */
+.gm-btn-secondary,
+.pal-btn-ghost {
+    border: 1px solid var(--fd-border) !important;
+    background: transparent !important;
+    color: var(--fd-text2) !important;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    box-shadow: none !important;
+}
+
+.gm-btn-secondary:hover:not(:disabled),
+.pal-btn-ghost:hover:not(:disabled) {
+    border-color: var(--fd-border-strong) !important;
+    color: var(--fd-text) !important;
+    background: var(--fd-high) !important;
+}
+
+/* Screen entry: wireframe vsFadeUp on every view layer */
+@keyframes fdFadeUp {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+}
+
+.erpx-view-layer {
+    animation: fdFadeUp 0.3s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .erpx-view-layer { animation: none; }
+}
+
+/* Live-pulse dot used across the wireframe (sync chips, feeds) */
+@keyframes fdPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+}
+
+.fd-pulse-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--fd-green);
+    display: inline-block;
+    animation: fdPulse 2s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .fd-pulse-dot { animation: none; }
+}
+
+/* ─── Foundry process pipeline ───
+   Grammar: done = green on green-dim · active = accent on accent-dim (bold)
+   pending = hollow border-strong · blocked = red on red-dim. */
+
+.fd-pipeline {
+    display: flex;
+    align-items: flex-start;
+    gap: 0;
+    flex-wrap: wrap;
+    row-gap: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--fd-border);
+    background: var(--fd-bg);
+}
+
+.fd-pipeline-stage {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    align-items: flex-start;
+}
+
+.fd-pipeline-chip {
+    font-family: var(--fd-mono);
+    font-size: 8.5px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 3px 7px;
+    border: 1px solid var(--fd-border-strong);
+    color: var(--fd-border-strong);
+    background: transparent;
+    white-space: nowrap;
+}
+
+.fd-pipeline-stage-done .fd-pipeline-chip {
+    color: var(--fd-green);
+    border-color: var(--fd-green);
+    background: var(--fd-green-dim);
+}
+
+.fd-pipeline-stage-active .fd-pipeline-chip {
+    color: var(--fd-accent);
+    border-color: var(--fd-accent);
+    background: var(--fd-accent-dim);
+    font-weight: 700;
+}
+
+.fd-pipeline-stage-blocked .fd-pipeline-chip {
+    color: var(--fd-red);
+    border-color: var(--fd-red);
+    background: var(--fd-red-dim);
+    font-weight: 700;
+}
+
+.fd-pipeline-note {
+    font-family: var(--fd-mono);
+    font-size: 8px;
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    color: var(--fd-muted);
+    padding-left: 1px;
+}
+
+.fd-pipeline-link {
+    width: 18px;
+    height: 1px;
+    background: var(--fd-border-strong);
+    margin: 9px 4px 0;
+    flex: none;
+}
+
+.fd-pipeline-link-done { background: var(--fd-green); opacity: 0.55; }
+.fd-pipeline-link-active { background: var(--fd-accent); opacity: 0.55; }
+.fd-pipeline-link-blocked { background: var(--fd-red); opacity: 0.55; }
+
+/* ─── Foundry status pill (per-row process state) ─── */
+.fd-pill {
+    display: inline-block;
+    font-family: var(--fd-mono);
+    font-size: 8.5px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border: 1px solid var(--fd-muted);
+    color: var(--fd-muted);
+    background: var(--fd-high);
+    white-space: nowrap;
+}
+
+.fd-pill-accent { color: var(--fd-accent); border-color: var(--fd-accent); background: var(--fd-accent-dim); }
+.fd-pill-green { color: var(--fd-green); border-color: var(--fd-green); background: var(--fd-green-dim); }
+.fd-pill-amber { color: var(--fd-amber); border-color: var(--fd-amber); background: var(--fd-amber-dim); }
+.fd-pill-red { color: var(--fd-red); border-color: var(--fd-red); background: var(--fd-red-dim); }
+.fd-pill-purple { color: var(--fd-purple); border-color: var(--fd-purple); background: var(--fd-purple-dim); }
+
+/* ─── Foundry dot timeline (vehicle rental history) ─── */
+.fd-timeline-title {
+    font-family: var(--fd-sans);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--fd-muted);
+    margin-bottom: 6px;
+}
+
+.fd-timeline-body {
+    border: 1px solid var(--fd-border);
+    background: var(--fd-bg);
+    padding: 10px;
+}
+
+.fd-timeline-row {
+    display: flex;
+    gap: 10px;
+    padding: 5px 0;
+    font-size: 11px;
+    align-items: baseline;
+}
+
+.fd-timeline-at {
+    font-family: var(--fd-mono);
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--fd-muted);
+    width: 56px;
+    flex: none;
+}
+
+.fd-timeline-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--fd-muted);
+    flex: none;
+    transform: translateY(-1px);
+}
+
+.fd-timeline-dot-accent { background: var(--fd-accent); }
+.fd-timeline-dot-green { background: var(--fd-green); }
+.fd-timeline-dot-amber { background: var(--fd-amber); }
+.fd-timeline-dot-red { background: var(--fd-red); }
+.fd-timeline-dot-purple { background: var(--fd-purple); }
+
+.fd-timeline-label {
+    color: var(--fd-text2);
+    min-width: 0;
+}
