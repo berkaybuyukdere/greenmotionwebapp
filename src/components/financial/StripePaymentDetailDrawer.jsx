@@ -7,6 +7,7 @@ import {
   stripeFinancialCaptureDeposit,
   stripeFinancialIncrementDeposit,
 } from '../../services/stripeFinancialApi';
+import { humanizeStripeFinancialError } from './StripeFinFeedback';
 
 const BUCKET_VARIANT = {
   successful: 'success',
@@ -57,12 +58,65 @@ function DetailRow({ label, value, mono }) {
   );
 }
 
+function resolveDepositLifecycle(transaction, deposit) {
+  const depositStatus = String(deposit?.status || '').toLowerCase();
+  const stripePiStatus = String(deposit?.stripeStatus || transaction?.stripeStatus || '').toLowerCase();
+  const displayStatus = String(transaction?.depositDisplayStatus || '').toLowerCase();
+  const bucket = transaction?.bucket || 'pending';
+
+  const isCaptured =
+    depositStatus === 'captured' ||
+    stripePiStatus === 'succeeded' ||
+    displayStatus === 'captured' ||
+    displayStatus === 'captured_increased' ||
+    (bucket === 'successful' && (transaction?.flowType === 'deposit' || Boolean(deposit)));
+
+  const isCancelled =
+    depositStatus === 'cancelled' ||
+    displayStatus === 'cancelled' ||
+    bucket === 'cancelled';
+
+  const isAuthorizedHold =
+    !isCaptured &&
+    !isCancelled &&
+    (depositStatus === 'authorized' || stripePiStatus === 'requires_capture');
+
+  const isPendingCollection =
+    !isCaptured &&
+    !isCancelled &&
+    !isAuthorizedHold &&
+    (depositStatus === 'pending_collection' || bucket === 'pending');
+
+  const effectiveBucket = isCaptured
+    ? 'successful'
+    : isCancelled
+      ? 'cancelled'
+      : isAuthorizedHold
+        ? 'hold'
+        : isPendingCollection
+          ? 'pending'
+          : bucket;
+
+  return {
+    bucket: effectiveBucket,
+    isCaptured,
+    isCancelled,
+    isAuthorizedHold,
+    isPendingCollection,
+    canCancel: isAuthorizedHold,
+    canCaptureDeposit: isAuthorizedHold,
+    canManageDeposit: isAuthorizedHold,
+  };
+}
+
 export function StripePaymentDetailDrawer({
   transaction,
   deposit,
   franchiseId,
+  layout = 'drawer',
   onClose,
   onChanged,
+  onFeedback,
 }) {
   const [cancelReason, setCancelReason] = useState('');
   const [totalAmountChf, setTotalAmountChf] = useState('');
@@ -70,12 +124,21 @@ export function StripePaymentDetailDrawer({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const bucket = transaction?.bucket || 'pending';
+  const lifecycle = useMemo(
+    () => resolveDepositLifecycle(transaction, deposit),
+    [transaction, deposit],
+  );
+  const {
+    bucket,
+    isCaptured,
+    isCancelled,
+    isPendingCollection,
+    canCancel,
+    canCaptureDeposit,
+    canManageDeposit,
+  } = lifecycle;
   const isDeposit = transaction?.flowType === 'deposit' || Boolean(deposit);
-  const canCancel = ['hold', 'pending'].includes(bucket);
-  const canManageDeposit =
-    Boolean(deposit) &&
-    (bucket === 'hold' || ['authorized', 'pending_collection'].includes(deposit?.status));
+  const inline = layout === 'inline';
 
   const currentHoldCents =
     deposit?.currentHoldAmount || deposit?.initialAmount || transaction?.depositCurrentHold || 0;
@@ -100,16 +163,34 @@ export function StripePaymentDetailDrawer({
 
   const amountDisplay = useMemo(() => {
     if (!transaction) return '—';
-    const cents =
-      bucket === 'hold'
+    const cents = isCaptured
+      ? deposit?.capturedAmount || transaction.amountReceived || transaction.amount
+      : bucket === 'hold'
         ? transaction.holdAmount || transaction.amount
         : transaction.amountReceived || transaction.amount;
     return formatMoney(cents, transaction.currency);
-  }, [transaction, bucket]);
+  }, [transaction, bucket, isCaptured, deposit?.capturedAmount]);
 
   if (!transaction) return null;
 
   const channelLabel = transaction.channelLabel || (isDeposit ? 'Deposit' : null);
+  const statusLabel = isCaptured
+    ? 'Paid'
+    : BUCKET_LABEL[bucket] || transaction.statusLabel || transaction.status;
+
+  const pushFeedback = (type, title, detail, extra = {}) => {
+    onFeedback?.({ type, title, detail, ...extra, at: new Date().toISOString() });
+  };
+
+  const pushFeedbackFromError = (defaultTitle, err) => {
+    const friendly = humanizeStripeFinancialError(err);
+    pushFeedback(
+      'error',
+      friendly.title || defaultTitle,
+      friendly.detail,
+      { code: friendly.code, nextSteps: friendly.nextSteps },
+    );
+  };
 
   const runCancel = async () => {
     if (!cancelReason.trim()) {
@@ -125,9 +206,11 @@ export function StripePaymentDetailDrawer({
         paymentIntentId: transaction.paymentIntentId,
         reason: cancelReason.trim(),
       });
+      pushFeedback('success', 'Hold released', 'Deposit authorization cancelled and hold released.');
       onChanged?.();
       onClose?.();
     } catch (e) {
+      pushFeedbackFromError('Cancel failed', e);
       setError(e?.message || 'Cancel failed');
     } finally {
       setBusy(false);
@@ -140,10 +223,18 @@ export function StripePaymentDetailDrawer({
     setBusy(true);
     setError('');
     try {
-      await stripeFinancialCaptureDeposit({ franchiseId, depositId });
+      const res = await stripeFinancialCaptureDeposit({ franchiseId, depositId });
+      const capturedChf =
+        (Number(res?.amountReceived) || currentHoldCents || 0) / 100;
+      pushFeedback(
+        'success',
+        'Hold captured',
+        `CHF ${capturedChf.toFixed(2)} charged from the authorized deposit hold.`,
+      );
       onChanged?.();
       onClose?.();
     } catch (e) {
+      pushFeedbackFromError('Capture failed', e);
       setError(e?.message || 'Capture failed');
     } finally {
       setBusy(false);
@@ -161,32 +252,32 @@ export function StripePaymentDetailDrawer({
         depositId,
         newAmountChf: increasePreview.total,
       });
+      pushFeedback(
+        'success',
+        'Deposit authorization increased',
+        `New hold CHF ${increasePreview.total.toFixed(2)} (+${increasePreview.additional.toFixed(2)}).`,
+      );
       onChanged?.();
       onClose?.();
     } catch (e) {
+      pushFeedbackFromError('Increase failed', e);
       setError(e?.message || 'Increase failed');
     } finally {
       setBusy(false);
     }
   };
 
-  return (
-    <div className="pal-pay-drawer-backdrop" role="presentation" onClick={onClose}>
-      <aside
-        className="pal-pay-drawer"
-        role="dialog"
-        aria-modal="true"
-        onClick={(e) => e.stopPropagation()}
-      >
+  const panelBody = (
+    <>
         <header className="pal-pay-drawer-header">
           <div>
-            <p className="pal-fin-eyebrow">Deposit preview</p>
+            <p className="pal-fin-eyebrow">{isCaptured ? 'Captured deposit' : 'Deposit preview'}</p>
             <p className="pal-pay-drawer-amount">{amountDisplay}</p>
             <div className="pal-pay-drawer-badges">
               <StripeStatusBadge
                 sharp
                 variant={BUCKET_VARIANT[bucket] || 'neutral'}
-                label={BUCKET_LABEL[bucket] || transaction.statusLabel || transaction.status}
+                label={statusLabel}
               />
               {channelLabel && (
                 <StripeStatusBadge
@@ -234,8 +325,28 @@ export function StripePaymentDetailDrawer({
           {transaction.paymentIntentId && (
             <DetailRow label="Payment intent" value={transaction.paymentIntentId} mono />
           )}
+          {isCaptured && deposit?.capturedAt && (
+            <DetailRow label="Captured at" value={formatDate(deposit.capturedAt)} />
+          )}
+
           {deposit?.cancelReason && (
             <DetailRow label="Cancel note" value={deposit.cancelReason} />
+          )}
+
+          {isPendingCollection && (
+            <div className="pal-pay-drawer-section">
+              <p className="pal-fin-alert pal-fin-alert-warn">
+                Waiting for card on POS — capture is available only after the hold is authorized.
+              </p>
+            </div>
+          )}
+
+          {isCaptured && (
+            <div className="pal-pay-drawer-section">
+              <p className="pal-fin-alert pal-fin-alert-ok">
+                Funds captured — reported as Paid / Successful. Hold release and cancel are disabled.
+              </p>
+            </div>
           )}
 
           {deposit?.emailSentAt && (
@@ -250,8 +361,18 @@ export function StripePaymentDetailDrawer({
               <p className="pal-fin-eyebrow">Deposit actions</p>
               {!showIncreasePanel ? (
                 <div className="pal-pay-drawer-actions">
+                  {canCaptureDeposit && (
+                    <button
+                      type="button"
+                      className="gm-btn gm-btn-primary gm-btn-sm"
+                      disabled={busy}
+                      onClick={runCapture}
+                    >
+                      <CreditCard size={14} /> Capture hold
+                    </button>
+                  )}
                   {canIncreaseToMax && (
-                    <button type="button" className="gm-btn gm-btn-primary gm-btn-sm" disabled={busy} onClick={applyIncreaseToMax}>
+                    <button type="button" className="gm-btn gm-btn-secondary gm-btn-sm" disabled={busy} onClick={applyIncreaseToMax}>
                       <TrendingUp size={14} /> Increase to {maxAuthChf.toFixed(0)} CHF
                     </button>
                   )}
@@ -266,14 +387,6 @@ export function StripePaymentDetailDrawer({
                     }}
                   >
                     <TrendingUp size={14} /> Custom increase
-                  </button>
-                  <button
-                    type="button"
-                    className="gm-btn gm-btn-primary gm-btn-sm"
-                    disabled={busy}
-                    onClick={runCapture}
-                  >
-                    <CreditCard size={14} /> Capture hold
                   </button>
                 </div>
               ) : (
@@ -361,6 +474,26 @@ export function StripePaymentDetailDrawer({
 
           {error && <p className="pal-fin-alert">{error}</p>}
         </div>
+    </>
+  );
+
+  if (inline) {
+    return (
+      <aside className="pal-pay-drawer pal-pay-panel-inline" aria-label="Deposit detail">
+        {panelBody}
+      </aside>
+    );
+  }
+
+  return (
+    <div className="pal-pay-drawer-backdrop" role="presentation" onClick={onClose}>
+      <aside
+        className="pal-pay-drawer"
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {panelBody}
       </aside>
     </div>
   );

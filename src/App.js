@@ -11844,7 +11844,6 @@ function ReturnsView({ returns, cars, onRefresh, addActivity, franchiseId = 'ch'
     const [selectedDate, setSelectedDate] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
     const [selectedReturn, setSelectedReturn] = useState(null);
-    const [showDetailModal, setShowDetailModal] = useState(false);
     const [contextMenu, setContextMenu] = useState(null);
     const [showImageGallery, setShowImageGallery] = useState(null);
 
@@ -11921,7 +11920,8 @@ function ReturnsView({ returns, cars, onRefresh, addActivity, franchiseId = 'ch'
                 </div>
             </div>
 
-            <div className="gm-table-wrap gm-list-panel overflow-x-auto">
+            <div className="pal-ops-master-detail">
+            <div className="pal-ops-master-detail-main gm-table-wrap gm-list-panel overflow-x-auto">
             <StripeFilterChips
                 variant="strip"
                 value={statusFilter}
@@ -11982,7 +11982,8 @@ function ReturnsView({ returns, cars, onRefresh, addActivity, franchiseId = 'ch'
                         return (
                                     <tr 
                                         key={`${ret.documentId || ret.id || 'return'}-${idx}`}
-                                        onClick={() => { setSelectedReturn(ret); setShowDetailModal(true); }}
+                                        className={selectedReturn && (selectedReturn.documentId || selectedReturn.id) === (ret.documentId || ret.id) ? 'gm-table-row-selected' : undefined}
+                                        onClick={() => setSelectedReturn(ret)}
                                         onContextMenu={(e) => {
                                             e.preventDefault();
                                             setContextMenu({ x: e.pageX, y: e.pageY, return: ret });
@@ -12026,7 +12027,7 @@ function ReturnsView({ returns, cars, onRefresh, addActivity, franchiseId = 'ch'
                                         </td>
                                         <td className="gm-table-actions-col" onClick={(e) => e.stopPropagation()}>
                                             <StripeRowAction
-                                                onClick={() => { setSelectedReturn(ret); setShowDetailModal(true); }}
+                                                onClick={() => setSelectedReturn(ret)}
                                             />
                                         </td>
                                     </tr>
@@ -12055,6 +12056,24 @@ function ReturnsView({ returns, cars, onRefresh, addActivity, franchiseId = 'ch'
             )}
             </div>
 
+            <aside className="pal-ops-master-detail-aside">
+                {selectedReturn ? (
+                    <ReturnDetailModal
+                        embedded
+                        return={selectedReturn}
+                        cars={cars}
+                        onClose={() => setSelectedReturn(null)}
+                        onSoftDeleteReturn={onSoftDeleteReturn}
+                    />
+                ) : (
+                    <div className="pal-ops-master-detail-empty">
+                        <ArrowLeft size={28} className="mb-3 opacity-40" />
+                        <p>Select a return record to open details on the right.</p>
+                    </div>
+                )}
+            </aside>
+            </div>
+
             {/* Context Menu */}
             {contextMenu && (
                 <ContextMenu
@@ -12063,7 +12082,7 @@ function ReturnsView({ returns, cars, onRefresh, addActivity, franchiseId = 'ch'
                         { 
                             label: 'View Details', 
                             icon: <Eye size={16} />, 
-                            onClick: () => { setSelectedReturn(contextMenu.return); setShowDetailModal(true); }
+                            onClick: () => { setSelectedReturn(contextMenu.return); }
                         },
                         { 
                             label: 'View Photos', 
@@ -12115,14 +12134,6 @@ function ReturnsView({ returns, cars, onRefresh, addActivity, franchiseId = 'ch'
                 />
             )}
 
-            {showDetailModal && selectedReturn && (
-                <ReturnDetailModal
-                    return={selectedReturn}
-                    cars={cars}
-                    onClose={() => setShowDetailModal(false)}
-                    onSoftDeleteReturn={onSoftDeleteReturn}
-                />
-            )}
         </div>
     );
 }
@@ -12183,7 +12194,7 @@ async function generateReturnReportPdfDocument({ ret, car, returnPhotos, lang, t
     }
 }
 
-function ReturnDetailModal({ return: ret, cars, onClose, onSoftDeleteReturn }) {
+function ReturnDetailModal({ return: ret, cars, onClose, onSoftDeleteReturn, embedded = false }) {
     const toast = useToast();
     const car = findFleetCarByAracId(cars, ret.aracId);
     const returnPhotos = ret.fotograflar || [];
@@ -12221,7 +12232,7 @@ function ReturnDetailModal({ return: ret, cars, onClose, onSoftDeleteReturn }) {
     const resCode = getBookingCode(ret);
 
     return (
-        <PalantirWorkbench onClose={onClose} size="large">
+        <PalantirWorkbench onClose={onClose} size="large" embedded={embedded}>
             <PalantirCommandBar
                 eyebrow="Return operation"
                 title={ret.aracPlaka || '—'}
@@ -12337,7 +12348,7 @@ function ReturnDetailModal({ return: ret, cars, onClose, onSoftDeleteReturn }) {
     );
 }
 
-function CheckoutDetailModal({ exit, cars, onClose, runPdfFlow, generateCheckoutPDF, setShowImageGallery, onSoftDeleteExit }) {
+function CheckoutDetailModal({ exit, cars, onClose, runPdfFlow, generateCheckoutPDF, setShowImageGallery, onSoftDeleteExit, embedded = false }) {
     const toast = useToast();
     const car = findFleetCarByAracId(cars, exit.aracId);
     const checkoutPhotos = exit.fotograflar || [];
@@ -12347,7 +12358,7 @@ function CheckoutDetailModal({ exit, cars, onClose, runPdfFlow, generateCheckout
     const resCode = getExitBookingCode(exit);
 
     return (
-        <PalantirWorkbench onClose={onClose} size="large">
+        <PalantirWorkbench onClose={onClose} size="large" embedded={embedded}>
             <PalantirCommandBar
                 eyebrow="Checkout operation"
                 title={exit.aracPlaka || '—'}
@@ -23692,7 +23703,6 @@ function CheckoutOperationsView({ exits, cars, onRefresh, addActivity, onSoftDel
     const [selectedDate, setSelectedDate] = useState('');
     const [photoFilter, setPhotoFilter] = useState('all');
     const [selectedExit, setSelectedExit] = useState(null);
-    const [showDetailModal, setShowDetailModal] = useState(false);
     const [contextMenu, setContextMenu] = useState(null);
     const [showImageGallery, setShowImageGallery] = useState(null);
     const [pdfOverlay, setPdfOverlay] = useState(null);
@@ -23780,6 +23790,8 @@ function CheckoutOperationsView({ exits, cars, onRefresh, addActivity, onSoftDel
                 </div>
             </div>
 
+            <div className="pal-ops-master-detail">
+            <div className="pal-ops-master-detail-main">
             <StripeFilterChips
                 value={photoFilter}
                 onChange={setPhotoFilter}
@@ -23840,7 +23852,8 @@ function CheckoutOperationsView({ exits, cars, onRefresh, addActivity, onSoftDel
                                     return (
                                         <tr 
                                             key={`${exit.documentId || exit.id || 'exit'}-${idx}`}
-                                            onClick={() => { setSelectedExit(exit); setShowDetailModal(true); }}
+                                            className={selectedExit && (selectedExit.documentId || selectedExit.id) === (exit.documentId || exit.id) ? 'gm-table-row-selected' : undefined}
+                                            onClick={() => setSelectedExit(exit)}
                                             onContextMenu={(e) => {
                                                 e.preventDefault();
                                                 setContextMenu({ x: e.pageX, y: e.pageY, exit: exit });
@@ -23882,7 +23895,7 @@ function CheckoutOperationsView({ exits, cars, onRefresh, addActivity, onSoftDel
                                             </td>
                                             <td className="gm-table-actions-col" onClick={(e) => e.stopPropagation()}>
                                                 <StripeRowAction
-                                                    onClick={() => { setSelectedExit(exit); setShowDetailModal(true); }}
+                                                    onClick={() => setSelectedExit(exit)}
                                                 />
                                             </td>
                                         </tr>
@@ -23910,6 +23923,29 @@ function CheckoutOperationsView({ exits, cars, onRefresh, addActivity, onSoftDel
                 </div>
             )}
 
+            </div>
+
+            <aside className="pal-ops-master-detail-aside">
+                {selectedExit ? (
+                    <CheckoutDetailModal
+                        embedded
+                        exit={selectedExit}
+                        cars={cars}
+                        onClose={() => setSelectedExit(null)}
+                        runPdfFlow={runPdfFlow}
+                        generateCheckoutPDF={generateCheckoutPDF}
+                        setShowImageGallery={setShowImageGallery}
+                        onSoftDeleteExit={onSoftDeleteExit}
+                    />
+                ) : (
+                    <div className="pal-ops-master-detail-empty">
+                        <ArrowRight size={28} className="mb-3 opacity-40" />
+                        <p>Select a checkout record to open details on the right.</p>
+                    </div>
+                )}
+            </aside>
+            </div>
+
             {/* Context Menu */}
             {contextMenu && (
                 <ContextMenu
@@ -23918,7 +23954,7 @@ function CheckoutOperationsView({ exits, cars, onRefresh, addActivity, onSoftDel
                         { 
                             label: 'View Details', 
                             icon: <Eye size={16} />, 
-                            onClick: () => { setSelectedExit(contextMenu.exit); setShowDetailModal(true); }
+                            onClick: () => { setSelectedExit(contextMenu.exit); }
                         },
                         { 
                             label: 'View Photos', 
@@ -23967,20 +24003,6 @@ function CheckoutOperationsView({ exits, cars, onRefresh, addActivity, onSoftDel
                 />
             )}
 
-            {showDetailModal && selectedExit && (
-                <CheckoutDetailModal
-                    exit={selectedExit}
-                    cars={cars}
-                    onClose={() => {
-                        setShowDetailModal(false);
-                        setSelectedExit(null);
-                    }}
-                    runPdfFlow={runPdfFlow}
-                    generateCheckoutPDF={generateCheckoutPDF}
-                    setShowImageGallery={setShowImageGallery}
-                    onSoftDeleteExit={onSoftDeleteExit}
-                />
-            )}
             <PalantirPdfTransferOverlay state={pdfOverlay} />
         </div>
     );

@@ -17,12 +17,13 @@ import {
   resCodeNumberPart,
 } from '../../utilities/resCodeInput';
 import { formatStripeDeclineForDisplay } from '../../utilities/stripeDeclineMessages';
+import { humanizeStripeFinancialError } from './StripeFinFeedback';
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export function StripeDepositModal({ franchiseId, fleetCars = [], onClose, onSuccess }) {
+export function StripeDepositModal({ franchiseId, fleetCars = [], onClose, onSuccess, onFeedback }) {
   const [step, setStep] = useState('form');
   const [depositAmountChf, setDepositAmountChf] = useState('400');
   const [maxAuthAmountChf, setMaxAuthAmountChf] = useState('3000');
@@ -67,6 +68,15 @@ export function StripeDepositModal({ franchiseId, fleetCars = [], onClose, onSuc
     setDeclineDetail(friendly);
     setError(friendly.displayText);
     setStep('declined');
+    const human = humanizeStripeFinancialError(err);
+    onFeedback?.({
+      type: 'error',
+      title: human.title || friendly.title || 'Deposit declined',
+      detail: human.detail || friendly.displayText,
+      code: human.code || friendly.code,
+      nextSteps: human.nextSteps || friendly.nextSteps,
+      at: new Date().toISOString(),
+    });
   };
 
   useEffect(() => {
@@ -136,6 +146,12 @@ export function StripeDepositModal({ franchiseId, fleetCars = [], onClose, onSuc
       setStep('form');
       setStatusMessage('');
       setError('Deposit cancelled. POS closed and authorization voided.');
+      onFeedback?.({
+        type: 'info',
+        title: 'Deposit cancelled',
+        detail: 'POS closed and authorization voided.',
+        at: new Date().toISOString(),
+      });
       if (closeModal) onClose?.();
     },
     [aborting, franchiseId, onClose],

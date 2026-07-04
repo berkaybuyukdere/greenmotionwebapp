@@ -379,6 +379,71 @@
     height: auto;
 }
 
+.pal-wb-shell-embedded {
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    height: 100%;
+    border: none;
+    border-radius: 0;
+}
+
+.pal-wb-shell-embedded .pal-wb-grid {
+    grid-template-columns: 1fr;
+}
+
+.pal-ops-master-detail {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
+    min-height: min(72vh, 860px);
+    border: 1px solid var(--erpx-border);
+    border-radius: var(--erpx-radius-lg);
+    overflow: hidden;
+    background: var(--erpx-surface);
+}
+
+.pal-ops-master-detail-main {
+    min-height: 0;
+    overflow: auto;
+    border-right: none;
+}
+
+.pal-ops-master-detail-aside {
+    border-left: 1px solid var(--erpx-border);
+    min-height: 0;
+    overflow: auto;
+    background: var(--erpx-canvas);
+}
+
+.pal-ops-master-detail-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 280px;
+    padding: 24px;
+    text-align: center;
+    color: var(--erpx-ink-muted);
+    font-size: 13px;
+}
+
+.gm-table tr.gm-table-row-selected {
+    background: var(--erpx-brand-muted, rgba(37, 99, 235, 0.08));
+}
+
+@media (max-width: 1100px) {
+    .pal-ops-master-detail {
+        grid-template-columns: 1fr;
+    }
+
+    .pal-ops-master-detail-aside {
+        border-left: none;
+        border-top: 1px solid var(--erpx-border);
+        max-height: 50vh;
+    }
+}
+
 .pal-wb-command {
     flex-shrink: 0;
     display: flex;

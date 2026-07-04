@@ -666,7 +666,7 @@ export function FrontDeskCustomersView({
     const { error: toastError, success: toastSuccess } = useToast();
     const { rows: countryRows, loading: countriesLoading } = useCountryRows();
     const [rows, setRows] = useState([]);
-    const [filter, setFilter] = useState('pending');
+    const [filter, setFilter] = useState('all');
     const [editing, setEditing] = useState(null);
     /** Staff-created row (same form as edit; persisted with setDoc + staff metadata). */
     const [isCreatingNew, setIsCreatingNew] = useState(false);
@@ -948,7 +948,7 @@ export function FrontDeskCustomersView({
 
     const filtered = useMemo(() => {
         if (filter === 'pending') {
-            return rows.filter((r) => r.status === 'awaiting_staff');
+            return rows.filter((r) => r.status !== 'completed');
         }
         if (filter === 'done') {
             return rows.filter((r) => r.status === 'completed');
@@ -2084,18 +2084,20 @@ export function FrontDeskCustomersView({
                 </div>
             </div>
 
+            <div className="flex flex-wrap items-center gap-2">
+                {[
+                    { id: 'all', label: 'All' },
+                    { id: 'pending', label: 'Pending' },
+                    { id: 'done', label: 'Done' },
+                ].map((t) => (
+                    <button key={t.id} type="button" onClick={() => setFilter(t.id)} className={filterBtn(filter === t.id)}>
+                        {t.label}
+                        {t.id === 'all' ? ` (${rows.length})` : t.id === 'pending' ? ` (${rows.filter((r) => r.status !== 'completed').length})` : ` (${rows.filter((r) => r.status === 'completed').length})`}
+                    </button>
+                ))}
+            </div>
+
             <div className="hidden md:block gm-table-wrap rounded-xl overflow-x-auto">
-                <div className="flex flex-wrap items-center gap-2 px-3 py-3 border-b border-[var(--erpx-border)]">
-                    {[
-                        { id: 'pending', label: 'Pending' },
-                        { id: 'done', label: 'Done' },
-                        { id: 'all', label: 'All' },
-                    ].map((t) => (
-                        <button key={t.id} type="button" onClick={() => setFilter(t.id)} className={filterBtn(filter === t.id)}>
-                            {t.label}
-                        </button>
-                    ))}
-                </div>
                 <div className="flex flex-wrap items-center gap-2 px-3 py-3 border-b border-[var(--erpx-border)]">
                     <button type="button" onClick={exportExcel} className="pal-btn pal-btn-sm">
                         <FileSpreadsheet size={14} />
@@ -2159,7 +2161,11 @@ export function FrontDeskCustomersView({
                         {paginatedRows.length === 0 && (
                             <tr>
                                 <td colSpan={bulkMode ? 6 : 5} className="px-3 py-8 text-center text-sm text-[var(--erpx-ink-muted)]">
-                                    No records match your filters or search.
+                                    {rows.length === 0
+                                        ? `No kiosk submissions yet for ${operationalFranchiseId}. Share the iPad link above.`
+                                        : filter !== 'all' && filtered.length === 0
+                                          ? `No ${filter} records — ${rows.length} total in franchise. Try the All tab.`
+                                          : 'No records match your filters or search.'}
                                 </td>
                             </tr>
                         )}

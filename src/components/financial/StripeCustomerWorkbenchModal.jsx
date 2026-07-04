@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, Ban, CreditCard, Lock, Mail, Shield, TrendingUp, CheckCircle2, AlertOctagon, Info } from 'lucide-react';
+import { X, Ban, CreditCard, Lock, Mail, Shield, TrendingUp } from 'lucide-react';
 import { StripeStatusBadge } from '../StripeListUI';
 import { PalantirSignal } from '../palantir/PalantirWorkbench';
 import {
   stripeFinancialCancelDeposit,
+  stripeFinancialCaptureDeposit,
   stripeFinancialIncrementDeposit,
   stripeFinancialChargeSavedPaymentMethod,
 } from '../../services/stripeFinancialApi';
@@ -11,7 +12,7 @@ import {
   StripeDirectCardRetryPanel,
   mailOrderCanRetryDirectCharge,
 } from './StripeDirectCardRetryPanel';
-import { humanizeStripeCardDecline } from '../../utilities/stripeDeclineMessages';
+import { humanizeStripeFinancialError } from './StripeFinFeedback';
 
 function formatMoney(amount, currency) {
   if (amount == null) return '—';
@@ -61,52 +62,6 @@ function depositCanOffSessionCharge(d) {
   return ['authorized', 'pending_collection', 'cancelled', 'captured'].includes(d.status);
 }
 
-function humanizeStripeFinancialError(err) {
-  const raw = String(err?.message || err || '');
-  const msg = raw
-    .replace(/^FirebaseError:\s*/i, '')
-    .replace(/^functions\/[a-z-]+:\s*/i, '')
-    .trim();
-  if (
-    /without Customer attachment/i.test(msg) ||
-    /may not be used again/i.test(msg) ||
-    /not linked to a Stripe customer/i.test(msg)
-  ) {
-    return {
-      title: 'Card cannot be reused',
-      detail:
-        'This deposit was created before customer linking was required. Start a new deposit on the POS terminal — after hold and cancel, the card will be chargeable from Actions.',
-      code: 'PM_REUSE_BLOCKED',
-    };
-  }
-  if (/card_present/i.test(msg) && /cannot be saved/i.test(msg)) {
-    return {
-      title: 'Terminal card not reusable',
-      detail:
-        'The POS swipe token cannot be charged directly. Use a deposit created with the latest flow: authorize on terminal, cancel hold, then charge from Actions.',
-      code: 'CARD_PRESENT_BLOCKED',
-    };
-  }
-  const cardDecline = humanizeStripeCardDecline(err);
-  if (cardDecline.declineCode && cardDecline.declineCode !== 'generic_decline') {
-    return {
-      title: cardDecline.title,
-      detail: cardDecline.detail,
-      nextSteps: cardDecline.nextSteps,
-      code: cardDecline.code,
-    };
-  }
-  if (/declined|card_declined|payment failed/i.test(msg)) {
-    return {
-      title: cardDecline.title,
-      detail: cardDecline.detail,
-      nextSteps: cardDecline.nextSteps,
-      code: cardDecline.code,
-    };
-  }
-  return { title: null, detail: msg || 'Something went wrong', code: null };
-}
-
 function sortDepositsNewestFirst(deposits) {
   return [...deposits].sort((a, b) => {
     const ta = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
@@ -121,6 +76,7 @@ export function StripeCustomerWorkbenchModal({
   showFinancialTotals = false,
   canPerformOperations = false,
   auditEntries = [],
+  layout = 'modal',
   onClose,
   onChanged,
   onCenterFeedback,
@@ -180,10 +136,21 @@ export function StripeCustomerWorkbenchModal({
 
   const canManageDeposit =
     Boolean(primaryDeposit) &&
-    ['authorized', 'pending_collection'].includes(primaryDeposit.status);
+    primaryDeposit.status !== 'captured' &&
+    primaryDeposit.status !== 'cancelled' &&
+    (primaryDeposit.status === 'authorized' || primaryDeposit.stripeStatus === 'requires_capture');
+
+  const canCaptureDeposit =
+    Boolean(primaryDeposit) &&
+    primaryDeposit.status !== 'captured' &&
+    (primaryDeposit.status === 'authorized' || primaryDeposit.stripeStatus === 'requires_capture');
+
+  const canIncreaseDeposit =
+    Boolean(primaryDeposit) &&
+    (primaryDeposit.status === 'authorized' || primaryDeposit.stripeStatus === 'requires_capture');
 
   const canChargeSaved = Boolean(canPerformOperations && chargeDeposit?.id);
-  const showActionsTab = canManageDeposit || canChargeSaved;
+  const showActionsTab = canManageDeposit || canChargeSaved || canCaptureDeposit;
 
   const currentHoldChf = (primaryDeposit?.currentHoldAmount || primaryDeposit?.initialAmount || 0) / 100;
   const maxAuthChf = (primaryDeposit?.maxAuthAmount || 0) / 100;
@@ -242,6 +209,28 @@ export function StripeCustomerWorkbenchModal({
       onChanged?.();
     } catch (e) {
       pushFeedbackFromError('Increase failed', e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runCapture = async () => {
+    if (!primaryDeposit?.id) return;
+    setBusy(true);
+    try {
+      const res = await stripeFinancialCaptureDeposit({
+        franchiseId,
+        depositId: primaryDeposit.id,
+      });
+      const capturedChf = (Number(res?.amountReceived) || primaryDeposit.currentHoldAmount || primaryDeposit.initialAmount || 0) / 100;
+      pushFeedback(
+        'success',
+        'Hold captured',
+        `CHF ${capturedChf.toFixed(2)} charged from the authorized deposit hold.`,
+      );
+      onChanged?.();
+    } catch (e) {
+      pushFeedbackFromError('Capture failed', e);
     } finally {
       setBusy(false);
     }
@@ -314,14 +303,17 @@ export function StripeCustomerWorkbenchModal({
     })
     .slice(0, 12);
 
-  return (
-    <div className="pal-fin-modal-backdrop" role="presentation" onClick={onClose}>
-      <div
-        className="pal-fin-modal pal-fin-modal-wide pal-cust-workbench"
-        role="dialog"
-        aria-modal="true"
-        onClick={(e) => e.stopPropagation()}
-      >
+  const panel = (
+    <div
+      className={
+        layout === 'inline'
+          ? 'pal-cust-inspector-panel flex flex-col min-h-0 h-full'
+          : 'pal-fin-modal pal-fin-modal-wide pal-cust-workbench'
+      }
+      role={layout === 'inline' ? 'region' : 'dialog'}
+      aria-modal={layout === 'inline' ? undefined : 'true'}
+      onClick={layout === 'inline' ? undefined : (e) => e.stopPropagation()}
+    >
         <header className="pal-fin-modal-header">
           <div>
             <p className="pal-fin-eyebrow">Stripe customer</p>
@@ -537,7 +529,43 @@ export function StripeCustomerWorkbenchModal({
 
           {tab === 'actions' && (
             <div className="pal-cust-actions pal-cust-actions-modal">
-              {canManageDeposit && (
+              {primaryDeposit?.status === 'pending_collection' &&
+                primaryDeposit?.stripeStatus !== 'requires_capture' && (
+                <div className="pal-cust-highlight pal-cust-highlight-hold">
+                  <Info size={14} />
+                  <span>
+                    Waiting for card on POS — complete terminal collection before capture or increase.
+                  </span>
+                </div>
+              )}
+
+              {canCaptureDeposit && (
+                <section className="pal-cust-action-card pal-cust-action-card-secure">
+                  <header className="pal-cust-action-card-head">
+                    <CheckCircle2 size={18} />
+                    <div>
+                      <h3 className="pal-cust-action-card-title">Capture hold</h3>
+                      <p className="pal-cust-action-card-sub">
+                        Charge the full authorized amount currently on hold:{' '}
+                        {formatMoney(
+                          primaryDeposit.currentHoldAmount || primaryDeposit.initialAmount,
+                          primaryDeposit.currency,
+                        )}
+                      </p>
+                    </div>
+                  </header>
+                  <button
+                    type="button"
+                    className="gm-btn gm-btn-primary gm-btn-sm"
+                    disabled={busy}
+                    onClick={runCapture}
+                  >
+                    <CreditCard size={14} /> Capture hold
+                  </button>
+                </section>
+              )}
+
+              {canIncreaseDeposit && (
                 <section className="pal-cust-action-card">
                   <header className="pal-cust-action-card-head">
                     <TrendingUp size={18} />
@@ -696,64 +724,23 @@ export function StripeCustomerWorkbenchModal({
           </section>
         </div>
 
-        <footer className="pal-fin-modal-footer">
+        <footer className={layout === 'inline' ? 'pal-cust-inspector-footer' : 'pal-fin-modal-footer'}>
           <button type="button" className="gm-btn gm-btn-secondary" onClick={onClose}>
-            Close
+            {layout === 'inline' ? 'Clear selection' : 'Close'}
           </button>
         </footer>
-      </div>
     </div>
   );
-}
 
-function CenterFeedbackToast({ item, onDismiss }) {
-  if (!item) return null;
-  const isSuccess = item.type === 'success';
-  const isError = item.type === 'error';
-  const Icon = isSuccess ? CheckCircle2 : isError ? AlertOctagon : Info;
-  const eyebrow = isSuccess ? 'Operation complete' : isError ? 'Operation failed' : 'Notice';
-  const cls = isSuccess
-    ? 'pal-cust-center-toast pal-cust-center-toast-success'
-    : isError
-      ? 'pal-cust-center-toast pal-cust-center-toast-error'
-      : 'pal-cust-center-toast pal-cust-center-toast-info';
+  if (layout === 'inline') {
+    return panel;
+  }
 
   return (
-    <div
-      className="pal-cust-center-toast-wrap"
-      role="alertdialog"
-      aria-modal="true"
-      aria-live="assertive"
-      onClick={onDismiss}
-    >
-      <div className={cls} onClick={(e) => e.stopPropagation()}>
-        <div className="pal-cust-center-toast-accent" aria-hidden="true" />
-        <header className="pal-cust-center-toast-head">
-          <p className="pal-fin-eyebrow pal-cust-center-toast-eyebrow">{eyebrow}</p>
-          <button type="button" className="pal-cust-center-toast-close" onClick={onDismiss} aria-label="Dismiss">
-            <X size={16} />
-          </button>
-        </header>
-        <div className="pal-cust-center-toast-body">
-          <Icon className="pal-cust-center-toast-icon" size={26} strokeWidth={1.75} aria-hidden="true" />
-          <p className="pal-cust-center-toast-title">{item.title}</p>
-          {item.detail && <p className="pal-cust-center-toast-detail">{item.detail}</p>}
-        {item.nextSteps && <p className="pal-cust-center-toast-next">{item.nextSteps}</p>}
-          {(item.code || item.at) && (
-            <p className="pal-fin-mono pal-cust-center-toast-meta">
-              {item.code && <span>{item.code}</span>}
-              {item.at && <span>{new Date(item.at).toLocaleTimeString()}</span>}
-            </p>
-          )}
-        </div>
-        <footer className="pal-cust-center-toast-footer">
-          <button type="button" className="gm-btn gm-btn-secondary gm-btn-sm" onClick={onDismiss}>
-            Dismiss
-          </button>
-        </footer>
-      </div>
+    <div className="pal-fin-modal-backdrop" role="presentation" onClick={onClose}>
+      {panel}
     </div>
   );
 }
 
-export { CenterFeedbackToast };
+export { CenterFeedbackToast } from './StripeFinFeedback';

@@ -14,8 +14,17 @@ export function usePalantirEsc(onClose, enabled = true) {
 }
 
 /** Near-fullscreen Palantir operations workbench shell */
-export function PalantirWorkbench({ onClose, children, size = 'full' }) {
-    usePalantirEsc(onClose);
+export function PalantirWorkbench({ onClose, children, size = 'full', embedded = false }) {
+    usePalantirEsc(onClose, !embedded);
+    if (embedded) {
+        return (
+            <div
+                className={`pal-wb-shell pal-wb-shell-embedded ${size === 'large' ? 'pal-wb-shell-lg' : ''} ${size === 'fit' ? 'pal-wb-shell-fit' : ''}`}
+            >
+                {children}
+            </div>
+        );
+    }
     return (
         <div
             className="pal-wb-overlay"

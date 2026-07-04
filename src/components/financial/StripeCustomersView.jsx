@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshCw, Search, Lock, Mail, User, Plus, CreditCard } from 'lucide-react';
 import { StripeStatusBadge } from '../StripeListUI';
 import { PalantirFinKpiCard, PalantirFinKpiRow } from './PalantirFinKpiCard';
-import { StripeCustomerWorkbenchModal, CenterFeedbackToast } from './StripeCustomerWorkbenchModal';
+import { StripeCustomerWorkbenchModal } from './StripeCustomerWorkbenchModal';
+import { CenterFeedbackToast, useStripeFinFeedback } from './StripeFinFeedback';
 import { StripeCustomerNewOperationModal } from './StripeCustomerNewOperationModal';
 import {
   stripeFinancialListDeposits,
@@ -177,7 +178,7 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false, 
           <p className="pal-fin-eyebrow">Finance · Stripe · Switzerland</p>
           <h1 className="pal-fin-title">Customers</h1>
           <p className="pal-fin-subtitle">
-            Click a customer to open the workspace — deposits, mail orders, and card actions.
+            Select a customer on the left — deposits, capture, and mail actions open on the right.
           </p>
           {stripeMode === 'live' && <span className="pal-fin-mode-live mt-2">Live mode</span>}
           {stripeMode === 'test' && <span className="pal-fin-mode-test mt-2">Test mode</span>}
@@ -267,8 +268,8 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false, 
         </div>
       </div>
 
-      <div className="pal-fin-grid-single">
-        <div className="pal-fin-main pal-fin-main-full">
+      <div className="pal-fin-grid pal-cust-grid">
+        <div className="pal-fin-main">
           <div className="pal-fin-table-wrap">
             <table className="pal-fin-table pal-fin-table-dense pal-cust-table pal-cust-table-symmetric">
               <thead>
@@ -296,7 +297,7 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false, 
                     return (
                       <tr
                         key={row.id}
-                        className="pal-fin-table-row-clickable"
+                        className={`pal-fin-table-row-clickable${workbenchGroupLive?.id === row.id ? ' pal-fin-table-row-active' : ''}`}
                         onClick={() => openWorkbench(row)}
                       >
                         <td>
@@ -348,20 +349,30 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false, 
             </table>
           </div>
         </div>
+        <aside className="pal-fin-main pal-cust-inspector">
+          {workbenchGroupLive ? (
+            <StripeCustomerWorkbenchModal
+              layout="inline"
+              group={workbenchGroupLive}
+              franchiseId={franchiseId}
+              showFinancialTotals={showFinancialTotals}
+              canPerformOperations={canPerformOperations}
+              auditEntries={audit}
+              onClose={() => setWorkbenchGroup(null)}
+              onChanged={load}
+              onCenterFeedback={handleCenterFeedback}
+            />
+          ) : (
+            <div className="pal-cust-inspector-empty pal-cust-inspector-placeholder">
+              <User size={28} />
+              <p className="text-sm font-medium text-[var(--erpx-ink-secondary)]">Select a customer</p>
+              <p className="pal-cust-placeholder-sub">
+                Capture holds, charge saved cards, and manage mail orders from this panel.
+              </p>
+            </div>
+          )}
+        </aside>
       </div>
-
-      {workbenchGroupLive && (
-        <StripeCustomerWorkbenchModal
-          group={workbenchGroupLive}
-          franchiseId={franchiseId}
-          showFinancialTotals={showFinancialTotals}
-          canPerformOperations={canPerformOperations}
-          auditEntries={audit}
-          onClose={() => setWorkbenchGroup(null)}
-          onChanged={load}
-          onCenterFeedback={handleCenterFeedback}
-        />
-      )}
 
       {showNewOperation && (
         <StripeCustomerNewOperationModal

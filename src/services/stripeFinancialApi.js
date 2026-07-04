@@ -128,8 +128,8 @@ export function stripeFinancialCreateDeposit(payload) {
   return call('stripeFinancialCreateDeposit', payload);
 }
 
-export function stripeFinancialListDeposits({ franchiseId, limit = 50 } = {}) {
-  return call('stripeFinancialListDeposits', { franchiseId, limit });
+export function stripeFinancialListDeposits({ franchiseId, limit = 50, syncStripe = true } = {}) {
+  return call('stripeFinancialListDeposits', { franchiseId, limit, syncStripe });
 }
 
 export function stripeFinancialIncrementDeposit(payload) {
