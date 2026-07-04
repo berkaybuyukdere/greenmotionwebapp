@@ -367,6 +367,25 @@ export function LoginScreen() {
     return (
         <div className={`pal-login-root ${intro ? 'pal-login-root--ready' : ''}`}>
             <div className="pal-login-shell relative z-10">
+                <div className="fd-login-brand" aria-hidden="true">
+                    <div className="fd-login-brand-top">
+                        <div className="fd-login-logo">VS</div>
+                        <div className="fd-login-wordmark">VehicleSentinel</div>
+                        <div className="fd-login-platform-chip">FLEET OPS PLATFORM</div>
+                    </div>
+                    <div className="fd-login-brand-copy">
+                        <div className="fd-login-headline">
+                            Operational command for your entire rental fleet.
+                        </div>
+                        <div className="fd-login-sub">
+                            Checkouts, returns, damage intelligence, deposits and franchise
+                            finance — one dense, auditable workspace across every franchise.
+                        </div>
+                    </div>
+                    <div className="fd-login-build">
+                        ROLE-SCOPED ACCESS · ALL SESSIONS AUDITED · WHEELSYS LINK
+                    </div>
+                </div>
                 <div className="pal-login-card">
                     <header className="pal-login-brand">
                         <div className="pal-login-brand-text pal-login-brand-text--solo">

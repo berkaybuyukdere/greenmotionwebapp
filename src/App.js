@@ -8403,35 +8403,33 @@ function CarsView({
                 </div>
             </div>
 
-            <div className="pal-fleet-search-box">
-                <div className="pal-fleet-search-wrap">
-                    <Search size={16} />
+            <div className="fd-toolbar">
+                <div className="fd-search">
+                    <span className="fd-search-glyph">⌕</span>
                     <input
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Search by plate, brand, model, or RES code…"
+                        placeholder="Search plates, brand, model, res code…"
                     />
                 </div>
-            </div>
-
-            <div className="pal-fleet-filter-row">
-                <label className="pal-fleet-filter-label" htmlFor="fleet-category-filter">
-                    Category
-                </label>
                 <select
                     id="fleet-category-filter"
-                    className="pal-fleet-category-select"
+                    className="fd-select"
                     value={fleetCategoryFilter}
                     onChange={(e) => setFleetCategoryFilter(e.target.value)}
+                    aria-label="Category"
                 >
-                    <option value="all">All categories ({searchResults.length})</option>
+                    <option value="all">ALL CATEGORIES ({searchResults.length})</option>
                     {availableCategories.map((category) => (
                         <option key={category} value={category}>
                             {category} ({carsByCategory[category]?.length || 0})
                         </option>
                     ))}
                 </select>
+                <span className="fd-toolbar-count">
+                    {fleetTableRows.length} {fleetTableRows.length === 1 ? 'VEHICLE' : 'VEHICLES'}
+                </span>
             </div>
 
             <div className="pal-fleet-table-panel">
@@ -8474,43 +8472,43 @@ function CarsView({
                                             }}
                                         >
                                             <td>
-                                                <span className="pal-fleet-plate">{display.plaka}</span>
+                                                <span className="fd-cell-mono">{display.plaka}</span>
                                             </td>
-                                            <td className="gm-table-desc">
+                                            <td className="gm-table-desc fd-cell-name">
                                                 {display.vehicleLabel}
                                             </td>
                                             <td>
-                                                <span className="pal-fleet-count-pill">{display.kategori}</span>
+                                                <span className="fd-cell-muted">{display.kategori}</span>
                                             </td>
                                             <td>
-                                                <span
-                                                    className={`pal-fleet-chip ${dmg > 0 ? 'pal-fleet-chip-warn' : 'pal-fleet-chip-ok'}`}
-                                                >
-                                                    {dmg}
+                                                <span className={`fd-pill ${dmg > 0 ? 'fd-pill-amber' : 'fd-pill-green'}`}>
+                                                    {dmg} DMG
                                                 </span>
                                             </td>
                                             <td>
-                                                <span className="pal-fleet-chip pal-fleet-chip-info">{checkouts}</span>
+                                                <span className={`fd-pill ${checkouts > 0 ? 'fd-pill-accent' : ''}`}>
+                                                    {checkouts} CKO
+                                                </span>
                                             </td>
                                             <td>
                                                 <div className="pal-fleet-doc-chips">
                                                     {car.vignetteVar && (
-                                                        <span className="pal-fleet-chip pal-fleet-chip-ok" title="Vignette">
+                                                        <span className="fd-pill fd-pill-green" title="Vignette">
                                                             V
                                                         </span>
                                                     )}
                                                     {car.kafaKagidiVar && (
-                                                        <span className="pal-fleet-chip pal-fleet-chip-ok" title="Registration">
+                                                        <span className="fd-pill fd-pill-green" title="Registration">
                                                             R
                                                         </span>
                                                     )}
                                                     {!car.vignetteVar && !car.kafaKagidiVar && (
-                                                        <span className="pal-fleet-muted">—</span>
+                                                        <span className="fd-cell-muted">—</span>
                                                     )}
                                                 </div>
                                             </td>
                                             <td className="gm-table-actions-col">
-                                                <ChevronRight size={16} style={{ color: 'var(--erpx-ink-muted)' }} />
+                                                <span className="fd-inline-action">DETAIL ›</span>
                                             </td>
                                         </tr>
                                     );
@@ -8519,6 +8517,9 @@ function CarsView({
                         </table>
                     </div>
                 )}
+            </div>
+            <div className="fd-footnote">
+                CLICK A ROW → VEHICLE DETAIL WITH DAMAGE, CHECKOUT AND RETURN HISTORY · RIGHT-CLICK FOR ACTIONS
             </div>
 
             {/* Context Menu */}

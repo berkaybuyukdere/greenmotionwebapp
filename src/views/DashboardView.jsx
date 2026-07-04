@@ -221,7 +221,13 @@ export function Dashboard({
     const activityDisplay = activities.length > 0 ? activities.length : (bootstrapKpis?.activityCount ?? activities.length);
 
     return (
-        <div className="erpx-page space-y-4 sm:space-y-6">
+        <div className="erpx-page fd-dash space-y-3">
+            <style>{`
+                .fd-dash .fd-kpi-cell { cursor: pointer; transition: background .12s ease; }
+                .fd-dash .fd-kpi-cell:hover { background: var(--fd-high); }
+                .fd-dash-feed-row { display: flex; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--fd-border); align-items: center; }
+                .fd-dash-feed-row:hover { background: var(--fd-high); }
+            `}</style>
             <div className="erpx-page-header !mb-0">
                 <div>
                     <h1 className="erpx-page-title flex items-center gap-2">
@@ -236,25 +242,28 @@ export function Dashboard({
                     </p>
                 </div>
             </div>
-            <div className={`pal-dash-kpi-row${dataHydrating && !hasLiveFleet ? ' opacity-90' : ''}`}>
+            <div className={`fd-kpi-strip grid-cols-2 sm:grid-cols-4 xl:grid-cols-8${dataHydrating && !hasLiveFleet ? ' opacity-90' : ''}`}>
                 <StatCard
                     title="Total Vehicles"
                     value={metrics.vehicleCount ?? vehicleDisplay}
-                    icon={<Car size={18} />}
+                    icon={<Car size={11} />}
+                    tone="var(--fd-accent)"
                     onClick={() => setCurrentView('cars')}
                     previousMonthRecords={String(metrics.prevMonthFleetAdds)}
                 />
                 <StatCard
                     title="Today's Returns"
                     value={metrics.dailyCheckouts}
-                    icon={<ArrowLeft size={18} />}
+                    icon={<ArrowLeft size={11} />}
+                    tone="var(--fd-purple)"
                     onClick={() => setCurrentView('returns')}
                     previousMonthRecords={String(metrics.prevMonthReturnsCount)}
                 />
                 <StatCard
                     title="Today's Check-outs"
                     value={metrics.dailyCheckins}
-                    icon={<LogOut size={18} />}
+                    icon={<LogOut size={11} />}
+                    tone="var(--fd-accent)"
                     onClick={() => setCurrentView('checkout')}
                     previousMonthRecords={String(metrics.prevMonthExitsCount)}
                 />
@@ -262,7 +271,8 @@ export function Dashboard({
                     <StatCard
                         title="Today's Damages"
                         value={metrics.todayDamageReportsCount}
-                        icon={<AlertCircle size={18} />}
+                        icon={<AlertCircle size={11} />}
+                        tone={metrics.todayDamageReportsCount > 0 ? 'var(--fd-red)' : 'var(--fd-green)'}
                         trend={metrics.damageReportsChangeMetric}
                         onClick={() => setCurrentView('damage')}
                         previousMonthRecords={String(metrics.prevMonthDamageReportsTotal)}
@@ -271,97 +281,98 @@ export function Dashboard({
                     <StatCard
                         title="Monthly Returns"
                         value={metrics.monthlyReturnReports}
-                        icon={<ArrowLeft size={18} />}
+                        icon={<ArrowLeft size={11} />}
+                        tone="var(--fd-purple)"
                         onClick={() => setCurrentView('returns')}
                         previousMonthRecords={String(metrics.prevMonthReturnsCount)}
                     />
                 )}
-            </div>
-
-            <div className={`pal-dash-kpi-row${dataHydrating && !hasLiveFleet ? ' opacity-90' : ''}`}>
                 <StatCard
                     title="Monthly Services"
                     value={metrics.monthlyServiceReports}
-                    icon={<Package size={18} />}
+                    icon={<Package size={11} />}
+                    tone="var(--fd-amber)"
                     onClick={() => setCurrentView('service')}
                     previousMonthRecords={String(metrics.prevMonthServicesTotalCount)}
                 />
                 <StatCard
                     title="Monthly Damages"
                     value={metrics.monthlyDamageReports}
-                    icon={<AlertCircle size={16} />}
+                    icon={<AlertCircle size={11} />}
+                    tone={metrics.monthlyDamageReports > 0 ? 'var(--fd-red)' : 'var(--fd-green)'}
                     onClick={() => setCurrentView('damage')}
                     previousMonthRecords={String(metrics.previousMonthDamageReports)}
                 />
                 <StatCard
                     title="Monthly Returns"
                     value={metrics.monthlyReturnReports}
-                    icon={<ArrowLeft size={18} />}
+                    icon={<ArrowLeft size={11} />}
+                    tone="var(--fd-purple)"
                     onClick={() => setCurrentView('returns')}
                     previousMonthRecords={String(metrics.prevMonthReturnsCount)}
                 />
                 <StatCard
                     title="Today's Services"
                     value={metrics.dailyServices}
-                    icon={<Package size={18} />}
+                    icon={<Package size={11} />}
+                    tone="var(--fd-amber)"
                     onClick={() => setCurrentView('service')}
                     previousMonthRecords={String(metrics.prevMonthServicesTotalCount)}
                 />
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 items-stretch">
-                <div className="lg:col-span-2 h-full min-h-[280px] lg:min-h-[360px] pal-dash-panel flex flex-col">
-                    <div className="pal-dash-panel-header">
-                        <h3 className="pal-dash-panel-title">
-                            <Activity size={14} className="text-[var(--erpx-ink-muted)]" />
-                            Recent Activities
-                        </h3>
-                        <span className="gm-badge gm-badge-neutral">{activities.length}</span>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 items-stretch">
+                <div className="lg:col-span-2 h-full min-h-[280px] lg:min-h-[360px] fd-panel flex flex-col">
+                    <div className="fd-section-head">
+                        <Activity size={12} style={{ color: 'var(--fd-muted)' }} />
+                        Recent Activities
+                        <span className="fd-pulse-dot" />
+                        <span className="fd-section-head-meta">{activityDisplay} EVENTS · LIVE</span>
                     </div>
-                    <div className="pal-dash-panel-body flex-1">
+                    <div className="flex-1">
                         {activities.length > 0 ? (
                             <div className="h-full min-h-[36rem] lg:min-h-[44rem] max-h-[44rem] overflow-y-auto">
-                                {activities.slice(0, 10).map((activity) => (
-                                    <div key={activity.id} className="pal-dash-list-row items-start">
-                                        <div className={`p-2 rounded-full flex-shrink-0 ${
-                                            activity.tip === 'Araç Eklendi'  ? 'bg-[var(--erpx-info-bg)] text-[var(--erpx-info)]' :
-                                            activity.tip === 'Hasar Eklendi' ? 'bg-[var(--erpx-red-bg)] text-[var(--erpx-red)]' :
-                                            activity.tip === 'İade İşlemi'   ? 'bg-[var(--erpx-green-bg)] text-[var(--erpx-green)]' :
-                                            'bg-[var(--erpx-neutral-bg)] text-[var(--erpx-neutral)]'
-                                        }`}>
-                                            {activity.tip === 'Araç Eklendi'  && <Car size={12} />}
-                                            {activity.tip === 'Hasar Eklendi' && <AlertCircle size={12} />}
-                                            {activity.tip === 'İade İşlemi'   && <ArrowLeft size={12} />}
-                                            {!['Araç Eklendi','Hasar Eklendi','İade İşlemi'].includes(activity.tip) && <Activity size={12} />}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-medium text-[var(--erpx-ink)] truncate">{activity.aciklama || activity.description || activity.tip}</p>
-                                            <p className="text-xs text-[var(--erpx-ink-muted)] flex items-center gap-1 mt-0.5">
+                                {activities.slice(0, 10).map((activity) => {
+                                    const feedTone =
+                                        activity.tip === 'Araç Eklendi'  ? { pill: 'fd-pill fd-pill-accent', tag: 'VEHICLE' } :
+                                        activity.tip === 'Hasar Eklendi' ? { pill: 'fd-pill fd-pill-red', tag: 'DAMAGE' } :
+                                        activity.tip === 'İade İşlemi'   ? { pill: 'fd-pill fd-pill-green', tag: 'RETURN' } :
+                                        { pill: 'fd-pill', tag: 'EVENT' };
+                                    return (
+                                        <div key={activity.id} className="fd-dash-feed-row">
+                                            <span className="fd-cell-muted flex-none inline-flex items-center gap-1">
                                                 <Clock size={10} />
                                                 {formatDateTime(activity.tarih)}
-                                            </p>
+                                            </span>
+                                            <span className={feedTone.pill} style={{ width: 62, textAlign: 'center', flex: 'none' }}>
+                                                {feedTone.tag}
+                                            </span>
+                                            <span className="flex-1 truncate" style={{ fontSize: '11.5px', color: 'var(--fd-text2)' }}>
+                                                {activity.aciklama || activity.description || activity.tip}
+                                            </span>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         ) : (
-                            <div className="flex flex-col items-center justify-center h-full min-h-[12rem] text-[var(--erpx-ink-muted)]">
-                                <Activity size={32} className="mb-2 opacity-40" />
-                                <p className="text-sm">{dataHydrating ? 'Loading activities…' : 'No recent activities'}</p>
+                            <div className="fd-table-empty flex items-center justify-center h-full min-h-[12rem]">
+                                {dataHydrating ? 'Loading activities…' : 'No recent activities'}
                             </div>
                         )}
+                    </div>
+                    <div className="fd-footnote" style={{ padding: '8px 12px', borderTop: '1px solid var(--fd-border)' }}>
+                        Showing last 10 workspace events · feed updates live
                     </div>
                 </div>
 
                 {canViewFinancials && (
-                    <div className="pal-dash-panel h-full">
-                        <div className="pal-dash-panel-header">
-                            <h3 className="pal-dash-panel-title">
-                                <DollarSign size={14} className="text-[var(--erpx-ink-muted)]" />
-                                Monthly Office Summary
-                            </h3>
+                    <div className="fd-panel h-full flex flex-col">
+                        <div className="fd-section-head">
+                            <DollarSign size={12} style={{ color: 'var(--fd-muted)' }} />
+                            Monthly Office Summary
+                            <span className="fd-section-head-meta">CURRENT MONTH</span>
                         </div>
-                        <div className="pal-dash-panel-body space-y-3">
+                        <div style={{ padding: '4px 12px 8px' }}>
                             <FinancialRow icon={<ShoppingCart size={14} />} label="POS Closing" value={formatCurrency(metrics.monthlyPosTotal)} />
                             <FinancialRow icon={<CreditCard size={14} />} label="Credit Card" value={formatCurrency(metrics.monthlyCreditCardTotal)} />
                             <FinancialRow icon={<Droplet size={14} />} label="Washing" value={formatCurrency(metrics.monthlyWashingTotal)} />
@@ -377,40 +388,42 @@ export function Dashboard({
 
 function FinancialRow({ icon, label, value, highlight = false }) {
     return (
-        <div className="flex items-center justify-between gap-3 py-1.5 border-b border-[var(--erpx-border)] last:border-0">
-            <div className="flex items-center gap-2 text-sm text-[var(--erpx-ink-muted)]">
+        <div className="flex items-center justify-between gap-3 border-b border-[var(--fd-border)] last:border-0" style={{ padding: '8px 0' }}>
+            <div className="flex items-center gap-2" style={{ color: 'var(--fd-muted)' }}>
                 {icon}
-                <span>{label}</span>
+                <span style={{ fontFamily: 'var(--fd-sans)', fontSize: 9, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                    {label}
+                </span>
             </div>
-            <span className={`text-sm font-semibold tabular-nums ${highlight ? 'text-[var(--erpx-green)]' : 'text-[var(--erpx-ink)]'}`}>
+            <span className="fd-cell-mono tabular-nums" style={{ color: highlight ? 'var(--fd-green)' : 'var(--fd-text)' }}>
                 {value}
             </span>
         </div>
     );
 }
 
-function StatCard({ title, value, icon, onClick, trend, previousMonthRecords }) {
+function StatCard({ title, value, icon, onClick, trend, previousMonthRecords, tone }) {
     const trendTone = trend
-        ? (String(trend).includes('+') ? 'tone-up' : String(trend).includes('-') ? 'tone-down' : '')
-        : '';
+        ? (String(trend).includes('+') ? 'var(--fd-red)' : String(trend).includes('-') ? 'var(--fd-green)' : 'var(--fd-muted)')
+        : null;
 
     return (
-        <button type="button" onClick={onClick} className="pal-dash-kpi w-full text-left">
-            <div className="pal-dash-kpi-head">
-                <span className="pal-dash-kpi-icon">{icon}</span>
-                {previousMonthRecords != null && (
-                    <span className="pal-dash-kpi-prev ml-auto">
-                        PM <strong>{previousMonthRecords}</strong>
-                    </span>
-                )}
+        <button type="button" onClick={onClick} className="fd-kpi-cell w-full text-left">
+            <div className="fd-kpi-label flex items-center gap-1.5">
+                <span className="inline-flex flex-none" style={{ color: 'var(--fd-muted)' }}>{icon}</span>
+                <span className="truncate">{title}</span>
             </div>
-            <p className="pal-dash-kpi-label">{title}</p>
-            <p className="pal-dash-kpi-value tabular-nums">{value}</p>
-            {trend ? (
-                <p className="pal-dash-kpi-trend">
-                    <span className={trendTone}>{trend}</span>
-                </p>
-            ) : null}
+            <div className="flex items-baseline gap-2">
+                <span className="fd-kpi-value" style={tone ? { color: tone } : undefined}>{value}</span>
+                {trend ? (
+                    <span style={{ fontFamily: 'var(--fd-mono)', fontSize: 10, fontWeight: 600, color: trendTone }}>
+                        {trend}
+                    </span>
+                ) : null}
+            </div>
+            {previousMonthRecords != null && (
+                <p className="fd-kpi-sub">PM {previousMonthRecords}</p>
+            )}
         </button>
     );
 }

@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { format, addDays, startOfDay, endOfDay } from 'date-fns';
 import { motion } from 'framer-motion';
-import { ArrowLeft, ArrowRight, Car, CheckCircle, FileText, Search, Trash2, X } from 'lucide-react';
+import { CheckCircle, FileText, Trash2, X } from 'lucide-react';
 import { TurkeyDocumentationButton } from './TurkeyDocumentationPanel';
 import { isTurkeyFranchiseIdForDocs } from '../utilities/turkeyFeatureDocumentation';
 import { UnifiedDatePicker } from './UnifiedDatePicker';
 import { PalantirPageIcon } from './palantir/PalantirNavIcon';
+import { FoundryStatusPill } from './palantir/FoundryPipeline';
 import { useClientPagination } from './palantir/useClientPagination';
 import { PalantirTablePager } from './palantir/PalantirTablePager';
 import { useToast } from './ToastNotification';
@@ -84,6 +85,17 @@ function statusTone(status) {
 
 const OPS_GRID_BG = 'bg-[var(--erpx-surface)]';
 
+/** Foundry tone map (spec: Completed→green, Parked→accent, In Progress→amber). Reuses `statusTone` labels. */
+function foundryPillProps(status) {
+    const s = String(status || '');
+    const tone = s === 'Completed' ? 'green' : s === 'Parked' ? 'accent' : 'amber';
+    const label = s === 'Parked' ? 'PARKED' : statusTone(s).label.toUpperCase();
+    return { tone, label };
+}
+
+/** Shared column template for the checkout / return `.fd-table` blocks. */
+const OPS_COLS = '48px 108px minmax(0,1.2fr) minmax(0,1.1fr) 92px 100px';
+
 /** Category · brand model from fleet record (Firestore: kategori, marka, model). */
 function vehicleSummaryLine(car) {
     if (!car) return '—';
@@ -96,19 +108,18 @@ function vehicleSummaryLine(car) {
     return parts.length ? parts.join(' · ') : '—';
 }
 
-function OpsPanelSection({ title, count, children }) {
+function OpsPanelSection({ title, count, meta, children }) {
     return (
-        <div className="border-b border-[var(--erpx-border)] last:border-b-0">
-            <div className="grid grid-cols-[1fr_auto] items-baseline gap-2 px-3 py-2 bg-[var(--erpx-subtle)] border-b border-[var(--erpx-border)]">
-                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--erpx-ink-muted)]">
-                    {title}
+        <section className="fd-panel min-w-0">
+            <div className="fd-section-head">
+                {title}
+                <span className="fd-section-head-meta">
+                    {typeof count === 'number' ? `${count} RECORDS` : null}
+                    {meta ? `${typeof count === 'number' ? ' · ' : ''}${meta}` : null}
                 </span>
-                {typeof count === 'number' ? (
-                    <span className="text-[10px] font-semibold tabular-nums text-[var(--erpx-ink-muted)]">{count}</span>
-                ) : null}
             </div>
-            <div className="divide-y divide-[var(--erpx-border)] bg-[var(--erpx-surface)]">{children}</div>
-        </div>
+            {children}
+        </section>
     );
 }
 
@@ -187,58 +198,22 @@ function ExitOpsRow({ ex, plate, vehicleLine, onClick, done }) {
     const when = tsToDate(ex.exitTarihi);
     const nav = bookingNavTitle(ex) || plate;
     const em = customerEmailLine(ex.customerEmail);
-    if (done) {
-        return (
-            <button
-                type="button"
-                onClick={onClick}
-                className="group w-full text-left px-3 py-2.5 grid grid-cols-[auto_minmax(0,1fr)_auto] gap-3 items-center bg-[var(--erpx-green-bg)] hover:bg-[color-mix(in_srgb,var(--erpx-green)_18%,var(--erpx-surface))] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--erpx-green)]/35"
-            >
-                <span className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--erpx-green-border)] bg-[var(--erpx-surface)]">
-                    <Car
-                        size={17}
-                        className="shrink-0 text-[var(--erpx-green)]"
-                        strokeWidth={2}
-                    />
-                </span>
-                <div className="min-w-0">
-                    <p className="text-sm font-bold text-[var(--erpx-brand)] truncate leading-tight">{nav}</p>
-                    <p className="text-[11px] text-[var(--erpx-ink-secondary)] truncate mt-0.5 leading-snug">{em}</p>
-                    <p className="text-[10px] text-[var(--erpx-ink-muted)] truncate mt-0.5 leading-snug">{vehicleLine}</p>
-                    <p className="text-[10px] text-[var(--erpx-ink-muted)] truncate mt-0.5">{plate}</p>
-                </div>
-                {when && (
-                    <span className="text-[11px] font-medium text-[var(--erpx-ink-muted)] tabular-nums text-right shrink-0">
-                        {format(when, 'HH:mm')}
-                    </span>
-                )}
-            </button>
-        );
-    }
-    const tone = statusTone(ex.status);
+    const pill = foundryPillProps(done ? 'Completed' : ex.status);
     return (
         <button
             type="button"
             onClick={onClick}
-            className={`group w-full text-left px-3 py-2.5 grid grid-cols-[auto_minmax(0,1fr)_auto] gap-3 items-center transition-colors hover:bg-[var(--erpx-subtle)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--erpx-brand)]/40 ${tone.bg}`}
+            className="fd-table-row w-full text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--fd-accent)]"
+            style={{ '--fd-cols': OPS_COLS }}
         >
-            <span className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--erpx-border)] bg-[var(--erpx-surface)]">
-                <Car size={17} className={`shrink-0 ${tone.text}`} strokeWidth={2} />
+            <span className="fd-cell-mono">{when ? format(when, 'HH:mm') : '—'}</span>
+            <span className="fd-cell-accent truncate">{nav}</span>
+            <span className="fd-cell-name">{em}</span>
+            <span className="fd-cell-mono-dim truncate">{vehicleLine}</span>
+            <span className="fd-cell-mono">{plate}</span>
+            <span>
+                <FoundryStatusPill tone={pill.tone} label={pill.label} />
             </span>
-            <div className="min-w-0">
-                <p className="text-sm font-bold text-[var(--erpx-brand)] truncate leading-tight">{nav}</p>
-                <p className="text-[11px] text-[var(--erpx-ink-secondary)] truncate mt-0.5 leading-snug">{em}</p>
-                <p className="text-[10px] text-[var(--erpx-ink-muted)] truncate mt-0.5 leading-snug">{vehicleLine}</p>
-                <p className="text-[10px] text-[var(--erpx-ink-muted)] truncate mt-0.5">{plate}</p>
-            </div>
-            <div className="text-right shrink-0 min-w-[3.5rem]">
-                <span className={`text-[9px] font-bold uppercase tracking-wide block ${tone.text}`}>{tone.label}</span>
-                {when && (
-                    <span className="text-[11px] font-medium text-[var(--erpx-ink-muted)] tabular-nums">
-                        {format(when, 'HH:mm')}
-                    </span>
-                )}
-            </div>
         </button>
     );
 }
@@ -247,50 +222,22 @@ function ReturnOpsRow({ r, plate, vehicleLine, email, onClick, done }) {
     const when = tsToDate(r.iadeTarihi);
     const nav = returnNavTitle(r) || plate;
     const em = customerEmailLine(email);
-    if (done) {
-        return (
-            <button
-                type="button"
-                onClick={onClick}
-                className="group w-full text-left px-3 py-2.5 grid grid-cols-[auto_minmax(0,1fr)_auto] gap-3 items-center bg-[var(--erpx-green-bg)] hover:bg-[color-mix(in_srgb,var(--erpx-green)_18%,var(--erpx-surface))] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--erpx-green)]/35"
-            >
-                <span className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--erpx-green-border)] bg-[var(--erpx-surface)] text-[var(--erpx-green)] font-bold text-xs">
-                    ↺
-                </span>
-                <div className="min-w-0">
-                    <p className="text-sm font-bold text-[var(--erpx-brand)] truncate leading-tight">{nav}</p>
-                    <p className="text-[11px] text-[var(--erpx-ink-secondary)] truncate mt-0.5 leading-snug">{em}</p>
-                    <p className="text-[10px] text-[var(--erpx-ink-muted)] truncate mt-0.5 leading-snug">{vehicleLine}</p>
-                    <p className="text-[10px] text-[var(--erpx-ink-muted)] truncate mt-0.5">{plate}</p>
-                </div>
-                {when && (
-                    <span className="text-[11px] font-medium text-[var(--erpx-ink-muted)] tabular-nums text-right shrink-0">
-                        {format(when, 'HH:mm')}
-                    </span>
-                )}
-            </button>
-        );
-    }
+    const pill = foundryPillProps(done ? 'Completed' : r.status);
     return (
         <button
             type="button"
             onClick={onClick}
-            className="group w-full text-left px-3 py-2.5 grid grid-cols-[auto_minmax(0,1fr)_auto] gap-3 items-center bg-[color-mix(in_srgb,var(--erpx-amber)_14%,var(--erpx-surface))] hover:bg-[color-mix(in_srgb,var(--erpx-amber)_24%,var(--erpx-surface))] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--erpx-amber)]/35"
+            className="fd-table-row w-full text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--fd-accent)]"
+            style={{ '--fd-cols': OPS_COLS }}
         >
-            <span className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--erpx-amber)]/40 bg-[var(--erpx-surface)] text-[var(--erpx-amber)] font-bold text-xs">
-                ↺
+            <span className="fd-cell-mono">{when ? format(when, 'HH:mm') : '—'}</span>
+            <span className="fd-cell-accent truncate">{nav}</span>
+            <span className="fd-cell-name">{em}</span>
+            <span className="fd-cell-mono-dim truncate">{vehicleLine}</span>
+            <span className="fd-cell-mono">{plate}</span>
+            <span>
+                <FoundryStatusPill tone={pill.tone} label={pill.label} />
             </span>
-            <div className="min-w-0">
-                <p className="text-sm font-bold text-[var(--erpx-brand)] truncate leading-tight">{nav}</p>
-                <p className="text-[11px] text-[var(--erpx-ink-secondary)] truncate mt-0.5 leading-snug">{em}</p>
-                <p className="text-[10px] text-[var(--erpx-ink-muted)] truncate mt-0.5 leading-snug">{vehicleLine}</p>
-                <p className="text-[10px] text-[var(--erpx-ink-muted)] truncate mt-0.5">{plate}</p>
-            </div>
-            {when && (
-                <span className="text-[11px] font-medium text-[var(--erpx-ink-muted)] tabular-nums text-right shrink-0">
-                    {format(when, 'HH:mm')}
-                </span>
-            )}
         </button>
     );
 }
@@ -455,6 +402,7 @@ export function OperationsHubView({
     );
 
     const dayInputValue = format(cursor, 'yyyy-MM-dd');
+    const dayLabel = format(cursor, 'dd MMM yyyy').toUpperCase();
     const fPendingExits = useMemo(() => filterLists(pendingExits, true), [filterLists, pendingExits]);
     const fDoneExits = useMemo(() => filterLists(doneExits, true), [filterLists, doneExits]);
     const fPendingReturns = useMemo(() => filterLists(pendingReturns, false), [filterLists, pendingReturns]);
@@ -596,112 +544,115 @@ export function OperationsHubView({
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                             {showTurkeyDocs && <TurkeyDocumentationButton topicId="operations_hub" />}
-                            <div className="hidden sm:flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--erpx-ink-muted)]">
-                                <span className="inline-flex items-center gap-1.5">
-                                    <span className="h-2 w-2 rounded-full bg-amber-400" aria-hidden />
-                                    Waiting
-                                </span>
-                                <span className="text-[var(--erpx-border-strong)]">|</span>
-                                <span className="inline-flex items-center gap-1.5">
-                                    <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
-                                    Done
-                                </span>
+                            <div className="hidden sm:flex items-center gap-2">
+                                <FoundryStatusPill tone="amber" label="WAITING" />
+                                <FoundryStatusPill tone="green" label="DONE" />
                             </div>
                         </div>
                     </div>
                 </header>
 
-                {/* Search + date — grid cells */}
-                <div className="border-b border-[var(--erpx-border)] bg-[var(--erpx-surface)]">
-                    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] lg:divide-x lg:divide-[var(--erpx-border)]">
-                        <div className="p-3 sm:p-4">
-                            <label className="sr-only" htmlFor="ops-hub-search">
-                                Search
-                            </label>
-                            <div className="relative max-w-xl">
-                                <Search
-                                    className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--erpx-ink-muted)] pointer-events-none"
-                                    size={16}
-                                    strokeWidth={2}
-                                />
-                                <input
-                                    id="ops-hub-search"
-                                    type="search"
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    placeholder="Search plate, NAV / RES, name, email…"
-                                    className="w-full pl-9 pr-3 py-2.5 rounded-lg border border-[var(--erpx-border)] bg-[var(--erpx-surface)] text-sm text-[var(--erpx-ink)] placeholder:text-[var(--erpx-ink-muted)] shadow-[inset_0_1px_2px_rgba(15,23,42,0.04)] focus:outline-none focus:ring-2 focus:ring-[var(--erpx-brand)]/35 focus:border-[var(--erpx-brand)]/50"
-                                />
-                            </div>
-                        </div>
-                        <div className="p-3 sm:p-4 flex flex-wrap items-stretch sm:items-center justify-center gap-3 border-t border-[var(--erpx-border)] lg:border-t-0 min-w-0">
+                {/* Foundry toolbar: day pager + TODAY + date picker + search + count */}
+                <div className="border-b border-[var(--erpx-border)] bg-[var(--erpx-surface)] p-3">
+                    <div className="fd-toolbar">
+                        <div className="fd-day-pager shrink-0">
                             <button
                                 type="button"
+                                className="fd-day-pager-arrow"
                                 onClick={() => setCursor((d) => addDays(d, -1))}
-                                className="pal-btn !h-12 !w-12 sm:!h-[52px] sm:!w-[52px] !p-0 shrink-0"
                                 aria-label="Previous day"
                             >
-                                <ArrowLeft size={20} strokeWidth={2.25} />
+                                ‹
                             </button>
-                            <div className="min-w-[min(100%,100%)] sm:min-w-[300px] sm:max-w-[420px] flex-1">
-                                <UnifiedDatePicker
-                                    value={dayInputValue}
-                                    onChange={(v) => {
-                                        const d = parseDayInput(v);
-                                        if (d) setCursor(d);
-                                    }}
-                                    placement="below"
-                                    size="lg"
-                                    variant="palantir"
-                                    className="w-full"
-                                />
-                            </div>
+                            <span className="fd-day-pager-label">{dayLabel}</span>
                             <button
                                 type="button"
+                                className="fd-day-pager-arrow"
                                 onClick={() => setCursor((d) => addDays(d, 1))}
-                                className="pal-btn !h-12 !w-12 sm:!h-[52px] sm:!w-[52px] !p-0 shrink-0"
                                 aria-label="Next day"
                             >
-                                <ArrowRight size={20} strokeWidth={2.25} />
+                                ›
                             </button>
                         </div>
+                        <button
+                            type="button"
+                            className="fd-accent-chip shrink-0"
+                            onClick={() => setCursor(new Date())}
+                            aria-label="Jump to today"
+                        >
+                            Today
+                        </button>
+                        <div className="min-w-[180px] shrink-0">
+                            <UnifiedDatePicker
+                                value={dayInputValue}
+                                onChange={(v) => {
+                                    const d = parseDayInput(v);
+                                    if (d) setCursor(d);
+                                }}
+                                placement="below"
+                                variant="palantir"
+                                className="w-full"
+                            />
+                        </div>
+                        <label className="sr-only" htmlFor="ops-hub-search">
+                            Search
+                        </label>
+                        <div className="fd-search">
+                            <span className="fd-search-glyph" aria-hidden>
+                                ⌕
+                            </span>
+                            <input
+                                id="ops-hub-search"
+                                type="search"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="Search plate, NAV / RES, name, email…"
+                            />
+                        </div>
+                        <span className="fd-toolbar-count">
+                            {`${fPendingExits.length + fDoneExits.length} CHECKOUTS · ${fPendingReturns.length + fDoneReturns.length} RETURNS`}
+                        </span>
                     </div>
                 </div>
 
-                {/* Stacked layout: below xl breakpoint */}
-                <div className="xl:hidden grid grid-cols-1 min-h-0">
-                    <section className="flex flex-col min-h-0 bg-[var(--erpx-surface)] border-b border-[var(--erpx-border)]">
-                        <div className="shrink-0 px-4 py-3 border-b border-[var(--erpx-border)] bg-[var(--erpx-subtle)] flex items-center gap-2.5">
-                            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white shadow-sm">
-                                <ArrowRight size={16} strokeWidth={2.5} aria-hidden />
-                            </span>
-                            <div>
-                                <h3 className="text-sm font-semibold text-[var(--erpx-ink)] tracking-tight">Check-outs</h3>
-                                <p className="text-[10px] text-[var(--erpx-ink-muted)]">Vehicle leaving the branch</p>
+                {/* Foundry panels: checkout / return tables */}
+                <div className="p-3 grid grid-cols-1 xl:grid-cols-2 gap-3 items-start">
+                    {/* Check-outs — vehicle leaving the branch */}
+                    <div className="flex flex-col gap-3 min-w-0">
+                        <OpsPanelSection
+                            title="Check-outs · Waiting / In Progress"
+                            count={fPendingExits.length}
+                            meta={dayLabel}
+                        >
+                            <div className="overflow-x-auto">
+                                <div className="fd-table !border-0 min-w-[560px]">
+                                    <div className="fd-table-head" style={{ '--fd-cols': OPS_COLS }}>
+                                        <span>Time</span>
+                                        <span>Ref</span>
+                                        <span>Customer</span>
+                                        <span>Vehicle</span>
+                                        <span>Plate</span>
+                                        <span>Status</span>
+                                    </div>
+                                    {fPendingExits.length === 0 ? (
+                                        <div className="fd-table-empty">NO CHECKOUT RECORDS FOR THIS SELECTION</div>
+                                    ) : (
+                                        pendingExitsPager.paginatedItems.map((ex, idx) => (
+                                            <ExitOpsRow
+                                                key={`${ex.documentId || ex.id || 'exit'}-${idx}`}
+                                                ex={ex}
+                                                plate={plateForExit(ex)}
+                                                vehicleLine={vehicleSummaryLine(carForExit(ex))}
+                                                done={false}
+                                                onClick={() => {
+                                                    setDetailReturn(null);
+                                                    setDetailExit(ex);
+                                                }}
+                                            />
+                                        ))
+                                    )}
+                                </div>
                             </div>
-                        </div>
-                        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
-                            <OpsPanelSection title="Waiting / in progress" count={fPendingExits.length}>
-                                {fPendingExits.length === 0 ? (
-                                    <p className="px-3 py-8 text-center text-xs text-[var(--erpx-ink-muted)] border border-dashed border-[var(--erpx-border)] rounded-none bg-[var(--erpx-subtle)] m-2">
-                                        None for this day.
-                                    </p>
-                                ) : (
-                                    pendingExitsPager.paginatedItems.map((ex, idx) => (
-                                        <ExitOpsRow
-                                            key={`${ex.documentId || ex.id || 'exit'}-${idx}`}
-                                            ex={ex}
-                                            plate={plateForExit(ex)}
-                                            vehicleLine={vehicleSummaryLine(carForExit(ex))}
-                                            done={false}
-                                            onClick={() => {
-                                                setDetailReturn(null);
-                                                setDetailExit(ex);
-                                            }}
-                                        />
-                                    ))
-                                )}
-                            </OpsPanelSection>
                             {fPendingExits.length > pendingExitsPager.pageSize && (
                                 <PalantirTablePager
                                     totalItems={pendingExitsPager.totalItems}
@@ -716,63 +667,84 @@ export function OperationsHubView({
                                     totalLabel="pending check-outs"
                                 />
                             )}
-                            <OpsPanelSection title="Completed" count={fDoneExits.length}>
-                                {fDoneExits.length === 0 ? (
-                                    <p className="px-3 py-8 text-center text-xs text-[var(--erpx-ink-muted)] border border-dashed border-[var(--erpx-border)] rounded-none bg-[var(--erpx-subtle)] m-2">
-                                        None for this day.
-                                    </p>
-                                ) : (
-                                    fDoneExits.map((ex, idx) => (
-                                        <ExitOpsRow
-                                            key={`${ex.documentId || ex.id || 'exit'}-${idx}`}
-                                            ex={ex}
-                                            plate={plateForExit(ex)}
-                                            vehicleLine={vehicleSummaryLine(carForExit(ex))}
-                                            done
-                                            onClick={() => {
-                                                setDetailReturn(null);
-                                                setDetailExit(ex);
-                                            }}
-                                        />
-                                    ))
-                                )}
-                            </OpsPanelSection>
-                        </div>
-                    </section>
-
-                    <section className="flex flex-col min-h-0 bg-[var(--erpx-surface)]">
-                        <div className="shrink-0 px-4 py-3 border-b border-[var(--erpx-border)] bg-[var(--erpx-subtle)] flex items-center gap-2.5">
-                            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-600 text-white shadow-sm">
-                                <ArrowLeft size={16} strokeWidth={2.5} aria-hidden />
-                            </span>
-                            <div>
-                                <h3 className="text-sm font-semibold text-[var(--erpx-ink)] tracking-tight">Returns</h3>
-                                <p className="text-[10px] text-[var(--erpx-ink-muted)]">Vehicle coming back</p>
+                            <div className="fd-footnote px-3 py-2 border-t border-[var(--fd-border)]">
+                                CLICK A ROW → DETAIL DRAWER WITH PHOTOS AND PDF GENERATION (EN / TR)
                             </div>
-                        </div>
-                        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
-                            <OpsPanelSection title="Waiting / in progress" count={fPendingReturns.length}>
-                                {fPendingReturns.length === 0 ? (
-                                    <p className="px-3 py-8 text-center text-xs text-[var(--erpx-ink-muted)] border border-dashed border-[var(--erpx-border)] rounded-none bg-[var(--erpx-subtle)] m-2">
-                                        None for this day.
-                                    </p>
-                                ) : (
-                                    pendingReturnsPager.paginatedItems.map((r, idx) => (
-                                        <ReturnOpsRow
-                                            key={`${r.documentId || r.id || 'ret'}-${idx}`}
-                                            r={r}
-                                            plate={plateForReturn(r)}
-                                            vehicleLine={vehicleSummaryLine(carForReturn(r))}
-                                            email={r.customerEmail}
-                                            done={false}
-                                            onClick={() => {
-                                                setDetailExit(null);
-                                                setDetailReturn(r);
-                                            }}
-                                        />
-                                    ))
-                                )}
-                            </OpsPanelSection>
+                        </OpsPanelSection>
+
+                        <OpsPanelSection title="Check-outs · Completed" count={fDoneExits.length} meta={dayLabel}>
+                            <div className="overflow-x-auto">
+                                <div className="fd-table !border-0 min-w-[560px]">
+                                    <div className="fd-table-head" style={{ '--fd-cols': OPS_COLS }}>
+                                        <span>Time</span>
+                                        <span>Ref</span>
+                                        <span>Customer</span>
+                                        <span>Vehicle</span>
+                                        <span>Plate</span>
+                                        <span>Status</span>
+                                    </div>
+                                    {fDoneExits.length === 0 ? (
+                                        <div className="fd-table-empty">NO CHECKOUT RECORDS FOR THIS SELECTION</div>
+                                    ) : (
+                                        fDoneExits.map((ex, idx) => (
+                                            <ExitOpsRow
+                                                key={`${ex.documentId || ex.id || 'exit'}-${idx}`}
+                                                ex={ex}
+                                                plate={plateForExit(ex)}
+                                                vehicleLine={vehicleSummaryLine(carForExit(ex))}
+                                                done
+                                                onClick={() => {
+                                                    setDetailReturn(null);
+                                                    setDetailExit(ex);
+                                                }}
+                                            />
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                            <div className="fd-footnote px-3 py-2 border-t border-[var(--fd-border)]">
+                                COMPLETED CHECKOUTS · VEHICLE LEFT THE BRANCH · CLICK A ROW FOR PHOTOS + PDF
+                            </div>
+                        </OpsPanelSection>
+                    </div>
+
+                    {/* Returns — vehicle coming back */}
+                    <div className="flex flex-col gap-3 min-w-0">
+                        <OpsPanelSection
+                            title="Returns · Waiting / In Progress"
+                            count={fPendingReturns.length}
+                            meta={dayLabel}
+                        >
+                            <div className="overflow-x-auto">
+                                <div className="fd-table !border-0 min-w-[560px]">
+                                    <div className="fd-table-head" style={{ '--fd-cols': OPS_COLS }}>
+                                        <span>Time</span>
+                                        <span>Ref</span>
+                                        <span>Customer</span>
+                                        <span>Vehicle</span>
+                                        <span>Plate</span>
+                                        <span>Status</span>
+                                    </div>
+                                    {fPendingReturns.length === 0 ? (
+                                        <div className="fd-table-empty">NO RETURN RECORDS FOR THIS SELECTION</div>
+                                    ) : (
+                                        pendingReturnsPager.paginatedItems.map((r, idx) => (
+                                            <ReturnOpsRow
+                                                key={`${r.documentId || r.id || 'ret'}-${idx}`}
+                                                r={r}
+                                                plate={plateForReturn(r)}
+                                                vehicleLine={vehicleSummaryLine(carForReturn(r))}
+                                                email={r.customerEmail}
+                                                done={false}
+                                                onClick={() => {
+                                                    setDetailExit(null);
+                                                    setDetailReturn(r);
+                                                }}
+                                            />
+                                        ))
+                                    )}
+                                </div>
+                            </div>
                             {fPendingReturns.length > pendingReturnsPager.pageSize && (
                                 <PalantirTablePager
                                     totalItems={pendingReturnsPager.totalItems}
@@ -787,174 +759,45 @@ export function OperationsHubView({
                                     totalLabel="pending returns"
                                 />
                             )}
-                            <OpsPanelSection title="Completed" count={fDoneReturns.length}>
-                                {fDoneReturns.length === 0 ? (
-                                    <p className="px-3 py-8 text-center text-xs text-[var(--erpx-ink-muted)] border border-dashed border-[var(--erpx-border)] rounded-none bg-[var(--erpx-subtle)] m-2">
-                                        None for this day.
-                                    </p>
-                                ) : (
-                                    fDoneReturns.map((r, idx) => (
-                                        <ReturnOpsRow
-                                            key={`${r.documentId || r.id || 'ret'}-${idx}`}
-                                            r={r}
-                                            plate={plateForReturn(r)}
-                                            vehicleLine={vehicleSummaryLine(carForReturn(r))}
-                                            email={r.customerEmail}
-                                            done
-                                            onClick={() => {
-                                                setDetailExit(null);
-                                                setDetailReturn(r);
-                                            }}
-                                        />
-                                    ))
-                                )}
-                            </OpsPanelSection>
-                        </div>
-                    </section>
-                </div>
-
-                {/* xl+: Waiting / Completed rows aligned across columns */}
-                <div className="hidden xl:grid xl:grid-cols-2 xl:grid-rows-[auto_minmax(220px,1fr)_minmax(220px,1fr)] xl:divide-x xl:divide-[var(--erpx-border)] min-h-0">
-                    <div className="shrink-0 px-4 py-3 border-b border-[var(--erpx-border)] bg-[var(--erpx-subtle)] flex items-center gap-2.5">
-                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white shadow-sm">
-                            <ArrowRight size={16} strokeWidth={2.5} aria-hidden />
-                        </span>
-                        <div>
-                            <h3 className="text-sm font-semibold text-[var(--erpx-ink)] tracking-tight">Check-outs</h3>
-                            <p className="text-[10px] text-[var(--erpx-ink-muted)]">Vehicle leaving the branch</p>
-                        </div>
-                    </div>
-                    <div className="shrink-0 px-4 py-3 border-b border-[var(--erpx-border)] bg-[var(--erpx-subtle)] flex items-center gap-2.5">
-                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-600 text-white shadow-sm">
-                            <ArrowLeft size={16} strokeWidth={2.5} aria-hidden />
-                        </span>
-                        <div>
-                            <h3 className="text-sm font-semibold text-[var(--erpx-ink)] tracking-tight">Returns</h3>
-                            <p className="text-[10px] text-[var(--erpx-ink-muted)]">Vehicle coming back</p>
-                        </div>
-                    </div>
-
-                    <div className="min-h-0 overflow-y-auto overscroll-contain bg-[var(--erpx-surface)] border-b border-[var(--erpx-border)]">
-                        <OpsPanelSection title="Waiting / in progress" count={fPendingExits.length}>
-                            {fPendingExits.length === 0 ? (
-                                <p className="px-3 py-8 text-center text-xs text-[var(--erpx-ink-muted)] border border-dashed border-[var(--erpx-border)] rounded-none bg-[var(--erpx-subtle)] m-2">
-                                    None for this day.
-                                </p>
-                            ) : (
-                                pendingExitsPager.paginatedItems.map((ex, idx) => (
-                                    <ExitOpsRow
-                                        key={`${ex.documentId || ex.id || 'exit'}-${idx}`}
-                                        ex={ex}
-                                        plate={plateForExit(ex)}
-                                        vehicleLine={vehicleSummaryLine(carForExit(ex))}
-                                        done={false}
-                                        onClick={() => {
-                                            setDetailReturn(null);
-                                            setDetailExit(ex);
-                                        }}
-                                    />
-                                ))
-                            )}
+                            <div className="fd-footnote px-3 py-2 border-t border-[var(--fd-border)]">
+                                CLICK A ROW → DETAIL DRAWER WITH PHOTOS AND PDF GENERATION (EN / TR)
+                            </div>
                         </OpsPanelSection>
-                        {fPendingExits.length > pendingExitsPager.pageSize && (
-                            <PalantirTablePager
-                                totalItems={pendingExitsPager.totalItems}
-                                rangeFrom={pendingExitsPager.rangeFrom}
-                                rangeTo={pendingExitsPager.rangeTo}
-                                page={pendingExitsPager.page}
-                                totalPages={pendingExitsPager.totalPages}
-                                pageSize={pendingExitsPager.pageSize}
-                                pageSizeOptions={pendingExitsPager.pageSizeOptions}
-                                onPageChange={pendingExitsPager.setPage}
-                                onPageSizeChange={pendingExitsPager.setPageSize}
-                                totalLabel="pending check-outs"
-                            />
-                        )}
-                    </div>
-                    <div className="min-h-0 overflow-y-auto overscroll-contain bg-[var(--erpx-surface)] border-b border-[var(--erpx-border)]">
-                        <OpsPanelSection title="Waiting / in progress" count={fPendingReturns.length}>
-                            {fPendingReturns.length === 0 ? (
-                                <p className="px-3 py-8 text-center text-xs text-[var(--erpx-ink-muted)] border border-dashed border-[var(--erpx-border)] rounded-none bg-[var(--erpx-subtle)] m-2">
-                                    None for this day.
-                                </p>
-                            ) : (
-                                pendingReturnsPager.paginatedItems.map((r, idx) => (
-                                    <ReturnOpsRow
-                                        key={`${r.documentId || r.id || 'ret'}-${idx}`}
-                                        r={r}
-                                        plate={plateForReturn(r)}
-                                        vehicleLine={vehicleSummaryLine(carForReturn(r))}
-                                        email={r.customerEmail}
-                                        done={false}
-                                        onClick={() => {
-                                            setDetailExit(null);
-                                            setDetailReturn(r);
-                                        }}
-                                    />
-                                ))
-                            )}
-                        </OpsPanelSection>
-                        {fPendingReturns.length > pendingReturnsPager.pageSize && (
-                            <PalantirTablePager
-                                totalItems={pendingReturnsPager.totalItems}
-                                rangeFrom={pendingReturnsPager.rangeFrom}
-                                rangeTo={pendingReturnsPager.rangeTo}
-                                page={pendingReturnsPager.page}
-                                totalPages={pendingReturnsPager.totalPages}
-                                pageSize={pendingReturnsPager.pageSize}
-                                pageSizeOptions={pendingReturnsPager.pageSizeOptions}
-                                onPageChange={pendingReturnsPager.setPage}
-                                onPageSizeChange={pendingReturnsPager.setPageSize}
-                                totalLabel="pending returns"
-                            />
-                        )}
-                    </div>
 
-                    <div className="min-h-0 overflow-y-auto overscroll-contain bg-[var(--erpx-surface)]">
-                        <OpsPanelSection title="Completed" count={fDoneExits.length}>
-                            {fDoneExits.length === 0 ? (
-                                <p className="px-3 py-8 text-center text-xs text-[var(--erpx-ink-muted)] border border-dashed border-[var(--erpx-border)] rounded-none bg-[var(--erpx-subtle)] m-2">
-                                    None for this day.
-                                </p>
-                            ) : (
-                                fDoneExits.map((ex, idx) => (
-                                    <ExitOpsRow
-                                        key={`${ex.documentId || ex.id || 'exit'}-${idx}`}
-                                        ex={ex}
-                                        plate={plateForExit(ex)}
-                                        vehicleLine={vehicleSummaryLine(carForExit(ex))}
-                                        done
-                                        onClick={() => {
-                                            setDetailReturn(null);
-                                            setDetailExit(ex);
-                                        }}
-                                    />
-                                ))
-                            )}
-                        </OpsPanelSection>
-                    </div>
-                    <div className="min-h-0 overflow-y-auto overscroll-contain bg-[var(--erpx-surface)]">
-                        <OpsPanelSection title="Completed" count={fDoneReturns.length}>
-                            {fDoneReturns.length === 0 ? (
-                                <p className="px-3 py-8 text-center text-xs text-[var(--erpx-ink-muted)] border border-dashed border-[var(--erpx-border)] rounded-none bg-[var(--erpx-subtle)] m-2">
-                                    None for this day.
-                                </p>
-                            ) : (
-                                fDoneReturns.map((r) => (
-                                    <ReturnOpsRow
-                                        key={r.id || r.documentId}
-                                        r={r}
-                                        plate={plateForReturn(r)}
-                                        vehicleLine={vehicleSummaryLine(carForReturn(r))}
-                                        email={r.customerEmail}
-                                        done
-                                        onClick={() => {
-                                            setDetailExit(null);
-                                            setDetailReturn(r);
-                                        }}
-                                    />
-                                ))
-                            )}
+                        <OpsPanelSection title="Returns · Completed" count={fDoneReturns.length} meta={dayLabel}>
+                            <div className="overflow-x-auto">
+                                <div className="fd-table !border-0 min-w-[560px]">
+                                    <div className="fd-table-head" style={{ '--fd-cols': OPS_COLS }}>
+                                        <span>Time</span>
+                                        <span>Ref</span>
+                                        <span>Customer</span>
+                                        <span>Vehicle</span>
+                                        <span>Plate</span>
+                                        <span>Status</span>
+                                    </div>
+                                    {fDoneReturns.length === 0 ? (
+                                        <div className="fd-table-empty">NO RETURN RECORDS FOR THIS SELECTION</div>
+                                    ) : (
+                                        fDoneReturns.map((r) => (
+                                            <ReturnOpsRow
+                                                key={r.id || r.documentId}
+                                                r={r}
+                                                plate={plateForReturn(r)}
+                                                vehicleLine={vehicleSummaryLine(carForReturn(r))}
+                                                email={r.customerEmail}
+                                                done
+                                                onClick={() => {
+                                                    setDetailExit(null);
+                                                    setDetailReturn(r);
+                                                }}
+                                            />
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                            <div className="fd-footnote px-3 py-2 border-t border-[var(--fd-border)]">
+                                FINALIZED RETURNS · CLICK A ROW FOR PHOTOS + RETURN PDF
+                            </div>
                         </OpsPanelSection>
                     </div>
                 </div>
@@ -970,7 +813,7 @@ export function OperationsHubView({
                         onClick={(e) => e.stopPropagation()}
                     >
                         <div className="flex items-start justify-between gap-2 mb-3">
-                            <h4 className="text-sm font-semibold text-[var(--erpx-ink)]">
+                            <h4 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--erpx-ink)]">
                                 {detailExit ? 'Check-out detail' : 'Return detail'}
                             </h4>
                             <button
@@ -1057,7 +900,7 @@ function ExitDetailBody({ ex, plate, car, onOpenPhoto, onPdfEnglish, onPdfTurkis
     const bookingCodeValue = ex.navKodu || ex.resKodu || '—';
     return (
         <div className="space-y-sap-4 text-sap-sm">
-            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+            <dl className="fd-spec-grid">
                 <DetailRow label="Plate" value={plate} />
                 <DetailRow label={bookingCodeLabel} value={bookingCodeValue} />
                 <DetailRow label="Brand" value={car?.marka?.trim() || '—'} />
@@ -1077,38 +920,34 @@ function ExitDetailBody({ ex, plate, car, onOpenPhoto, onPdfEnglish, onPdfTurkis
                 <DetailRow label="KM" value={ex.km != null ? String(ex.km) : '—'} />
                 <DetailRow label="Fuel" value={ex.yakitSeviyesi || '—'} />
                 <DetailRow label="Branch" value={ex.bayiAdi || '—'} />
-                {(pu || dr) && (
-                    <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {pu ? <DetailRow label="Pick-up" value={pu} /> : null}
-                        {dr ? <DetailRow label="Drop-off" value={dr} /> : null}
-                    </div>
-                )}
+                {pu ? <DetailRow label="Pick-up" value={pu} /> : null}
+                {dr ? <DetailRow label="Drop-off" value={dr} /> : null}
             </dl>
 
             {photos.length > 0 && (
                 <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--erpx-ink-muted)] mb-2">Photos</p>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <p className="fd-spec-label mb-2">Photos ({photos.length})</p>
+                    <div className="fd-photo-grid">
                         {photos.map((url, photoIndex) => (
                             <button
                                 key={url}
                                 type="button"
-                                className="block aspect-video rounded-sap-sm overflow-hidden bg-black/5 border border-sap-border-light dark:border-sap-borderDark-light p-0 cursor-zoom-in"
+                                className="fd-photo-tile cursor-zoom-in"
                                 onClick={() => onOpenPhoto({ images: photos, startIndex: photoIndex })}
                             >
-                                <img src={url} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
+                                <img src={url} alt="" loading="lazy" decoding="async" />
                             </button>
                         ))}
                     </div>
                 </div>
             )}
 
-            <div className="flex flex-wrap gap-2 pt-2 border-t border-sap-border-light/80 dark:border-sap-borderDark-light/80">
+            <div className="flex flex-wrap gap-2 pt-3 border-t border-[var(--fd-border)]">
                 <button
                     type="button"
                     disabled={pdfBusy}
                     onClick={onPdfEnglish}
-                    className="pal-btn pal-btn-sm inline-flex items-center gap-1 flex-1 min-w-[140px] justify-center"
+                    className="fd-inline-action !py-2 inline-flex items-center gap-1 flex-1 min-w-[140px] justify-center disabled:opacity-50"
                 >
                     <FileText size={14} />
                     Generate PDF (English)
@@ -1150,7 +989,7 @@ function ReturnDetailBody({ r, plate, car, exits = [], onOpenPhoto, onPdfEnglish
 
     return (
         <div className="space-y-sap-4 text-sap-sm">
-            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+            <dl className="fd-spec-grid">
                 <DetailRow label="Plate" value={plate} />
                 <DetailRow label="Status" value={r.status || '—'} />
                 <DetailRow label="Brand" value={car?.marka?.trim() || '—'} />
@@ -1167,36 +1006,34 @@ function ReturnDetailBody({ r, plate, car, exits = [], onOpenPhoto, onPdfEnglish
                 <DetailRow label="Email" value={r.customerEmail || '—'} />
                 <DetailRow label="KM" value={r.km != null ? String(r.km) : '—'} />
                 <DetailRow label="Fuel" value={r.yakitSeviyesi || '—'} />
-                <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <DetailRow label="Pick-up branch" value={pu || '—'} />
-                    <DetailRow label="Drop-off branch" value={dr || '—'} />
-                </div>
+                <DetailRow label="Pick-up branch" value={pu || '—'} />
+                <DetailRow label="Drop-off branch" value={dr || '—'} />
             </dl>
 
             {photos.length > 0 && (
                 <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--erpx-ink-muted)] mb-2">Photos</p>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <p className="fd-spec-label mb-2">Photos ({photos.length})</p>
+                    <div className="fd-photo-grid">
                         {photos.map((url, photoIndex) => (
                             <button
                                 key={url}
                                 type="button"
-                                className="block aspect-video rounded-sap-sm overflow-hidden bg-black/5 border border-sap-border-light dark:border-sap-borderDark-light p-0 cursor-zoom-in"
+                                className="fd-photo-tile cursor-zoom-in"
                                 onClick={() => onOpenPhoto({ images: photos, startIndex: photoIndex })}
                             >
-                                <img src={url} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
+                                <img src={url} alt="" loading="lazy" decoding="async" />
                             </button>
                         ))}
                     </div>
                 </div>
             )}
 
-            <div className="flex flex-wrap gap-2 pt-2 border-t border-sap-border-light/80 dark:border-sap-borderDark-light/80">
+            <div className="flex flex-wrap gap-2 pt-3 border-t border-[var(--fd-border)]">
                 <button
                     type="button"
                     disabled={pdfBusy}
                     onClick={onPdfEnglish}
-                    className="pal-btn pal-btn-sm inline-flex items-center gap-1 flex-1 min-w-[140px] justify-center"
+                    className="fd-inline-action !py-2 inline-flex items-center gap-1 flex-1 min-w-[140px] justify-center disabled:opacity-50"
                 >
                     <FileText size={14} />
                     Generate PDF (English)
@@ -1217,9 +1054,9 @@ function ReturnDetailBody({ r, plate, car, exits = [], onOpenPhoto, onPdfEnglish
 
 function DetailRow({ label, value }) {
     return (
-        <div>
-            <dt className="text-[10px] font-semibold uppercase tracking-wide text-[var(--erpx-ink-muted)]">{label}</dt>
-            <dd className="text-sm text-[var(--erpx-ink)] font-medium break-words">{value}</dd>
+        <div className="fd-spec-cell">
+            <dt className="fd-spec-label">{label}</dt>
+            <dd className="fd-spec-value break-words">{value}</dd>
         </div>
     );
 }

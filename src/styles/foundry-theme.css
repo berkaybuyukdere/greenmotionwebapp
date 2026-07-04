@@ -513,3 +513,513 @@
     color: var(--fd-text2);
     min-width: 0;
 }
+
+/* ═══ Foundry shared vocabulary — exact wireframe treatments ═══
+   Every re-skinned screen composes these classes so lists, toolbars,
+   panels and pills are pixel-consistent across the app. */
+
+/* Panel + section header bar */
+.fd-panel {
+    border: 1px solid var(--fd-border);
+    background: var(--fd-surface);
+}
+
+.fd-panel-inset {
+    border: 1px solid var(--fd-border);
+    background: var(--fd-bg);
+}
+
+.fd-section-head {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--fd-border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--fd-sans);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--fd-text);
+}
+
+.fd-section-head-meta {
+    margin-left: auto;
+    font-family: var(--fd-mono);
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    color: var(--fd-muted);
+    text-transform: none;
+}
+
+/* KPI strip: 1px-gap grid trick */
+.fd-kpi-strip {
+    display: grid;
+    gap: 1px;
+    background: var(--fd-border);
+    border: 1px solid var(--fd-border);
+}
+
+.fd-kpi-cell {
+    background: var(--fd-surface);
+    padding: 10px 12px;
+    min-width: 0;
+}
+
+.fd-kpi-label {
+    font-family: var(--fd-sans);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--fd-muted);
+}
+
+.fd-kpi-value {
+    font-family: var(--fd-mono);
+    font-size: 21px;
+    font-weight: 600;
+    color: var(--fd-text);
+    margin-top: 5px;
+    font-variant-numeric: tabular-nums;
+}
+
+.fd-kpi-sub {
+    font-family: var(--fd-mono);
+    font-size: 9.5px;
+    font-weight: 500;
+    color: var(--fd-muted);
+    margin-top: 3px;
+}
+
+/* Toolbar row above tables */
+.fd-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.fd-toolbar-count {
+    margin-left: auto;
+    font-family: var(--fd-mono);
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--fd-muted);
+    letter-spacing: 0.04em;
+}
+
+/* Segmented chips group (bordered strip of filter chips) */
+.fd-chip-group {
+    display: flex;
+    border: 1px solid var(--fd-border);
+    background: var(--fd-surface);
+}
+
+.fd-chip {
+    padding: 6px 12px;
+    font-family: var(--fd-mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    color: var(--fd-muted);
+    background: transparent;
+    border: none;
+    border-right: 1px solid var(--fd-border);
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.fd-chip:last-child { border-right: none; }
+.fd-chip:hover { color: var(--fd-text); }
+
+.fd-chip-active {
+    font-weight: 700;
+    color: var(--fd-accent);
+    background: var(--fd-accent-dim);
+}
+
+/* Live search input strip */
+.fd-search {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--fd-border);
+    background: var(--fd-surface);
+    padding: 0 10px;
+    flex: 1;
+    max-width: 320px;
+}
+
+.fd-search > input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--fd-text);
+    font-family: var(--fd-mono);
+    font-size: 11px;
+    font-weight: 500;
+    padding: 8px 0;
+    min-width: 0;
+}
+
+.fd-search-glyph {
+    color: var(--fd-muted);
+    font-size: 11px;
+}
+
+/* Dense data table (CSS grid rows) */
+.fd-table {
+    border: 1px solid var(--fd-border);
+    background: var(--fd-surface);
+}
+
+.fd-table-head,
+.fd-table-row {
+    display: grid;
+    grid-template-columns: var(--fd-cols, repeat(6, 1fr));
+    column-gap: 10px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--fd-border);
+    align-items: center;
+}
+
+.fd-table-head {
+    padding: 7px 12px;
+    background: var(--fd-high);
+    font-family: var(--fd-sans);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--fd-muted);
+}
+
+.fd-table-row {
+    font-size: 11.5px;
+    color: var(--fd-text);
+    cursor: pointer;
+}
+
+.fd-table-row:hover { background: var(--fd-high); }
+.fd-table-row:last-child { border-bottom: none; }
+
+.fd-cell-mono { font-family: var(--fd-mono); font-size: 11px; font-weight: 600; }
+.fd-cell-mono-dim { font-family: var(--fd-mono); font-size: 10.5px; font-weight: 500; color: var(--fd-text2); }
+.fd-cell-muted { font-family: var(--fd-mono); font-size: 10px; font-weight: 500; color: var(--fd-muted); }
+.fd-cell-accent { font-family: var(--fd-mono); font-size: 10.5px; font-weight: 600; color: var(--fd-accent); }
+.fd-cell-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.fd-table-empty {
+    padding: 26px 12px;
+    text-align: center;
+    font-family: var(--fd-mono);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--fd-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.fd-footnote {
+    font-family: var(--fd-mono);
+    font-size: 9.5px;
+    font-weight: 500;
+    color: var(--fd-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+/* Inline table action (⬇ PDF / DETAIL ›) */
+.fd-inline-action {
+    font-family: var(--fd-mono);
+    font-size: 9px;
+    font-weight: 600;
+    color: var(--fd-accent);
+    border: 1px solid var(--fd-accent);
+    padding: 3px 8px;
+    background: transparent;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+
+.fd-inline-action:hover { background: var(--fd-accent-dim); }
+
+/* Accent-outline chip (TODAY) */
+.fd-accent-chip {
+    border: 1px solid var(--fd-accent);
+    color: var(--fd-accent);
+    background: var(--fd-accent-dim);
+    font-family: var(--fd-mono);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 7px 11px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.fd-accent-chip:hover { filter: brightness(1.15); }
+
+/* Day pager (‹ 04 JUL 2026 ›) */
+.fd-day-pager {
+    display: flex;
+    border: 1px solid var(--fd-border);
+    background: var(--fd-surface);
+    align-items: stretch;
+}
+
+.fd-day-pager-arrow {
+    padding: 7px 11px;
+    cursor: pointer;
+    color: var(--fd-muted);
+    background: transparent;
+    border: none;
+    font-size: 12px;
+    line-height: 1;
+}
+
+.fd-day-pager-arrow:first-child { border-right: 1px solid var(--fd-border); }
+.fd-day-pager-arrow:last-child { border-left: 1px solid var(--fd-border); }
+.fd-day-pager-arrow:hover { color: var(--fd-text); }
+
+.fd-day-pager-label {
+    padding: 7px 14px;
+    font-family: var(--fd-mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    display: flex;
+    align-items: center;
+}
+
+/* Horizontal distribution bar (fleet status) */
+.fd-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.fd-bar-label {
+    font-family: var(--fd-mono);
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--fd-text2);
+    width: 88px;
+    flex: none;
+}
+
+.fd-bar-track {
+    flex: 1;
+    height: 14px;
+    background: var(--fd-bg);
+    border: 1px solid var(--fd-border);
+    position: relative;
+}
+
+.fd-bar-fill {
+    position: absolute;
+    top: 1px;
+    bottom: 1px;
+    left: 1px;
+    opacity: 0.75;
+}
+
+.fd-bar-count {
+    font-family: var(--fd-mono);
+    font-size: 11px;
+    font-weight: 600;
+    width: 30px;
+    text-align: right;
+}
+
+/* Photo placeholder / photo tile grid */
+.fd-photo-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+}
+
+.fd-photo-tile {
+    aspect-ratio: 4 / 3;
+    border: 1px solid var(--fd-border);
+    background: var(--fd-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    overflow: hidden;
+    padding: 0;
+}
+
+.fd-photo-tile:hover { border-color: var(--fd-accent); }
+.fd-photo-tile > img { width: 100%; height: 100%; object-fit: cover; }
+
+/* ─── Login: wireframe split layout (brand panel + card) ─── */
+.pal-login-shell {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    width: min(1060px, 94vw);
+}
+
+.fd-login-brand {
+    flex: 1.15;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 28px;
+    padding: 36px 40px;
+    border: 1px solid var(--fd-border);
+    border-right: none;
+    background:
+        linear-gradient(160deg, rgba(76, 144, 240, 0.06), transparent 55%),
+        var(--fd-bg);
+    min-height: 520px;
+}
+
+.fd-login-brand-top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.fd-login-logo {
+    width: 26px;
+    height: 26px;
+    border: 2px solid var(--fd-accent);
+    display: grid;
+    place-items: center;
+    font: 700 12px var(--fd-mono);
+    color: var(--fd-accent);
+}
+
+.fd-login-wordmark {
+    font: 600 13px/1 var(--fd-sans);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--fd-text);
+}
+
+.fd-login-platform-chip {
+    font: 500 10px var(--fd-mono);
+    color: var(--fd-muted);
+    border: 1px solid var(--fd-border);
+    padding: 2px 6px;
+    margin-left: 6px;
+}
+
+.fd-login-brand-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    max-width: 520px;
+}
+
+.fd-login-headline {
+    font: 600 34px/1.15 var(--fd-sans);
+    letter-spacing: -0.01em;
+    color: var(--fd-text);
+    text-wrap: balance;
+}
+
+.fd-login-sub {
+    color: var(--fd-text2);
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.fd-login-build {
+    font: 500 10px var(--fd-mono);
+    color: var(--fd-muted);
+    letter-spacing: 0.04em;
+}
+
+@media (max-width: 900px) {
+    .fd-login-brand { display: none; }
+    .pal-login-shell { width: min(440px, 94vw); }
+}
+
+/* Foundry select (toolbar dropdowns) */
+.fd-select {
+    border: 1px solid var(--fd-border);
+    background: var(--fd-surface);
+    color: var(--fd-text);
+    font-family: var(--fd-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    padding: 8px 10px;
+    outline: none;
+    cursor: pointer;
+    text-transform: uppercase;
+}
+
+.fd-select:hover { border-color: var(--fd-border-strong); }
+.fd-select:focus { border-color: var(--fd-accent); }
+
+/* Fleet table density → wireframe Vehicles treatment */
+.pal-fleet-table thead th {
+    background: var(--fd-high);
+    font-family: var(--fd-sans);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--fd-muted);
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--fd-border);
+}
+
+.pal-fleet-table tbody td {
+    padding: 8px 12px;
+    font-size: 11.5px;
+    border-bottom: 1px solid var(--fd-border);
+}
+
+.pal-fleet-table tbody tr:hover {
+    background: var(--fd-high);
+}
+
+.pal-fleet-table-panel {
+    border: 1px solid var(--fd-border);
+    background: var(--fd-surface);
+    border-radius: 0;
+}
+
+/* Spec grid (2-col label/value cells with internal hairlines) */
+.fd-spec-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--fd-border);
+    border: 1px solid var(--fd-border);
+}
+
+.fd-spec-cell {
+    background: var(--fd-bg);
+    padding: 8px 10px;
+}
+
+.fd-spec-label {
+    color: var(--fd-muted);
+    font-family: var(--fd-sans);
+    font-size: 8.5px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.fd-spec-value {
+    font-family: var(--fd-mono);
+    font-size: 11px;
+    font-weight: 600;
+    margin-top: 3px;
+    color: var(--fd-text);
+}
