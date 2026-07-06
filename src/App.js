@@ -22,6 +22,7 @@ import PalantirBarChart from './components/palantir/PalantirBarChart';
 import { PalantirNavIcon, PalantirPageIcon } from './components/palantir/PalantirNavIcon';
 import { PalantirTablePager } from './components/palantir/PalantirTablePager';
 import { useClientPagination } from './components/palantir/useClientPagination';
+import { SITE_NAME } from './constants/siteBrand';
 import {
     analyticsRangeBounds,
     isOfficeExpense,
@@ -3634,9 +3635,10 @@ function Sidebar({
                 {/* Header */}
                 <div className="pal-sidebar-header erpx-sidebar-header h-16 px-3 flex items-center flex-shrink-0">
                     {showText ? (
-                        <div className="flex items-center gap-2.5 w-full">
+                        <div className="flex items-center gap-2 w-full min-w-0">
+                            <span className="fd-brand-mark" aria-hidden="true">VS</span>
                             <span className="erpx-sidebar-brand pal-sidebar-brand flex-1 truncate">
-                                BTX
+                                {SITE_NAME}
                             </span>
                             <button
                                 onClick={() => setIsCollapsed(true)}
@@ -3647,7 +3649,8 @@ function Sidebar({
                             </button>
                         </div>
                     ) : (
-                        <div className="flex justify-center w-full">
+                        <div className="flex flex-col items-center gap-2 w-full">
+                            <span className="fd-brand-mark" aria-hidden="true">VS</span>
                             <button
                                 onClick={() => setIsCollapsed(false)}
                                 className="erpx-sidebar-collapse-btn hidden lg:flex p-1.5 rounded-md"
@@ -4021,6 +4024,11 @@ function Header({
             <div className="flex items-center justify-between h-full px-4 lg:px-6">
                 {/* Left: breadcrumb / title — pl-10 on mobile so toggle button doesn't overlap */}
                 <div className="flex items-center min-w-0 pl-10 lg:pl-0 gap-2 sm:gap-3 flex-wrap">
+                    <div className="fd-topbar-brand hidden lg:flex" aria-hidden="true">
+                        <span className="fd-brand-mark fd-brand-mark--sm">VS</span>
+                        <span className="fd-topbar-wordmark">{SITE_NAME}</span>
+                    </div>
+                    <span className="fd-topbar-divider hidden lg:block" aria-hidden="true" />
                     <h1 className="text-sm font-semibold tracking-tight truncate">
                         {pageTitleOverride || viewTitles[currentView] || 'Dashboard'}
                     </h1>
@@ -4117,13 +4125,14 @@ function Header({
                                 />
                             )}
                             <div
-                                className="flex items-center gap-1.5 min-w-0 max-w-[7.5rem] sm:max-w-[11rem] md:max-w-[14rem] mr-0.5 pl-1.5 sm:pl-2 pr-1.5 sm:pr-2 py-1 rounded-[var(--erpx-radius)] bg-[var(--erpx-subtle)] border border-[var(--erpx-border)]"
+                                className="fd-franchise-chip min-w-0 max-w-[7.5rem] sm:max-w-[11rem] md:max-w-[14rem] mr-0.5"
                                 title={headerFranchiseDisplay.code ? `Franchise: ${headerFranchiseDisplay.code}` : undefined}
                             >
+                                <span className="fd-pulse-dot" aria-hidden="true" />
                                 <span className="text-base leading-none shrink-0" aria-hidden>
                                     {headerFranchiseDisplay.flag}
                                 </span>
-                                <span className="text-xs font-medium text-[var(--erpx-ink)] truncate">
+                                <span className="fd-franchise-chip-name truncate">
                                     {headerFranchiseDisplay.name}
                                 </span>
                             </div>
@@ -9163,14 +9172,14 @@ function VehicleDetailModal({ car, exitIslemleri = [], returns = [], officeOpera
 
     return (
         <div
-            className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center p-sap-3 z-50"
+            className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-stretch justify-end z-50"
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
             <div
-                className="bg-white dark:bg-sap-bgDark-dark rounded-xl border border-gray-200 dark:border-sap-borderDark-light shadow-2xl w-full max-w-[95vw] sm:max-w-4xl max-h-[88vh] overflow-hidden"
+                className="pal-modal-drawer bg-white dark:bg-sap-bgDark-dark overflow-hidden flex flex-col"
                 onClick={(e) => e.stopPropagation()}
             >
-                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-sap-borderDark-light">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-sap-borderDark-light flex-shrink-0">
                     <div className="flex items-center gap-2">
                         <div className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-900/30">
                             <Car size={14} className="text-blue-600 dark:text-blue-400" />
@@ -9185,7 +9194,7 @@ function VehicleDetailModal({ car, exitIslemleri = [], returns = [], officeOpera
                     </button>
                 </div>
 
-                <div className="p-sap-3 space-y-sap-3 overflow-y-auto max-h-[calc(88vh-62px)]">
+                <div className="p-sap-3 space-y-sap-3 overflow-y-auto flex-1">
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-sap-2">
                         <div className="p-sap-2 rounded-lg border border-[var(--erpx-border)] bg-[var(--erpx-subtle)]">
                             <p className="text-[11px] text-gray-500 dark:text-gray-400">Plate</p>
@@ -12221,7 +12230,7 @@ function ReturnDetailModal({ return: ret, cars, onClose, onSoftDeleteReturn }) {
     const resCode = getBookingCode(ret);
 
     return (
-        <PalantirWorkbench onClose={onClose} size="large">
+        <PalantirWorkbench onClose={onClose} size="drawer">
             <PalantirCommandBar
                 eyebrow="Return operation"
                 title={ret.aracPlaka || '—'}
@@ -12347,7 +12356,7 @@ function CheckoutDetailModal({ exit, cars, onClose, runPdfFlow, generateCheckout
     const resCode = getExitBookingCode(exit);
 
     return (
-        <PalantirWorkbench onClose={onClose} size="large">
+        <PalantirWorkbench onClose={onClose} size="drawer">
             <PalantirCommandBar
                 eyebrow="Checkout operation"
                 title={exit.aracPlaka || '—'}
@@ -23612,9 +23621,8 @@ function ParkedCheckoutView({ exits = [], cars = [] }) {
             <AnimatedModal
                 isOpen={!!selectedParkedExit}
                 onClose={() => setSelectedParkedExit(null)}
-                size="large"
+                variant="drawer"
                 title="Parked checkout details"
-                className="pal-modal"
             >
                 {selectedParkedExit && (
                     <div className="space-y-4 text-gray-900 dark:text-gray-100">
@@ -24067,7 +24075,7 @@ function DamageDetailModal({
     }));
 
     return (
-        <PalantirWorkbench onClose={onClose} size="large">
+        <PalantirWorkbench onClose={onClose} size="drawer">
             <PalantirCommandBar
                 eyebrow="Damage record"
                 title={damage.resKodu || '—'}

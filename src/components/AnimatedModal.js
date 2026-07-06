@@ -11,7 +11,8 @@ export const AnimatedModal = ({
     children,
     title,
     size = 'medium',
-    className = ''
+    className = '',
+    variant = 'center'
 }) => {
     const sizeClasses = {
         small:  'max-w-md',
@@ -19,6 +20,7 @@ export const AnimatedModal = ({
         large:  'max-w-4xl',
         full:   'max-w-6xl',
     };
+    const isDrawer = variant === 'drawer';
 
     return (
         <AnimatePresence>
@@ -35,14 +37,18 @@ export const AnimatedModal = ({
                     />
 
                     {/* Modal content */}
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+                    <div className={`fixed inset-0 z-50 flex pointer-events-none ${isDrawer ? 'items-stretch justify-end' : 'items-center justify-center p-4'}`}>
                         <motion.div
-                            initial={{ opacity: 0, scale: 0.96, y: 16 }}
-                            animate={{ opacity: 1, scale: 1,    y: 0 }}
-                            exit={{   opacity: 0, scale: 0.96, y: 16 }}
-                            transition={{ type: 'spring', damping: 26, stiffness: 320 }}
+                            initial={isDrawer ? { opacity: 0, x: 32 } : { opacity: 0, scale: 0.96, y: 16 }}
+                            animate={isDrawer ? { opacity: 1, x: 0 } : { opacity: 1, scale: 1, y: 0 }}
+                            exit={isDrawer ? { opacity: 0, x: 32 } : { opacity: 0, scale: 0.96, y: 16 }}
+                            transition={isDrawer ? { type: 'tween', duration: 0.2 } : { type: 'spring', damping: 26, stiffness: 320 }}
                             role="dialog"
-                            className={`pal-modal ${sizeClasses[size] || sizeClasses.medium} w-full max-h-[90vh] overflow-y-auto pointer-events-auto ${className}`}
+                            className={
+                                isDrawer
+                                    ? `pal-modal-drawer overflow-y-auto pointer-events-auto ${className}`
+                                    : `pal-modal ${sizeClasses[size] || sizeClasses.medium} w-full max-h-[90vh] overflow-y-auto pointer-events-auto ${className}`
+                            }
                             onClick={(e) => e.stopPropagation()}
                         >
                             {title && (

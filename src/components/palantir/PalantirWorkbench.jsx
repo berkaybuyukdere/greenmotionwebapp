@@ -16,15 +16,16 @@ export function usePalantirEsc(onClose, enabled = true) {
 /** Near-fullscreen Palantir operations workbench shell */
 export function PalantirWorkbench({ onClose, children, size = 'full' }) {
     usePalantirEsc(onClose);
+    const isDrawer = size === 'drawer';
     return (
         <div
-            className="pal-wb-overlay"
+            className={`pal-wb-overlay ${isDrawer ? 'pal-wb-overlay-drawer' : ''}`}
             onClick={(e) => e.target === e.currentTarget && onClose?.()}
             role="dialog"
             aria-modal="true"
         >
             <div
-                className={`pal-wb-shell ${size === 'large' ? 'pal-wb-shell-lg' : ''} ${size === 'fit' ? 'pal-wb-shell-fit' : ''}`}
+                className={`pal-wb-shell ${size === 'large' ? 'pal-wb-shell-lg' : ''} ${size === 'fit' ? 'pal-wb-shell-fit' : ''} ${isDrawer ? 'pal-wb-shell-drawer' : ''}`}
                 onClick={(e) => e.stopPropagation()}
             >
                 {children}

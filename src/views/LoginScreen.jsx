@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { AlertCircle, KeyRound, Mail, Shield, X } from 'lucide-react';
+import { AlertCircle, KeyRound, Mail, X } from 'lucide-react';
 import { useToast } from '../components/ToastNotification';
 import { EUROPEAN_COUNTRIES } from '../components/AdminFranchiseDashboard';
 import PalantirLoader from '../components/palantir/PalantirLoader';
@@ -366,49 +366,42 @@ export function LoginScreen() {
 
     return (
         <div className={`pal-login-root ${intro ? 'pal-login-root--ready' : ''}`}>
-            <div className="pal-login-shell relative z-10">
-                <div className="fd-login-brand" aria-hidden="true">
-                    <div className="fd-login-brand-top">
-                        <div className="fd-login-logo">VS</div>
-                        <div className="fd-login-wordmark">VehicleSentinel</div>
-                        <div className="fd-login-platform-chip">FLEET OPS PLATFORM</div>
+            <div className="fd-login-brand" aria-hidden="true">
+                <div className="fd-login-brand-top">
+                    <div className="fd-login-logo">VS</div>
+                    <div className="fd-login-wordmark">VehicleSentinel</div>
+                    <div className="fd-login-platform-chip">FLEET OPS PLATFORM</div>
+                </div>
+                <div className="fd-login-brand-copy">
+                    <div className="fd-login-headline">
+                        Operational command for your entire rental fleet.
                     </div>
-                    <div className="fd-login-brand-copy">
-                        <div className="fd-login-headline">
-                            Operational command for your entire rental fleet.
-                        </div>
-                        <div className="fd-login-sub">
-                            Checkouts, returns, damage intelligence, deposits and franchise
-                            finance — one dense, auditable workspace across every franchise.
-                        </div>
-                    </div>
-                    <div className="fd-login-build">
-                        ROLE-SCOPED ACCESS · ALL SESSIONS AUDITED · WHEELSYS LINK
+                    <div className="fd-login-sub">
+                        Checkouts, returns, damage intelligence, deposits and franchise
+                        finance — one dense, auditable workspace across every franchise.
                     </div>
                 </div>
+                <div className="fd-login-build">
+                    ROLE-SCOPED ACCESS · ALL SESSIONS AUDITED · WHEELSYS LINK
+                </div>
+            </div>
+            <div className="pal-login-shell relative z-10">
                 <div className="pal-login-card">
-                    <header className="pal-login-brand">
-                        <div className="pal-login-brand-text pal-login-brand-text--solo">
-                            <h1>{SITE_NAME}</h1>
-                            <p>{SITE_TAGLINE}</p>
-                        </div>
-                        {isSabihaFranchiseId(selectedFranchiseId) && (
+                    {isSabihaFranchiseId(selectedFranchiseId) && (
+                        <header className="pal-login-brand pal-login-brand--partner-only">
                             <img
                                 src="/usave-logo.png"
                                 alt="U-SAVE"
                                 className="pal-login-partner-logo"
                             />
-                        )}
-                    </header>
+                        </header>
+                    )}
 
-                    <div className="pal-login-card-head">
-                        <div className="pal-login-card-head-icon" aria-hidden>
-                            <Shield size={15} />
-                        </div>
-                        <div>
-                            <p className="pal-login-card-eyebrow">Secure access</p>
-                            <h2 className="pal-login-card-title">Sign in to your workspace</h2>
-                        </div>
+                    <div className="pal-login-card-head fd-section-head">
+                        <span>Sign in</span>
+                        <span className="fd-section-head-meta fd-login-nominal">
+                            <span className="fd-pulse-dot" /> Systems nominal
+                        </span>
                     </div>
 
                     <form aria-live="polite" onSubmit={handleSubmit} className="pal-login-form">
