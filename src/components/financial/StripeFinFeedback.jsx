@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { CheckCircle2, AlertOctagon, Info, X } from 'lucide-react';
+import { StripeStatusBadge } from '../StripeListUI';
 import { humanizeStripeCardDecline } from '../../utilities/stripeDeclineMessages';
 
 export function humanizeStripeFinancialError(err) {
@@ -77,6 +78,11 @@ export function CenterFeedbackToast({ item, onDismiss }) {
           </button>
         </header>
         <div className="pal-cust-center-toast-body">
+          <StripeStatusBadge
+            sharp
+            variant={isSuccess ? 'success' : isError ? 'danger' : 'info'}
+            label={isSuccess ? 'Paid' : isError ? 'Failed' : 'Notice'}
+          />
           <Icon className="pal-cust-center-toast-icon" size={26} strokeWidth={1.75} aria-hidden="true" />
           <p className="pal-cust-center-toast-title">{item.title}</p>
           {item.detail && <p className="pal-cust-center-toast-detail">{item.detail}</p>}

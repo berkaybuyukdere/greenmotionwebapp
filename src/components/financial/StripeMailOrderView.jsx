@@ -145,7 +145,7 @@ function ReminderCell({ reminder, slotLabel }) {
   );
 }
 
-export function StripeMailOrderView({ franchiseId, showFinancialTotals = true, canPerformOperations = true }) {
+export function StripeMailOrderView({ franchiseId, showFinancialTotals = true, canPerformOperations = true, embedded = false }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [configured, setConfigured] = useState(true);
@@ -415,7 +415,8 @@ export function StripeMailOrderView({ franchiseId, showFinancialTotals = true, c
   );
 
   return (
-    <div className="pal-fin-root pal-analytics-page pal-fin-stripe-page">
+    <div className={`pal-fin-root pal-analytics-page pal-fin-stripe-page${embedded ? ' pal-fin-stripe-embedded' : ''}`}>
+      {!embedded && (
       <header className="pal-fin-command">
         <div>
           <p className="pal-fin-eyebrow">Finance · Stripe · Switzerland</p>
@@ -437,6 +438,7 @@ export function StripeMailOrderView({ franchiseId, showFinancialTotals = true, c
           </button>
         </div>
       </header>
+      )}
 
       {!configured && <div className="pal-fin-alert">Stripe CH secret key missing.</div>}
       {!MAIL_ORDER_REMINDER_SMTP_ENABLED && (

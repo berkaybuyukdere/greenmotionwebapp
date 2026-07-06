@@ -931,6 +931,13 @@
   color: var(--erpx-ink);
 }
 
+.stripe-pay-customer-res {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--erpx-ink-secondary);
+  letter-spacing: 0.02em;
+}
+
 .stripe-pay-customer-sub {
   font-size: 10px;
   color: var(--erpx-ink-muted);
@@ -940,6 +947,28 @@
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+  align-items: center;
+}
+
+.stripe-pay-status-meta {
+  display: block;
+  width: 100%;
+  font-size: 10px;
+  color: var(--erpx-ink-muted);
+  margin-top: 2px;
+}
+
+.stripe-pay-status-note {
+  display: block;
+  width: 100%;
+  max-width: 220px;
+  font-size: 10px;
+  line-height: 1.3;
+  color: #b91c1c;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .stripe-pay-ref {
@@ -1211,6 +1240,27 @@
   display: flex;
   flex-direction: column;
   animation: pal-pay-drawer-in 0.2s ease;
+}
+
+.pal-pay-drawer-wide {
+  width: min(560px, 100vw);
+}
+
+.pal-cust-drawer-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  background: var(--erpx-surface);
+}
+
+.pal-cust-drawer-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--erpx-border);
+  background: var(--erpx-surface);
 }
 
 @keyframes pal-pay-drawer-in {
@@ -3451,4 +3501,535 @@
   .pal-fin-report-day-drawer {
     position: static;
   }
+}
+
+/* Payments hub sub-navigation */
+.pal-stripe-subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--erpx-border);
+}
+
+.pal-stripe-subnav-btn {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 8px 14px;
+  border: 1px solid var(--erpx-border);
+  background: var(--erpx-subtle);
+  color: var(--erpx-ink-secondary);
+  cursor: pointer;
+}
+
+.pal-stripe-subnav-btn-active {
+  border-color: var(--pal-brand, #6d5bd0);
+  background: rgba(109, 91, 208, 0.08);
+  color: var(--erpx-ink);
+}
+
+.pal-stripe-tab-panel {
+  min-width: 0;
+}
+
+.pal-fin-stripe-embedded {
+  padding-top: 0;
+}
+
+.pal-fin-stripe-embedded.pal-fin-root {
+  background: transparent;
+}
+
+.pal-fin-toolbar-compact {
+  align-items: center;
+  gap: 10px;
+}
+
+.pal-stripe-logs-table .pal-stripe-log-detail {
+  font-size: 11px;
+  color: var(--erpx-ink-muted);
+  max-width: 420px;
+}
+
+/* New payment chooser */
+.pal-new-payment-choices {
+  display: grid;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+.pal-new-payment-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  padding: 16px;
+  border: 1px solid var(--erpx-border);
+  background: var(--erpx-surface);
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.pal-new-payment-choice:hover {
+  border-color: var(--pal-brand, #6d5bd0);
+}
+
+.pal-new-payment-choice-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border: 1px solid var(--erpx-border);
+}
+
+.pal-new-payment-choice-icon-deposit {
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.pal-new-payment-choice-icon-charge {
+  color: #16a34a;
+  background: rgba(22, 163, 74, 0.08);
+}
+
+.pal-new-payment-choice-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pal-new-payment-choice-copy strong {
+  font-size: 14px;
+  color: var(--erpx-ink);
+}
+
+.pal-new-payment-choice-copy span {
+  font-size: 12px;
+  color: var(--erpx-ink-muted);
+  line-height: 1.45;
+}
+
+/* Customer timeline pipeline */
+.pal-cust-pipeline {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--erpx-border);
+}
+
+.pal-cust-pipeline-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.pal-cust-pipeline-item {
+  display: flex;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--erpx-border);
+}
+
+.pal-cust-pipeline-item:last-child {
+  border-bottom: none;
+}
+
+.pal-cust-pipeline-dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--pal-brand, #6d5bd0);
+  flex-shrink: 0;
+}
+
+.pal-cust-pipeline-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pal-cust-pipeline-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--erpx-ink);
+}
+
+.pal-cust-pipeline-meta {
+  font-size: 10px;
+  color: var(--erpx-ink-muted);
+}
+
+.pal-cust-pipeline-sub {
+  font-size: 11px;
+  color: var(--erpx-ink-secondary);
+}
+
+/* Clickable KPI tiles */
+.pal-fin-kpi-clickable {
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  border: 1px solid var(--erpx-border);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.pal-fin-kpi-clickable:hover {
+  border-color: var(--pal-brand, #6d5bd0);
+}
+
+.pal-fin-kpi-active.pal-fin-kpi-clickable {
+  border-color: var(--pal-brand, #6d5bd0);
+  box-shadow: 0 0 0 1px rgba(109, 91, 208, 0.25);
+}
+
+/* Manual charge modal — scrollable wide form */
+.pal-fin-modal-charge {
+  width: min(560px, 96vw);
+  max-height: min(92vh, 860px);
+  display: flex;
+  flex-direction: column;
+}
+
+.pal-fin-modal-charge .pal-fin-modal-body {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pal-fin-modal-charge .pal-fin-modal-compact-form {
+  min-height: min-content;
+}
+
+.pal-cust-pipeline-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pal-cust-pipeline-method {
+  display: block;
+  margin-top: 4px;
+}
+
+.pal-fin-sort-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--erpx-ink-secondary);
+}
+
+.pal-fin-sort-select select {
+  border: 1px solid var(--erpx-border);
+  border-radius: var(--erpx-radius-sm);
+  background: var(--erpx-surface);
+  color: var(--erpx-ink);
+  font-size: 12px;
+  padding: 5px 8px;
+  max-width: 168px;
+}
+
+/* Compact manual charge modal (deposit-sized) */
+.pal-fin-modal-compact {
+  width: min(440px, 94vw);
+  max-height: min(92vh, 640px);
+  display: flex;
+  flex-direction: column;
+}
+
+.pal-fin-modal-header-compact {
+  padding: 16px 20px 10px;
+}
+
+.pal-fin-modal-body-compact {
+  padding: 0 20px 8px;
+  overflow: visible;
+}
+
+.pal-fin-modal-compact-form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.pal-fin-form-grid-compact {
+  gap: 10px;
+}
+
+.pal-fin-compact-categories {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.pal-fin-compact-cat {
+  flex: 1;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 8px 6px;
+  border: 1px solid var(--erpx-border);
+  background: var(--erpx-subtle);
+  color: var(--erpx-ink-secondary);
+  cursor: pointer;
+}
+
+.pal-fin-compact-cat-active {
+  border-color: var(--pal-brand, #6d5bd0);
+  background: rgba(109, 91, 208, 0.08);
+  color: var(--erpx-ink);
+}
+
+.pal-fin-card-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.pal-fin-card-secure {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--erpx-ink-muted);
+  font-weight: 500;
+}
+
+.pal-cust-stripe-field-compact {
+  min-height: 36px;
+  padding: 8px 10px;
+}
+
+.pal-fin-terminal-state .stripe-status-badge {
+  margin-bottom: 6px;
+}
+
+.pal-stripe-log-event-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.pal-cust-center-toast-body .stripe-status-badge {
+  margin-bottom: 8px;
+}
+
+/* Foundry-style activity log (collapsible) */
+.fd-activity-log {
+  margin-top: 12px;
+  border: 1px solid var(--erpx-border, #d0d7de);
+  border-radius: 0;
+  background: #fafbfc;
+}
+
+.fd-activity-log-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--erpx-ink-muted, #57606a);
+}
+
+.fd-activity-log-title {
+  flex: 1;
+  text-align: left;
+}
+
+.fd-activity-log-count {
+  font-family: var(--fd-mono, ui-monospace, monospace);
+  font-size: 10px;
+  padding: 2px 6px;
+  border: 1px solid var(--erpx-border, #d0d7de);
+  background: #fff;
+}
+
+.fd-activity-log-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 12px 10px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.fd-activity-log-item {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.fd-activity-log-row {
+  width: 100%;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fd-activity-log-dot {
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: #2563eb;
+  flex-shrink: 0;
+}
+
+.fd-activity-log-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fd-activity-log-primary {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--erpx-ink, #1f2328);
+}
+
+.fd-activity-log-when {
+  font-family: var(--fd-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--erpx-ink-muted, #57606a);
+}
+
+.fd-activity-log-detail {
+  margin: 0 0 8px 17px;
+  padding: 8px 10px;
+  font-size: 11px;
+  color: var(--erpx-ink-muted, #57606a);
+  background: #fff;
+  border: 1px solid var(--erpx-border, #d0d7de);
+}
+
+.fd-activity-log-empty {
+  padding: 10px 0;
+  font-size: 12px;
+  color: var(--erpx-ink-muted, #57606a);
+}
+
+.pal-analytics-kpi-money {
+  font-family: var(--fd-mono, ui-monospace, monospace);
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: var(--erpx-ink, #1f2328) !important;
+  letter-spacing: -0.02em;
+}
+
+.pal-pay-drawer-wide {
+  width: min(640px, 96vw);
+  box-shadow: -8px 0 32px rgba(15, 23, 42, 0.12);
+}
+
+.pal-cust-refund-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pal-cust-refund-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.pal-stripe-direct-intro {
+  margin: 0 0 12px;
+}
+
+.pal-cust-list-meta {
+  margin: 0 0 12px;
+}
+
+.pal-pos-daily-office-card .pal-pos-daily-office-footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.pal-pos-daily-monthly-total {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.pal-pos-daily-monthly-label {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--erpx-ink-muted, #6b7280);
+}
+
+.pal-pos-daily-monthly-value {
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.stripe-pay-ref-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pal-fin-booking-kind-toggle {
+  display: inline-flex;
+  gap: 6px;
+  margin: 6px 0 8px;
+}
+
+.pal-fin-booking-kind-btn {
+  min-width: 64px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--erpx-border, rgba(0, 0, 0, 0.12));
+  background: transparent;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.pal-fin-booking-kind-btn-active {
+  border-color: var(--erpx-accent, #0062d1);
+  background: rgba(0, 98, 209, 0.08);
+  color: var(--erpx-accent, #0062d1);
+}
+
+.pal-new-payment-choice-icon-mail {
+  background: rgba(99, 91, 255, 0.12);
+  color: #635bff;
 }

@@ -21,16 +21,7 @@ import {
     normalizeRoleKey,
 } from '../utilities/userAccess';
 import { franchiseReadinessChecks } from '../utilities/franchiseCapabilities';
-
-// Firebase config for secondary app (to create users without signing them in)
-const firebaseConfig = {
-    apiKey: "AIzaSyDKL5-CYr9UN7PmZQqk3sL_AZg5SdlXF2g",
-    authDomain: "greenmotionapp-33413.firebaseapp.com",
-    projectId: "greenmotionapp-33413",
-    storageBucket: "greenmotionapp-33413.appspot.com",
-    messagingSenderId: "1072954710498",
-    appId: "1:1072954710498:web:5f8cbb4bdd5e62e31fb72b"
-};
+import { firebaseConfig } from '../firebase/client';
 
 export function AdminFranchiseDetailView({ db, franchise, onBack, functionsApp, userProfile = null }) {
     const toast = useToast();

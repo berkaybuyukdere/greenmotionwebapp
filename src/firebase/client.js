@@ -27,6 +27,7 @@ export const db = initializeFirestore(app, {
 });
 
 export const storage = getStorage(app);
+export { firebaseConfig };
 /** Default callables (auth, admin, front desk) — us-central1. */
 export const functionsApp = getFunctions(app, 'us-central1');
 

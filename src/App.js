@@ -237,7 +237,8 @@ import { StripeChargebacksView } from './components/financial/StripeChargebacksV
 import { StripeCustomersView } from './components/financial/StripeCustomersView';
 import { StripeDailyReportsView } from './components/financial/StripeDailyReportsView';
 import { StripeMailOrderView } from './components/financial/StripeMailOrderView';
-import { StripePaymentsView } from './components/financial/StripePaymentsView';
+import { StripePaymentsHub } from './components/financial/StripePaymentsHub';
+import { StripePosDailyClosingOfficeCard } from './components/financial/StripePosDailyClosingOfficeCard';
 import { StripeTerminalSettingsSection } from './components/financial/StripeTerminalSettingsSection';
 import { StripeDepositEmailTemplatesSection } from './components/financial/StripeDepositEmailTemplatesSection';
 
@@ -2685,7 +2686,7 @@ function AppContent({ user, userProfile: initialUserProfile }) {
                                 )}
                                 {currentView === 'office' && (
                                     <div className="erpx-view-layer w-full min-w-0">
-                                        <OfficeOperationsView operations={officeOperations} cars={fleetCars} onRefresh={loadData} addActivity={addActivity} user={user} franchiseId={effectiveFranchiseId || 'ch'} canViewFinancials={canViewFinancials} />
+                                        <OfficeOperationsView operations={officeOperations} cars={fleetCars} onRefresh={loadData} addActivity={addActivity} user={user} franchiseId={effectiveFranchiseId || 'ch'} canViewFinancials={canViewFinancials} showStripeFinancialTotals={showStripeFinancialTotals} />
                                     </div>
                                 )}
                                 {currentView === 'workingTimetable' && (
@@ -2710,7 +2711,7 @@ function AppContent({ user, userProfile: initialUserProfile }) {
                                 )}
                                 {currentView === 'stripePayments' && canAccessStripeFinance && (
                                     <div className="erpx-view-layer w-full min-w-0">
-                                        <StripePaymentsView
+                                        <StripePaymentsHub
                                             franchiseId={effectiveFranchiseId || 'ch'}
                                             showFinancialTotals={showStripeFinancialTotals}
                                             fleetCars={fleetCars}
@@ -2720,10 +2721,12 @@ function AppContent({ user, userProfile: initialUserProfile }) {
                                 )}
                                 {currentView === 'stripeMailOrder' && canAccessStripeFinance && (
                                     <div className="erpx-view-layer w-full min-w-0">
-                                        <StripeMailOrderView
+                                        <StripePaymentsHub
                                             franchiseId={effectiveFranchiseId || 'ch'}
                                             showFinancialTotals={showStripeFinancialTotals}
+                                            fleetCars={fleetCars}
                                             canPerformOperations={canPerformStripeOperations}
+                                            initialTab="mailorder"
                                         />
                                     </div>
                                 )}
@@ -3680,6 +3683,9 @@ function Sidebar({
                                 <NavButton collapsed={!showText} navKey="operations" label="Operations" active={currentView === 'operations'} onClick={() => goTo('operations')} />
                             )}
                             <NavButton collapsed={!showText} navKey="returns" label="Returns" active={currentView === 'returns'} onClick={() => goTo('returns')} />
+                            {canAccessFrontDeskCustomers && (
+                                <NavButton collapsed={!showText} navKey="frontDeskCustomers" label="Front-desk customers" active={currentView === 'frontDeskCustomers'} onClick={() => goTo('frontDeskCustomers')} />
+                            )}
                             <NavButton collapsed={!showText} navKey="damage" label="Damage" active={currentView === 'damage'} onClick={() => goTo('damage')} />
                             <NavButton collapsed={!showText} navKey="service" label="Service" active={currentView === 'service'} onClick={() => goTo('service')} />
                             <NavButton collapsed={!showText} navKey="serviceFirms" label="Service Firms" active={currentView === 'serviceFirms'} onClick={() => goTo('serviceFirms')} />
@@ -3687,17 +3693,11 @@ function Sidebar({
                         <SidebarSection title="Finance & office" sectionKey="finance" collapsed={!showText} expanded={sectionExpanded('finance')} toggle={toggleSection}>
                             <NavButton collapsed={!showText} navKey="office" label="Office Operations" active={currentView === 'office'} onClick={() => goTo('office')} />
                             <NavButton collapsed={!showText} navKey="officeReturns" label="Office Returns" active={currentView === 'officeReturns'} onClick={() => goTo('officeReturns')} />
-                            {canAccessFrontDeskCustomers && (
-                                <NavButton collapsed={!showText} navKey="frontDeskCustomers" label="Front-desk customers" active={currentView === 'frontDeskCustomers'} onClick={() => goTo('frontDeskCustomers')} />
-                            )}
                             {canAccessStripeFinance && (
                                 <NavButton collapsed={!showText} navKey="stripeChargebacks" label="Chargebacks" active={currentView === 'stripeChargebacks'} onClick={() => goTo('stripeChargebacks')} />
                             )}
                             {canAccessStripeFinance && (
-                                <NavButton collapsed={!showText} navKey="stripePayments" label="Deposits" active={currentView === 'stripePayments'} onClick={() => goTo('stripePayments')} />
-                            )}
-                            {canAccessStripeFinance && (
-                                <NavButton collapsed={!showText} navKey="stripeMailOrder" label="Mail order (Stripe)" active={currentView === 'stripeMailOrder'} onClick={() => goTo('stripeMailOrder')} />
+                                <NavButton collapsed={!showText} navKey="stripePayments" label="Payments" active={currentView === 'stripePayments' || currentView === 'stripeMailOrder'} onClick={() => goTo('stripePayments')} />
                             )}
                             {canAccessStripeFinance && (
                                 <NavButton collapsed={!showText} navKey="stripeCustomers" label="Customers" active={currentView === 'stripeCustomers'} onClick={() => goTo('stripeCustomers')} />
@@ -3846,8 +3846,7 @@ function Header({
         shuttle: 'Shuttle',
         officeReturns: 'Office Returns',
         stripeChargebacks: 'Chargebacks',
-        stripePayments: 'Deposits',
-        stripeMailOrder: 'Mail order (Stripe)',
+        stripePayments: 'Payments',
         stripeCustomers: 'Customers',
         stripeDailyReports: 'Stripe reports',
         workingTimetable: 'Working timetable',
@@ -3895,8 +3894,7 @@ function Header({
             { view: 'shuttle', label: 'Shuttle', keywords: 'shuttle transfer', popular: false },
             { view: 'officeReturns', label: 'Office Returns', keywords: 'office iade return', popular: false },
             ...(canAccessStripeFinance ? [{ view: 'stripeChargebacks', label: 'Chargebacks', keywords: 'stripe dispute chargeback', popular: false }] : []),
-            ...(canAccessStripeFinance ? [{ view: 'stripePayments', label: 'Deposits', keywords: 'stripe terminal pos deposit hold incremental', popular: false }] : []),
-            ...(canAccessStripeFinance ? [{ view: 'stripeMailOrder', label: 'Mail order (Stripe)', keywords: 'stripe product payment link mail order', popular: false }] : []),
+            ...(canAccessStripeFinance ? [{ view: 'stripePayments', label: 'Payments', keywords: 'stripe terminal pos deposit hold payment logs mail order', popular: false }] : []),
             ...(canAccessStripeFinance ? [{ view: 'stripeCustomers', label: 'Customers', keywords: 'stripe customer res deposit mail order timeline', popular: false }] : []),
             ...(canAccessStripeFinance && showStripeReports ? [{ view: 'stripeDailyReports', label: 'Daily reports (Stripe)', keywords: 'stripe kpi chart chargeback mail order analytics', popular: false }] : []),
             { view: 'assistantNumbers', label: 'Assistant Numbers', keywords: 'phone assistant', popular: false },
@@ -13182,7 +13180,7 @@ function ServiceFirmDetailModal({ firm, onClose, onUpdate, addActivity, initialE
 // Devam Part 4'te: OfficeOperationsView ve ReportsView
 
 // OFFICE OPERATIONS VIEW - Includes Banking Transactions and Traffic Fines
-function OfficeOperationsView({ operations, cars, onRefresh, addActivity, user, franchiseId = 'ch', canViewFinancials = true }) {
+function OfficeOperationsView({ operations, cars, onRefresh, addActivity, user, franchiseId = 'ch', canViewFinancials = true, showStripeFinancialTotals = false }) {
     const toast = useToast();
     const [selectedType, setSelectedType] = useState('all');
     const [searchQuery, setSearchQuery] = useState('');
@@ -13202,6 +13200,8 @@ function OfficeOperationsView({ operations, cars, onRefresh, addActivity, user, 
         const now = new Date();
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     });
+
+    const isCHFranchise = /^CH/i.test(String(franchiseId || ''));
 
     const operationTypes = useMemo(() => {
         const all = [
@@ -13466,6 +13466,13 @@ function OfficeOperationsView({ operations, cars, onRefresh, addActivity, user, 
                             />
                         );
                     })}
+                    {isCHFranchise && (
+                        <StripePosDailyClosingOfficeCard
+                            franchiseId={franchiseId}
+                            selectedMonth={selectedMonth}
+                            showFinancialTotals={showStripeFinancialTotals}
+                        />
+                    )}
                 </StripeMetricRow>
             )}
 

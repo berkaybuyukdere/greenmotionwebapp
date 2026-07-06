@@ -39,13 +39,14 @@ function BrandIcon({ brandId }) {
 export function StripePaymentMethodCell({ brand, last4, methodType }) {
   const brandId = normalizeBrand(brand, methodType);
   const digits = String(last4 || '').trim();
+  const hasBrand = Boolean(String(brand || methodType || '').trim());
   return (
     <span className="stripe-pay-method-cell">
       <BrandIcon brandId={brandId} />
       {digits ? (
         <span className="stripe-pay-last4">•••• {digits}</span>
-      ) : (
-        <span className="stripe-pay-last4 stripe-pay-last4-empty">—</span>
+      ) : hasBrand ? null : (
+        <span className="stripe-pay-last4 stripe-pay-last4-empty">Card</span>
       )}
     </span>
   );

@@ -860,90 +860,18 @@
 .fd-photo-tile:hover { border-color: var(--fd-accent); }
 .fd-photo-tile > img { width: 100%; height: 100%; object-fit: cover; }
 
-/* ─── Login: wireframe split layout (brand panel + card) ─── */
-.pal-login-shell {
-    display: flex;
-    align-items: stretch;
-    gap: 0;
-    width: min(1060px, 94vw);
-}
-
-.fd-login-brand {
-    flex: 1.15;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    gap: 28px;
-    padding: 36px 40px;
-    border: 1px solid var(--fd-border);
-    border-right: none;
-    background:
-        linear-gradient(160deg, rgba(76, 144, 240, 0.06), transparent 55%),
-        var(--fd-bg);
-    min-height: 520px;
-}
-
-.fd-login-brand-top {
+/* ─── Login: compact centered card ─── */
+.pal-login-root {
+    min-height: 100vh;
     display: flex;
     align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
+    justify-content: center;
+    padding: 24px 16px;
+    background: linear-gradient(180deg, #f8f9fb 0%, #eef1f5 100%);
 }
 
-.fd-login-logo {
-    width: 26px;
-    height: 26px;
-    border: 2px solid var(--fd-accent);
-    display: grid;
-    place-items: center;
-    font: 700 12px var(--fd-mono);
-    color: var(--fd-accent);
-}
-
-.fd-login-wordmark {
-    font: 600 13px/1 var(--fd-sans);
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--fd-text);
-}
-
-.fd-login-platform-chip {
-    font: 500 10px var(--fd-mono);
-    color: var(--fd-muted);
-    border: 1px solid var(--fd-border);
-    padding: 2px 6px;
-    margin-left: 6px;
-}
-
-.fd-login-brand-copy {
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-    max-width: 520px;
-}
-
-.fd-login-headline {
-    font: 600 34px/1.15 var(--fd-sans);
-    letter-spacing: -0.01em;
-    color: var(--fd-text);
-    text-wrap: balance;
-}
-
-.fd-login-sub {
-    color: var(--fd-text2);
-    font-size: 14px;
-    line-height: 1.6;
-}
-
-.fd-login-build {
-    font: 500 10px var(--fd-mono);
-    color: var(--fd-muted);
-    letter-spacing: 0.04em;
-}
-
-@media (max-width: 900px) {
-    .fd-login-brand { display: none; }
-    .pal-login-shell { width: min(440px, 94vw); }
+.pal-login-shell {
+    width: min(400px, 94vw);
 }
 
 /* Foundry select (toolbar dropdowns) */

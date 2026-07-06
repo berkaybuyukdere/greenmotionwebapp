@@ -4,7 +4,16 @@ import React from 'react';
  * Sharp Palantir-style KPI tile — matches Analytics page (vehicle-sentinel-theme).
  * tone: default | revenue (violet/paid) | warning (orange/unpaid) | hold | expense
  */
-export function PalantirFinKpiCard({ label, value, sub, tone = 'default', className = '' }) {
+export function PalantirFinKpiCard({
+  label,
+  value,
+  sub,
+  moneySub = false,
+  tone = 'default',
+  className = '',
+  onClick,
+  active = false,
+}) {
   const toneClass =
     tone === 'revenue' || tone === 'paid'
       ? 'pal-analytics-kpi-revenue'
@@ -15,11 +24,23 @@ export function PalantirFinKpiCard({ label, value, sub, tone = 'default', classN
           : tone === 'expense'
             ? 'pal-analytics-kpi-expense'
             : '';
+  const cls = `pal-analytics-kpi pal-dash-kpi pal-fin-kpi-sharp ${toneClass} ${onClick ? 'pal-fin-kpi-clickable' : ''} ${active ? 'pal-fin-kpi-active' : ''} ${className}`.trim();
+
+  if (onClick) {
+    return (
+      <button type="button" className={cls} onClick={onClick} aria-pressed={active}>
+        <p className="pal-analytics-kpi-label">{label}</p>
+        <p className="pal-dash-kpi-value">{value}</p>
+        {sub ? <p className={`pal-analytics-kpi-sub ${moneySub ? 'pal-analytics-kpi-money' : ''}`}>{sub}</p> : null}
+      </button>
+    );
+  }
+
   return (
-    <div className={`pal-analytics-kpi pal-dash-kpi pal-fin-kpi-sharp ${toneClass} ${className}`.trim()}>
+    <div className={cls}>
       <p className="pal-analytics-kpi-label">{label}</p>
       <p className="pal-dash-kpi-value">{value}</p>
-      {sub ? <p className="pal-analytics-kpi-sub">{sub}</p> : null}
+      {sub ? <p className={`pal-analytics-kpi-sub ${moneySub ? 'pal-analytics-kpi-money' : ''}`}>{sub}</p> : null}
     </div>
   );
 }

@@ -53,31 +53,36 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false, 
 
   const load = useCallback(async () => {
     if (!franchiseId) return;
-    setLoading(true);
     setError('');
+    const hasCached = deposits.length > 0 || mailOrders.length > 0;
+    if (!hasCached) setLoading(true);
+
+    stripeFinancialListAudit({ franchiseId, limit: 80 })
+      .then((auditRes) => setAudit(auditRes.entries || []))
+      .catch(() => {});
+
     try {
-      const [cfg, depRes, mailRes, auditRes] = await Promise.all([
+      const [cfg, depRes, mailRes] = await Promise.all([
         stripeFinancialGetConfig({ franchiseId }),
-        stripeFinancialListDeposits({ franchiseId, limit: 300 }),
+        stripeFinancialListDeposits({ franchiseId, limit: 300, syncStripe: false }),
         stripeFinancialListMailOrders({ franchiseId, limit: 300 }),
-        stripeFinancialListAudit({ franchiseId, limit: 60 }),
       ]);
       setStripeMode(cfg?.mode || 'unset');
       setDeposits(depRes.deposits || []);
       setMailOrders(mailRes.orders || []);
       setDepositDailySummary(depRes.dailySummary || null);
       setMailDailySummary(mailRes.dailySummary || null);
-      setAudit(auditRes.entries || []);
       setSyncedAt(new Date().toISOString());
     } catch (e) {
       setError(e?.message || 'Failed to load customers');
-      setDeposits([]);
-      setMailOrders([]);
-      setAudit([]);
+      if (!hasCached) {
+        setDeposits([]);
+        setMailOrders([]);
+      }
     } finally {
       setLoading(false);
     }
-  }, [franchiseId]);
+  }, [franchiseId, deposits.length, mailOrders.length]);
 
   useEffect(() => {
     load();
@@ -119,16 +124,32 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false, 
       rows = rows.filter((g) => (g.directOrders || []).some((o) => o.status !== 'paid'));
     } else if (filter === 'deposits') {
       rows = rows.filter((g) => g.deposits.length > 0);
+    } else if (filter === 'token') {
+      rows = rows.filter((g) => g.deposits.some((d) => d.tokenSaved || d.stripePaymentMethodId));
+    } else if (filter === 'released') {
+      rows = rows.filter((g) => g.deposits.some((d) => d.status === 'cancelled'));
     }
     const q = search.trim().toLowerCase();
     if (!q) return rows;
-    return rows.filter(
-      (g) =>
-        g.displayTitle?.toLowerCase().includes(q) ||
-        g.resCode?.toLowerCase().includes(q) ||
-        g.customerName?.toLowerCase().includes(q) ||
-        g.customerEmail?.toLowerCase().includes(q),
-    );
+    return rows.filter((g) => {
+      const hay = [
+        g.displayTitle,
+        g.resCode,
+        g.customerName,
+        g.customerEmail,
+        ...(g.deposits || []).flatMap((d) => [
+          d.id,
+          d.paymentIntentId,
+          d.plate,
+          d.reference,
+          d.cancelledByName,
+        ]),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(q);
+    });
   }, [groups, search, filter]);
 
   const workbenchGroupLive = useMemo(() => {
@@ -159,8 +180,18 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false, 
           ]
         : []),
       { id: 'deposits', label: 'With deposits', count: groups.filter((g) => g.deposits.length > 0).length },
+      {
+        id: 'token',
+        label: 'Saved card',
+        count: groups.filter((g) => g.deposits.some((d) => d.tokenSaved || d.stripePaymentMethodId)).length,
+      },
+      {
+        id: 'released',
+        label: 'Released',
+        count: groups.filter((g) => g.deposits.some((d) => d.status === 'cancelled')).length,
+      },
     ],
-    [groups, showFinancialTotals],
+    [groups, canPerformOperations],
   );
 
   const openWorkbench = (row) => {
@@ -178,7 +209,7 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false, 
           <p className="pal-fin-eyebrow">Finance · Stripe · Switzerland</p>
           <h1 className="pal-fin-title">Customers</h1>
           <p className="pal-fin-subtitle">
-            Select a customer on the left — deposits, capture, and mail actions open on the right.
+            Click a customer row to open the detail drawer — capture, increase, charge saved card, and mail orders.
           </p>
           {stripeMode === 'live' && <span className="pal-fin-mode-live mt-2">Live mode</span>}
           {stripeMode === 'test' && <span className="pal-fin-mode-test mt-2">Test mode</span>}
@@ -193,53 +224,12 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false, 
             <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
             Refresh
           </button>
-          {canPerformOperations && (
-            <button
-              type="button"
-              className="gm-btn gm-btn-primary gm-btn-sm pal-fin-action-btn"
-              onClick={() => setShowNewOperation(true)}
-            >
-              <Plus size={15} />
-              New operation
-            </button>
-          )}
         </div>
       </header>
 
-      {showFinancialTotals ? (
-        <PalantirFinKpiRow>
-          <PalantirFinKpiCard label="Customers" value={kpi.customers} sub="Unique RES / email groups" tone="default" />
-          <PalantirFinKpiCard
-            label="Active holds"
-            value={kpi.activeHolds}
-            sub={formatStripeMoney(kpi.holdVol)}
-            tone="hold"
-          />
-          <PalantirFinKpiCard
-            label="Unpaid mail"
-            value={kpi.unpaidMail}
-            sub={formatStripeMoney(kpi.unpaidVol)}
-            tone="unpaid"
-          />
-          <PalantirFinKpiCard label="Deposits" value={deposits.length} sub="Terminal records" tone="revenue" />
-        </PalantirFinKpiRow>
-      ) : (
-        <PalantirFinKpiRow>
-          <PalantirFinKpiCard
-            label="Today · Deposits"
-            value={depositDailySummary?.count ?? 0}
-            sub={`${depositDailySummary?.count ?? 0} hold${depositDailySummary?.count === 1 ? '' : 's'} today`}
-            tone="hold"
-          />
-          <PalantirFinKpiCard
-            label="Today · Unpaid mail"
-            value={todayMailKpi.unpaidCount}
-            sub={`${todayMailKpi.paidCount} paid today`}
-            tone="unpaid"
-          />
-          <PalantirFinKpiCard label="Customers" value={kpi.customers} sub="Unique RES / email groups" tone="default" />
-        </PalantirFinKpiRow>
-      )}
+      <p className="pal-fin-subtitle pal-cust-list-meta">
+        {kpi.customers} customer{kpi.customers === 1 ? '' : 's'} · grouped by RES
+      </p>
 
       {error && <div className="pal-fin-alert">{error}</div>}
 
@@ -250,7 +240,7 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false, 
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search RES, name, email…"
+            placeholder="Search RES, name, email, plate, deposit id…"
           />
         </label>
         <div className="pal-fin-chips">
@@ -268,8 +258,8 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false, 
         </div>
       </div>
 
-      <div className="pal-fin-grid pal-cust-grid">
-        <div className="pal-fin-main">
+      <div className="pal-fin-grid-single">
+        <div className="pal-fin-main pal-fin-main-full">
           <div className="pal-fin-table-wrap">
             <table className="pal-fin-table pal-fin-table-dense pal-cust-table pal-cust-table-symmetric">
               <thead>
@@ -297,7 +287,7 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false, 
                     return (
                       <tr
                         key={row.id}
-                        className={`pal-fin-table-row-clickable${workbenchGroupLive?.id === row.id ? ' pal-fin-table-row-active' : ''}`}
+                        className={`pal-fin-table-row-clickable${workbenchGroupLive?.id === row.id ? ' pal-fin-row-selected' : ''}`}
                         onClick={() => openWorkbench(row)}
                       >
                         <td>
@@ -317,7 +307,7 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false, 
                         <td>
                           <div className="pal-cust-signals">
                             <CountSignal icon={Lock} count={row.deposits.length} label="Deposits" tone={hasHold ? 'hold' : 'neutral'} />
-                            {canPerformOperations && (row.directOrders || []).length > 0 && (
+                            {(row.directOrders || []).length > 0 && (
                               <CountSignal
                                 icon={CreditCard}
                                 count={(row.directOrders || []).length}
@@ -349,30 +339,23 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false, 
             </table>
           </div>
         </div>
-        <aside className="pal-fin-main pal-cust-inspector">
-          {workbenchGroupLive ? (
-            <StripeCustomerWorkbenchModal
-              layout="inline"
-              group={workbenchGroupLive}
-              franchiseId={franchiseId}
-              showFinancialTotals={showFinancialTotals}
-              canPerformOperations={canPerformOperations}
-              auditEntries={audit}
-              onClose={() => setWorkbenchGroup(null)}
-              onChanged={load}
-              onCenterFeedback={handleCenterFeedback}
-            />
-          ) : (
-            <div className="pal-cust-inspector-empty pal-cust-inspector-placeholder">
-              <User size={28} />
-              <p className="text-sm font-medium text-[var(--erpx-ink-secondary)]">Select a customer</p>
-              <p className="pal-cust-placeholder-sub">
-                Capture holds, charge saved cards, and manage mail orders from this panel.
-              </p>
-            </div>
-          )}
-        </aside>
       </div>
+
+      {workbenchGroupLive && (
+        <StripeCustomerWorkbenchModal
+          layout="drawer"
+          group={workbenchGroupLive}
+          franchiseId={franchiseId}
+          showFinancialTotals={showFinancialTotals}
+          canPerformOperations={canPerformOperations}
+          auditEntries={audit}
+          initialTab="actions"
+          hideSignalStrip
+          onClose={() => setWorkbenchGroup(null)}
+          onChanged={load}
+          onCenterFeedback={handleCenterFeedback}
+        />
+      )}
 
       {showNewOperation && (
         <StripeCustomerNewOperationModal

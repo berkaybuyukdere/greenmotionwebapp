@@ -102,8 +102,23 @@ function mergeDepositIntoTransaction(tx, dep) {
   const txPi = String(tx.paymentIntentId || '').trim();
   if (!depPi || !txPi || depPi !== txPi) return tx;
 
+  const identity = {
+    customerName: dep.customerName || tx.customerName || '',
+    customerEmail: dep.customerEmail || tx.customerEmail || '',
+    resCode: dep.resCode || dep.reference || tx.resCode || '',
+    plate: dep.plate || tx.plate || '',
+    reference: dep.reference || dep.resCode || tx.reference || '',
+    cancelledBy: dep.cancelledBy || tx.cancelledBy || null,
+    cancelledByName: dep.cancelledByName || tx.cancelledByName || null,
+    cancelledAt: dep.cancelledAt || tx.cancelledAt || null,
+    cancelReason: dep.cancelReason || tx.cancelReason || '',
+    createdByName: dep.createdByName || tx.createdByName || null,
+    tokenSaved: dep.tokenSaved === true || tx.tokenSaved,
+  };
+
   const next = {
     ...tx,
+    ...identity,
     depositId: dep.id,
     flowType: 'deposit',
     depositCurrentHold: dep.currentHoldAmount || dep.initialAmount || tx.depositCurrentHold,
@@ -154,6 +169,64 @@ function findDepositForTransaction(tx, depositByPi) {
   return null;
 }
 
+function depositToSyntheticTransaction(dep) {
+  const status = String(dep.status || '').toLowerCase();
+  let bucket = 'pending';
+  let depositDisplayStatus = 'pending';
+  let statusLabel = 'Pending';
+
+  if (status === 'captured') {
+    bucket = 'successful';
+    depositDisplayStatus = 'captured';
+    statusLabel = 'Paid';
+  } else if (status === 'authorized') {
+    bucket = 'hold';
+    depositDisplayStatus = 'hold';
+    statusLabel = 'Hold';
+  } else if (status === 'cancelled') {
+    bucket = 'cancelled';
+    depositDisplayStatus = 'cancelled';
+    statusLabel = 'Released';
+  } else if (status === 'pending_collection') {
+    bucket = 'pending';
+    depositDisplayStatus = 'pending';
+    statusLabel = 'Pending';
+  }
+
+  const createdMs = dep.createdAt ? new Date(dep.createdAt).getTime() : 0;
+
+  return {
+    id: dep.id,
+    paymentIntentId: dep.paymentIntentId || null,
+    depositId: dep.id,
+    flowType: 'deposit',
+    amount: dep.initialAmount || dep.currentHoldAmount || 0,
+    holdAmount: dep.currentHoldAmount || dep.initialAmount || 0,
+    amountReceived: dep.capturedAmount || null,
+    currency: dep.currency || 'chf',
+    customerName: dep.customerName || '',
+    customerEmail: dep.customerEmail || '',
+    resCode: dep.resCode || dep.reference || '',
+    plate: dep.plate || '',
+    reference: dep.reference || dep.resCode || '',
+    displayDescription: dep.resCode || dep.reference || dep.plate || dep.customerName || 'Deposit',
+    createdAt: dep.createdAt || null,
+    created: createdMs ? Math.floor(createdMs / 1000) : 0,
+    bucket,
+    depositDisplayStatus,
+    statusLabel,
+    channelLabel: dep.source === 'wheelsys' ? 'WheelSys · Deposit' : 'Deposit',
+    tokenSaved: dep.tokenSaved === true,
+    cancelledBy: dep.cancelledBy || null,
+    cancelledByName: dep.cancelledByName || null,
+    cancelledAt: dep.cancelledAt || null,
+    cancelReason: dep.cancelReason || '',
+    createdByName: dep.createdByName || null,
+    cardBrand: dep.cardBrand || null,
+    cardLast4: dep.cardLast4 || null,
+  };
+}
+
 function SummaryCard({ label, count, total, currency, variant }) {
   return (
     <div className={`pal-fin-summary-card pal-fin-summary-${variant}`}>
@@ -185,9 +258,9 @@ export function StripePaymentsView({ franchiseId, showFinancialTotals = true, fl
 
   const load = useCallback(async () => {
     if (!franchiseId) return;
-    setLoading(true);
     setError('');
-    // Audit feeds a side panel only — fetch it without gating the table render.
+    const hasCachedRows = transactions.length > 0 || deposits.length > 0;
+    if (!hasCachedRows) setLoading(true);
     stripeFinancialListAudit({ franchiseId, limit: 50 })
       .then((auditRes) => {
         setAudit(
@@ -201,7 +274,7 @@ export function StripePaymentsView({ franchiseId, showFinancialTotals = true, fl
       const [cfg, payRes, depRes] = await Promise.all([
         stripeFinancialGetConfig({ franchiseId }),
         stripeFinancialListPayments({ franchiseId, dayKey, period }),
-        stripeFinancialListDeposits({ franchiseId, limit: 250 }),
+        stripeFinancialListDeposits({ franchiseId, limit: 250, syncStripe: false }),
       ]);
       setConfigured(cfg?.configured !== false);
       setStripeMode(cfg?.mode || 'unset');
@@ -217,13 +290,13 @@ export function StripePaymentsView({ franchiseId, showFinancialTotals = true, fl
     } finally {
       setLoading(false);
     }
-  }, [franchiseId, dayKey, period]);
+  }, [franchiseId, dayKey, period, transactions.length, deposits.length]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const currency = transactions[0]?.currency || 'chf';
+  const currency = transactions[0]?.currency || deposits[0]?.currency || 'chf';
 
   const depositByPi = useMemo(() => {
     const map = new Map();
@@ -241,14 +314,22 @@ export function StripePaymentsView({ franchiseId, showFinancialTotals = true, fl
     return map;
   }, [deposits]);
 
-  const enrichedTransactions = useMemo(
-    () =>
-      transactions.map((tx) => {
-        const dep = findDepositForTransaction(tx, depositByPi);
-        return mergeDepositIntoTransaction(tx, dep);
-      }),
-    [transactions, depositByPi, depositById],
-  );
+  const enrichedTransactions = useMemo(() => {
+    const merged = transactions.map((tx) => {
+      const dep = findDepositForTransaction(tx, depositByPi);
+      return mergeDepositIntoTransaction(tx, dep);
+    });
+    const seenPi = new Set(merged.map((tx) => tx.paymentIntentId).filter(Boolean));
+    const seenDepId = new Set(merged.map((tx) => tx.depositId).filter(Boolean));
+    const orphans = deposits
+      .filter((dep) => {
+        if (dep.id && seenDepId.has(dep.id)) return false;
+        if (dep.paymentIntentId && seenPi.has(dep.paymentIntentId)) return false;
+        return true;
+      })
+      .map(depositToSyntheticTransaction);
+    return [...merged, ...orphans].sort((a, b) => (b.created || 0) - (a.created || 0));
+  }, [transactions, depositByPi, deposits]);
 
   const filtered = useMemo(() => {
     let rows = enrichedTransactions;
@@ -258,13 +339,16 @@ export function StripePaymentsView({ franchiseId, showFinancialTotals = true, fl
     return rows.filter(
       (tx) =>
         tx.customerName?.toLowerCase().includes(q) ||
+        tx.resCode?.toLowerCase().includes(q) ||
         tx.displayDescription?.toLowerCase().includes(q) ||
         tx.id?.toLowerCase().includes(q) ||
         tx.description?.toLowerCase().includes(q) ||
         tx.reference?.toLowerCase().includes(q) ||
         tx.plate?.toLowerCase().includes(q) ||
         tx.customerEmail?.toLowerCase().includes(q) ||
-        tx.paymentIntentId?.toLowerCase().includes(q),
+        tx.paymentIntentId?.toLowerCase().includes(q) ||
+        tx.depositId?.toLowerCase().includes(q) ||
+        tx.cancelledByName?.toLowerCase().includes(q),
     );
   }, [enrichedTransactions, filter, search]);
 
@@ -318,6 +402,12 @@ export function StripePaymentsView({ franchiseId, showFinancialTotals = true, fl
             {row.tokenSaved && (
               <StripeStatusBadge sharp variant="success" label="Token saved" />
             )}
+            {depStatus === 'cancelled' && row.cancelledByName && (
+              <span className="stripe-pay-status-meta">
+                Released by {row.cancelledByName}
+                {row.cancelledAt ? ` · ${formatStripeDate(row.cancelledAt)}` : ''}
+              </span>
+            )}
             {row.channelLabel && (
               <StripeStatusBadge
                 sharp
@@ -334,6 +424,7 @@ export function StripePaymentsView({ franchiseId, showFinancialTotals = true, fl
         header: 'Customer',
         render: (row) => (
           <div className="stripe-pay-customer-block">
+            {row.resCode && <span className="pal-fin-mono stripe-pay-customer-res">{row.resCode}</span>}
             <span className="stripe-pay-customer-name">{row.customerName || '—'}</span>
             {(row.plate || row.customerEmail) && (
               <span className="stripe-pay-customer-sub">

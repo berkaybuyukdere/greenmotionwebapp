@@ -462,136 +462,113 @@
     background: var(--erpx-subtle);
 }
 
-/* ─── Login — always dark (independent of theme toggle) ─── */
+/* ─── Login — compact light card ─── */
 .pal-login-root {
     opacity: 0;
-    transition: opacity 0.4s ease;
-    color-scheme: dark;
-    --pal-login-border: #27272a;
-    --pal-login-surface: #0f0f12;
-    --pal-login-ink: #f4f4f5;
-    --pal-login-muted: #a1a1aa;
-    --pal-login-accent: var(--vs-violet);
-    background: #09090b;
-    min-height: 100vh;
+    transition: opacity 0.35s ease;
+    color-scheme: light;
+    --pal-login-border: #d8dee6;
+    --pal-login-surface: #ffffff;
+    --pal-login-ink: #1a2332;
+    --pal-login-muted: #5c6778;
+    --pal-login-accent: var(--vs-violet, #6d5bd0);
 }
 
 .pal-login-root--ready {
     opacity: 1;
 }
 
-.pal-login-shell {
-    max-width: 420px;
-}
-
 .pal-login-card {
-    border: 1px solid #27272a;
-    background: #0f0f12;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+    border: 1px solid var(--pal-login-border);
+    background: var(--pal-login-surface);
+    box-shadow: 0 8px 32px rgba(26, 35, 50, 0.08);
+    border-radius: 8px;
     padding: 0;
     overflow: hidden;
 }
 
 .pal-login-brand {
-    padding: 28px 28px 12px;
+    padding: 22px 24px 10px;
     text-align: center;
-}
-
-.pal-login-mark {
-    display: inline-flex;
-    padding: 12px 16px;
-    margin-bottom: 14px;
-    border: 1px solid #27272a;
-    background: #18181b;
-}
-
-.pal-login-logo {
-    height: 48px;
-    width: auto;
-    max-width: 220px;
-    object-fit: contain;
+    border-bottom: 1px solid #eef1f5;
 }
 
 .pal-login-brand h1 {
-    font-size: 1.35rem;
+    font-size: 1.2rem;
     font-weight: 700;
-    color: #f4f4f5;
+    color: var(--pal-login-ink);
 }
 
 .pal-login-brand p {
-    font-size: 10px;
-    letter-spacing: 0.2em;
-    color: #71717a;
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    color: var(--pal-login-muted);
 }
 
 .pal-login-card-head {
-    padding: 14px 28px;
-    background: #18181b;
-    border-bottom: 1px solid #27272a;
+    padding: 12px 24px;
+    background: #f4f6f8;
+    border-bottom: 1px solid var(--pal-login-border);
 }
 
 .pal-login-card-head-icon {
-    border-radius: 0;
-    border: 1px solid var(--vs-violet-border);
-    background: var(--vs-violet-dim);
-    color: var(--vs-violet);
+    border-radius: 6px;
+    border: 1px solid rgba(109, 91, 208, 0.25);
+    background: rgba(109, 91, 208, 0.08);
+    color: var(--pal-login-accent);
 }
 
 .pal-login-card-eyebrow {
-    color: #71717a !important;
+    color: var(--pal-login-muted) !important;
 }
 
 .pal-login-form {
-    padding: 20px 28px 24px;
+    padding: 18px 24px 20px;
 }
 
 .pal-login-field-label,
 .pal-login-card label.pal-login-field-label {
-    color: #71717a !important;
+    color: var(--pal-login-muted) !important;
 }
 
 .pal-login-field,
 .pal-login-card input.pal-login-field,
 .pal-login-card select.pal-login-field,
 .pal-login-franchise-pill {
-    background: #09090b !important;
-    border: 1px solid #27272a !important;
-    color: #f4f4f5 !important;
-    border-radius: 0 !important;
+    background: #ffffff !important;
+    border: 1px solid var(--pal-login-border) !important;
+    color: var(--pal-login-ink) !important;
+    border-radius: 6px !important;
 }
 
 .pal-login-franchise-pill {
     height: 38px;
     margin-bottom: 14px;
+    background: #f4f6f8 !important;
 }
 
 .pal-login-field:focus,
 .pal-login-card input.pal-login-field:focus,
 .pal-login-card select.pal-login-field:focus {
-    border-color: var(--vs-violet) !important;
-    box-shadow: 0 0 0 1px var(--vs-violet-border) !important;
+    border-color: var(--pal-login-accent) !important;
+    box-shadow: 0 0 0 2px rgba(109, 91, 208, 0.15) !important;
     outline: none;
 }
 
-.pal-login-card select option {
-    background: #0f0f12;
-    color: #f4f4f5;
-}
-
 .pal-login-forgot-btn {
-    border: 1px solid #27272a;
-    background: transparent;
-    color: #a1a1aa;
+    border: 1px solid var(--pal-login-border);
+    background: #f8f9fb;
+    color: var(--pal-login-muted);
 }
 
 .pal-login-forgot-btn:hover {
-    border-color: #3f3f46;
-    color: #f4f4f5;
+    border-color: var(--pal-login-accent);
+    color: var(--pal-login-ink);
 }
 
 .pal-login-footnote {
-    padding: 0 28px 20px;
-    color: #71717a;
+    padding: 0 24px 18px;
+    color: var(--pal-login-muted);
 }
 
 /* ─── Page toolbar (single title in topbar) ─── */

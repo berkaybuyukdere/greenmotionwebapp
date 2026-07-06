@@ -249,7 +249,14 @@ function normalizeRoleKey(role) {
 /** Matches Firestore rules for frontDeskCustomers manage permissions. */
 function canManageFrontDeskCustomers(userProfile) {
     const r = normalizeRoleKey(userProfile?.role);
-    return r === 'staff' || r === 'shuttle' || r === 'manager' || r === 'admin' || r === 'superadmin' || r === 'globaladmin';
+    return (
+        r === 'staff' ||
+        r === 'shuttle' ||
+        r === 'manager' ||
+        r === 'admin' ||
+        r === 'superadmin' ||
+        r === 'globaladmin'
+    );
 }
 
 /**
@@ -932,7 +939,7 @@ export function FrontDeskCustomersView({
     };
 
     useEffect(() => {
-        const qy = query(collRef, orderBy('submittedAt', 'desc'), limit(200));
+        const qy = query(collRef, orderBy('submittedAt', 'desc'), limit(500));
         const unsub = onSnapshot(
             qy,
             (snap) => {
@@ -2097,7 +2104,7 @@ export function FrontDeskCustomersView({
                 ))}
             </div>
 
-            <div className="hidden md:block gm-table-wrap rounded-xl overflow-x-auto">
+            <div className="pal-fd-table-wrap w-full min-w-0">
                 <div className="flex flex-wrap items-center gap-2 px-3 py-3 border-b border-[var(--erpx-border)]">
                     <button type="button" onClick={exportExcel} className="pal-btn pal-btn-sm">
                         <FileSpreadsheet size={14} />
@@ -2138,7 +2145,7 @@ export function FrontDeskCustomersView({
                         </>
                     )}
                 </div>
-                <table className="gm-table w-full table-fixed text-left">
+                <table className="gm-table w-full text-left">
                     <colgroup>
                         {bulkMode && <col style={{ width: '4%' }} />}
                         <col style={{ width: '28%' }} />
@@ -2278,101 +2285,54 @@ export function FrontDeskCustomersView({
                         ))}
                     </tbody>
                 </table>
-            </div>
-
-            <div className="grid gap-sap-3 md:hidden">
-                {paginatedRows.length === 0 && (
-                    <p className="text-sm text-[var(--erpx-ink-muted)]">No records in this tab.</p>
-                )}
-                {paginatedRows.map((row) => (
-                    <motion.button
-                        key={row.id}
-                        type="button"
-                        onClick={() => (canManage ? openEdit(row) : setDetailRow(row))}
-                        layout
-                        className="pal-fd-card"
-                    >
-                        <div className="flex flex-wrap items-start justify-between gap-sap-3">
-                            <div className="flex items-start gap-sap-3 min-w-0">
-                                <div className="p-2 rounded-md bg-[var(--erpx-subtle)]">
-                                    <User size={18} className="text-[var(--erpx-brand)]" />
-                                </div>
-                                <div className="min-w-0">
-                                    <p className="font-semibold text-[var(--erpx-ink)] truncate">{displayName(row)}</p>
-                                    <p className="text-sm text-[var(--erpx-ink-secondary)]">{row.email}</p>
-                                    <p className="text-sm text-[var(--erpx-ink-secondary)]">{row.phone}</p>
-                                    <p className="text-xs mt-1 text-[var(--erpx-ink-secondary)] line-clamp-2">{fullAddress(row)}</p>
-                                    <p className="text-[11px] mt-1 flex items-center gap-1 text-[var(--erpx-ink-muted)]">
-                                        <Clock size={12} />
-                                        {fmt(row.submittedAt)}
-                                    </p>
-                                </div>
-                            </div>
-                            <div>
-                                {row.status === 'completed' ? (
-                                    <span className="gm-badge gm-badge-success">
-                                        <CheckCircle size={12} />
-                                        Done
-                                    </span>
-                                ) : (
-                                    <span className="gm-badge gm-badge-warning">
-                                        <Clock size={12} />
-                                        Pending
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-                    </motion.button>
-                ))}
-            </div>
-
-            <div className="pal-fd-pagination">
-                <p className="text-[12px] text-[var(--erpx-ink-muted)]">
-                    Showing{' '}
-                    <span className="font-medium text-[var(--erpx-ink)]">
-                        {dateFiltered.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}
-                    </span>{' '}
-                    -{' '}
-                    <span className="font-medium text-[var(--erpx-ink)]">
-                        {Math.min(currentPage * pageSize, dateFiltered.length)}
-                    </span>{' '}
-                    of{' '}
-                    <span className="font-medium text-[var(--erpx-ink)]">
-                        {dateFiltered.length}
-                    </span>{' '}
-                    records
-                </p>
-                <div className="flex items-center gap-2">
-                    <select
-                        value={pageSize}
-                        onChange={(e) => setPageSize(Number(e.target.value) || 25)}
-                        className="pal-fd-pagination-select"
-                    >
-                        {[10, 25, 50, 100].map((size) => (
-                            <option key={size} value={size}>
-                                {size} / page
-                            </option>
-                        ))}
-                    </select>
-                    <button
-                        type="button"
-                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                        disabled={currentPage <= 1}
-                        className="pal-btn pal-btn-sm !p-2 disabled:opacity-50"
-                    >
-                        <ChevronLeft size={14} />
-                    </button>
-                    <span className="text-xs tabular-nums min-w-[64px] text-center text-[var(--erpx-ink-muted)]">
-                        Page {currentPage}/{totalPages}
-                    </span>
-                    <button
-                        type="button"
-                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                        disabled={currentPage >= totalPages}
-                        className="pal-btn pal-btn-sm !p-2 disabled:opacity-50"
-                    >
-                        <ChevronRight size={14} />
-                    </button>
+                <div className="pal-fd-pagination border-0 border-t border-[var(--erpx-border)] rounded-none">
+                    <p className="text-[12px] text-[var(--erpx-ink-muted)]">
+                        Showing{' '}
+                        <span className="font-medium text-[var(--erpx-ink)]">
+                            {dateFiltered.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}
+                        </span>{' '}
+                        -{' '}
+                        <span className="font-medium text-[var(--erpx-ink)]">
+                            {Math.min(currentPage * pageSize, dateFiltered.length)}
+                        </span>{' '}
+                        of{' '}
+                        <span className="font-medium text-[var(--erpx-ink)]">
+                            {dateFiltered.length}
+                        </span>{' '}
+                        records
+                    </p>
+                    <div className="flex items-center gap-2">
+                        <select
+                            value={pageSize}
+                            onChange={(e) => setPageSize(Number(e.target.value) || 25)}
+                            className="pal-fd-pagination-select"
+                        >
+                            {[10, 25, 50, 100].map((size) => (
+                                <option key={size} value={size}>
+                                    {size} / page
+                                </option>
+                            ))}
+                        </select>
+                        <button
+                            type="button"
+                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                            disabled={currentPage <= 1}
+                            className="pal-btn pal-btn-sm !p-2 disabled:opacity-50"
+                        >
+                            <ChevronLeft size={14} />
+                        </button>
+                        <span className="text-[12px] tabular-nums px-1">
+                            Page {currentPage}/{totalPages}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                            disabled={currentPage >= totalPages}
+                            className="pal-btn pal-btn-sm !p-2 disabled:opacity-50"
+                        >
+                            <ChevronRight size={14} />
+                        </button>
+                    </div>
                 </div>
             </div>
 
