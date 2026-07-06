@@ -47,7 +47,7 @@ export function depositStatusDisplay(dep) {
     status === 'authorized' &&
     Number(dep.currentHoldAmount || 0) > Number(dep.initialAmount || 0) + 1
   ) {
-    return { variant: 'warning', label: 'Increased' };
+    return { variant: 'purple', label: 'Increased' };
   }
   if (status === 'authorized' || stripe === 'requires_capture') {
     return { variant: 'hold', label: 'Uncaptured' };

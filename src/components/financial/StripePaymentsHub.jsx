@@ -7,6 +7,7 @@ import { StripeMailOrderView } from './StripeMailOrderView';
 import { StripeNewPaymentModal } from './StripeNewPaymentModal';
 import { useStripeFinFeedback } from './StripeFinFeedback';
 import { stripeFinancialGetConfig } from '../../services/stripeFinancialApi';
+import { logPaymentUiAction } from '../../utilities/logPaymentUiAction';
 
 const TABS = [
   { id: 'deposits', label: 'Deposits' },
@@ -61,7 +62,10 @@ export function StripePaymentsHub({
             <button
               type="button"
               className="gm-btn gm-btn-primary gm-btn-sm pal-fin-action-btn"
-              onClick={() => setShowNewPayment(true)}
+              onClick={() => {
+                logPaymentUiAction(franchiseId, 'new_payment_open');
+                setShowNewPayment(true);
+              }}
             >
               <Plus size={15} />
               New payment

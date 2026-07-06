@@ -123,17 +123,17 @@
 .dark {
     color-scheme: dark;
 
-    --fd-bg: #0B0E13;
-    --fd-surface: #151A21;
-    --fd-high: #1E252E;
-    --fd-higher: #252D38;
-    --fd-border: #2C3540;
-    --fd-border-strong: #3B4654;
-    --fd-text: #D6DEE8;
-    --fd-text2: #A9B4C0;
-    --fd-muted: #7D8A99;
-    --fd-accent: #4C90F0;
-    --fd-accent-dim: rgba(76, 144, 240, 0.14);
+    --fd-bg: #111114;
+    --fd-surface: #1a1a1f;
+    --fd-high: #222228;
+    --fd-higher: #2a2a32;
+    --fd-border: #33333c;
+    --fd-border-strong: #44444f;
+    --fd-text: #d4d4dc;
+    --fd-text2: #a8a8b3;
+    --fd-muted: #787882;
+    --fd-accent: #8b8b96;
+    --fd-accent-dim: rgba(139, 139, 150, 0.14);
     --fd-green: #3DC98A;
     --fd-green-dim: rgba(61, 201, 138, 0.13);
     --fd-amber: #E5A83B;
@@ -154,7 +154,9 @@
     --vs-ink-disabled: #5B6672;
     --vs-violet: var(--fd-accent);
     --vs-violet-dim: var(--fd-accent-dim);
-    --vs-violet-border: rgba(76, 144, 240, 0.38);
+    --vs-violet-border: rgba(139, 139, 150, 0.38);
+    --vs-purple: var(--fd-purple);
+    --vs-purple-dim: var(--fd-purple-dim);
 
     --pal-bg: var(--fd-bg);
     --pal-surface: var(--fd-surface);
@@ -163,10 +165,10 @@
     --pal-text: var(--fd-text);
     --pal-muted: var(--fd-muted);
     --pal-accent: var(--fd-accent);
-    --pal-accent-hover: #6BA6F5;
-    --pal-brand: var(--fd-accent);
-    --pal-demo-brand: var(--fd-accent);
-    --pal-demo-brand2: #6BA6F5;
+    --pal-accent-hover: #a0a0ab;
+    --pal-brand: #9ca3af;
+    --pal-demo-brand: #9ca3af;
+    --pal-demo-brand2: #b0b0ba;
     --pal-tag-bg: var(--fd-accent-dim);
 
     --erpx-canvas: var(--fd-bg);
@@ -179,11 +181,11 @@
     --erpx-ink-secondary: var(--fd-text2);
     --erpx-ink-muted: var(--fd-muted);
     --erpx-ink-disabled: #5B6672;
-    --erpx-brand: var(--fd-accent);
-    --erpx-brand-dark: #6BA6F5;
-    --erpx-brand-light: var(--fd-accent-dim);
+    --erpx-brand: #9ca3af;
+    --erpx-brand-dark: #b0b0ba;
+    --erpx-brand-light: rgba(156, 163, 175, 0.12);
     --erpx-row-hover: var(--fd-high);
-    --erpx-shadow-focus: 0 0 0 2px rgba(76, 144, 240, 0.32);
+    --erpx-shadow-focus: 0 0 0 2px rgba(156, 163, 175, 0.28);
 
     --erpx-green: var(--fd-green);
     --erpx-green-bg: var(--fd-green-dim);
@@ -194,9 +196,9 @@
     --erpx-red: var(--fd-red);
     --erpx-red-bg: var(--fd-red-dim);
     --erpx-red-border: rgba(231, 106, 110, 0.38);
-    --erpx-info: var(--fd-accent);
-    --erpx-info-bg: var(--fd-accent-dim);
-    --erpx-info-border: rgba(76, 144, 240, 0.38);
+    --erpx-info: #94a3b8;
+    --erpx-info-bg: rgba(148, 163, 184, 0.12);
+    --erpx-info-border: rgba(148, 163, 184, 0.32);
 
     --erpx-sidebar-bg: var(--fd-surface);
     --erpx-sidebar-hover: var(--fd-high);
@@ -204,6 +206,16 @@
     --erpx-sidebar-active-text: var(--fd-accent);
     --erpx-sidebar-divider: var(--fd-border);
     --erpx-sidebar-text: var(--fd-muted);
+}
+
+.dark .gm-badge-purple {
+    color: var(--fd-purple);
+    background: var(--fd-purple-dim);
+    border-color: rgba(157, 124, 216, 0.38);
+}
+
+.dark .gm-badge-purple .gm-badge-dot {
+    background: var(--fd-purple);
 }
 
 /* ─── Foundry chrome conventions ───
@@ -1136,4 +1148,69 @@
     font-weight: 600;
     margin-top: 3px;
     color: var(--fd-text);
+}
+
+/* Stripe / payments — semantic status badge colors (must win over neutral chrome) */
+.gm-badge-success,
+.pal-fin-badge-paid,
+.pal-fin-badge-captured {
+    color: var(--erpx-green) !important;
+    background: var(--erpx-green-bg) !important;
+    border-color: var(--erpx-green-border) !important;
+}
+
+.gm-badge-success .gm-badge-dot,
+.pal-fin-badge-paid .gm-badge-dot,
+.pal-fin-badge-captured .gm-badge-dot {
+    background: var(--erpx-green) !important;
+}
+
+.gm-badge-warning,
+.pal-fin-badge-unpaid,
+.pal-fin-badge-refunded {
+    color: var(--erpx-amber) !important;
+    background: var(--erpx-amber-bg) !important;
+    border-color: var(--erpx-amber-border) !important;
+}
+
+.gm-badge-warning .gm-badge-dot,
+.pal-fin-badge-unpaid .gm-badge-dot,
+.pal-fin-badge-refunded .gm-badge-dot {
+    background: var(--erpx-amber) !important;
+}
+
+.gm-badge-danger,
+.gm-badge-failed {
+    color: var(--erpx-red) !important;
+    background: var(--erpx-red-bg) !important;
+    border-color: var(--erpx-red-border) !important;
+}
+
+.gm-badge-danger .gm-badge-dot,
+.gm-badge-failed .gm-badge-dot {
+    background: var(--erpx-red) !important;
+}
+
+.gm-badge-info,
+.pal-fin-badge-hold {
+    color: #2563eb !important;
+    background: rgba(37, 99, 235, 0.12) !important;
+    border-color: rgba(37, 99, 235, 0.35) !important;
+}
+
+.gm-badge-info .gm-badge-dot,
+.pal-fin-badge-hold .gm-badge-dot {
+    background: #2563eb !important;
+}
+
+.gm-badge-purple,
+.pal-fin-badge-increased {
+    color: var(--fd-purple, #9d7cd8) !important;
+    background: var(--fd-purple-dim, rgba(157, 124, 216, 0.14)) !important;
+    border-color: rgba(157, 124, 216, 0.38) !important;
+}
+
+.gm-badge-purple .gm-badge-dot,
+.pal-fin-badge-increased .gm-badge-dot {
+    background: var(--fd-purple, #9d7cd8) !important;
 }

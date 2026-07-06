@@ -193,20 +193,14 @@
     border-color: var(--erpx-border-strong);
 }
 
-/* ─── Neutral badges & filter dots ─── */
-.gm-badge-success,
-.gm-badge-warning,
-.gm-badge-danger,
-.gm-badge-failed,
-.gm-badge-info,
-.gm-badge-purple,
+/* ─── Neutral badges & filter dots (semantic Stripe badges keep their colors) ─── */
 .gm-badge-neutral {
     color: var(--erpx-ink) !important;
     background: var(--erpx-subtle) !important;
     border-color: var(--erpx-border-strong) !important;
 }
 
-.gm-badge-dot,
+.gm-badge-neutral .gm-badge-dot,
 .gm-filter-dot,
 .gm-filter-dot[style] {
     background: var(--erpx-ink-muted) !important;

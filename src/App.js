@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/exhaustive-deps */
-import React, { useState, useEffect, useMemo, useRef, useCallback, startTransition } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, startTransition, Suspense, lazy } from 'react';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail } from 'firebase/auth';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, limit, Timestamp, where, getDoc, setDoc, onSnapshot, serverTimestamp, writeBatch, deleteField } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject, getBytes } from 'firebase/storage';
@@ -234,14 +234,25 @@ import { ThemeProvider, ThemeContext } from './context/ThemeContext';
 import { useAdvancedSearch } from './hooks/useAdvancedSearch';
 import { LoginScreen } from './views/LoginScreen';
 import { Dashboard } from './views/DashboardView';
-import { StripeChargebacksView } from './components/financial/StripeChargebacksView';
-import { StripeCustomersView } from './components/financial/StripeCustomersView';
-import { StripeDailyReportsView } from './components/financial/StripeDailyReportsView';
-import { StripeMailOrderView } from './components/financial/StripeMailOrderView';
-import { StripePaymentsHub } from './components/financial/StripePaymentsHub';
+const StripeChargebacksView = lazy(() =>
+  import('./components/financial/StripeChargebacksView').then((m) => ({ default: m.StripeChargebacksView })),
+);
+const StripeCustomersView = lazy(() =>
+  import('./components/financial/StripeCustomersView').then((m) => ({ default: m.StripeCustomersView })),
+);
+const StripeDailyReportsView = lazy(() =>
+  import('./components/financial/StripeDailyReportsView').then((m) => ({ default: m.StripeDailyReportsView })),
+);
+const StripeMailOrderView = lazy(() =>
+  import('./components/financial/StripeMailOrderView').then((m) => ({ default: m.StripeMailOrderView })),
+);
+const StripePaymentsHub = lazy(() =>
+  import('./components/financial/StripePaymentsHub').then((m) => ({ default: m.StripePaymentsHub })),
+);
 import { StripePosDailyClosingOfficeCard } from './components/financial/StripePosDailyClosingOfficeCard';
 import { StripeTerminalSettingsSection } from './components/financial/StripeTerminalSettingsSection';
 import { StripeDepositEmailTemplatesSection } from './components/financial/StripeDepositEmailTemplatesSection';
+import { AdminStripePaymentAuditSection } from './components/financial/AdminStripePaymentAuditSection';
 
 
 /**
@@ -2707,42 +2718,52 @@ function AppContent({ user, userProfile: initialUserProfile }) {
                                 )}
                                 {currentView === 'stripeChargebacks' && canAccessStripeFinance && (
                                     <div className="erpx-view-layer w-full min-w-0">
-                                        <StripeChargebacksView franchiseId={effectiveFranchiseId || 'ch'} user={user} />
+                                        <Suspense fallback={<div className="flex items-center justify-center min-h-[12rem]"><PalantirLoader label="Loading Stripe…" /></div>}>
+                                            <StripeChargebacksView franchiseId={effectiveFranchiseId || 'ch'} user={user} />
+                                        </Suspense>
                                     </div>
                                 )}
                                 {currentView === 'stripePayments' && canAccessStripeFinance && (
                                     <div className="erpx-view-layer w-full min-w-0">
-                                        <StripePaymentsHub
-                                            franchiseId={effectiveFranchiseId || 'ch'}
-                                            showFinancialTotals={showStripeFinancialTotals}
-                                            fleetCars={fleetCars}
-                                            canPerformOperations={canPerformStripeOperations}
-                                        />
+                                        <Suspense fallback={<div className="flex items-center justify-center min-h-[12rem]"><PalantirLoader label="Loading payments…" /></div>}>
+                                            <StripePaymentsHub
+                                                franchiseId={effectiveFranchiseId || 'ch'}
+                                                showFinancialTotals={showStripeFinancialTotals}
+                                                fleetCars={fleetCars}
+                                                canPerformOperations={canPerformStripeOperations}
+                                            />
+                                        </Suspense>
                                     </div>
                                 )}
                                 {currentView === 'stripeMailOrder' && canAccessStripeFinance && (
                                     <div className="erpx-view-layer w-full min-w-0">
-                                        <StripePaymentsHub
-                                            franchiseId={effectiveFranchiseId || 'ch'}
-                                            showFinancialTotals={showStripeFinancialTotals}
-                                            fleetCars={fleetCars}
-                                            canPerformOperations={canPerformStripeOperations}
-                                            initialTab="mailorder"
-                                        />
+                                        <Suspense fallback={<div className="flex items-center justify-center min-h-[12rem]"><PalantirLoader label="Loading mail order…" /></div>}>
+                                            <StripePaymentsHub
+                                                franchiseId={effectiveFranchiseId || 'ch'}
+                                                showFinancialTotals={showStripeFinancialTotals}
+                                                fleetCars={fleetCars}
+                                                canPerformOperations={canPerformStripeOperations}
+                                                initialTab="mailorder"
+                                            />
+                                        </Suspense>
                                     </div>
                                 )}
                                 {currentView === 'stripeCustomers' && canAccessStripeFinance && (
                                     <div className="erpx-view-layer w-full min-w-0">
-                                        <StripeCustomersView
-                                            franchiseId={effectiveFranchiseId || 'ch'}
-                                            showFinancialTotals={showStripeFinancialTotals}
-                                            canPerformOperations={canPerformStripeOperations}
-                                        />
+                                        <Suspense fallback={<div className="flex items-center justify-center min-h-[12rem]"><PalantirLoader label="Loading customers…" /></div>}>
+                                            <StripeCustomersView
+                                                franchiseId={effectiveFranchiseId || 'ch'}
+                                                showFinancialTotals={showStripeFinancialTotals}
+                                                canPerformOperations={canPerformStripeOperations}
+                                            />
+                                        </Suspense>
                                     </div>
                                 )}
                                 {currentView === 'stripeDailyReports' && canAccessStripeFinance && showStripeReports && (
                                     <div className="erpx-view-layer w-full min-w-0">
-                                        <StripeDailyReportsView franchiseId={effectiveFranchiseId || 'ch'} />
+                                        <Suspense fallback={<div className="flex items-center justify-center min-h-[12rem]"><PalantirLoader label="Loading reports…" /></div>}>
+                                            <StripeDailyReportsView franchiseId={effectiveFranchiseId || 'ch'} />
+                                        </Suspense>
                                     </div>
                                 )}
                                 {currentView === 'adminPanel' && showPlatformAdmin && (
@@ -2772,7 +2793,7 @@ function AppContent({ user, userProfile: initialUserProfile }) {
                                 )}
                                 {currentView === 'adminActivityLog' && showPlatformAdmin && (
                                     <div className="erpx-view-layer w-full min-w-0">
-                                        <AdminActivityLogView db={db} />
+                                        <AdminActivityLogView db={db} dataFranchiseId={effectiveFranchiseId} />
                                     </div>
                                 )}
                                 {currentView === 'adminFormatValidation' && showPlatformAdmin && (
@@ -21186,7 +21207,7 @@ function AdminABTestingView({ db, userProfile, dataFranchiseId }) {
 }
 
 // Admin Activity Log View
-function AdminActivityLogView({ db }) {
+function AdminActivityLogView({ db, dataFranchiseId = 'CH' }) {
     const toast = useToast();
     const [activityLog, setActivityLog] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -21482,6 +21503,8 @@ function AdminActivityLogView({ db }) {
                     </table>
                 </div>
             </div>
+
+            <AdminStripePaymentAuditSection franchiseId={dataFranchiseId} />
         </div>
     );
 }

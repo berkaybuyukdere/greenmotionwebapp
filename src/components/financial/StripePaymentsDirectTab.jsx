@@ -238,7 +238,7 @@ export function StripePaymentsDirectTab({
       />
       {workbenchGroupLive && (
         <StripeCustomerWorkbenchModal
-          layout="drawer"
+          layout="modal"
           group={workbenchGroupLive}
           franchiseId={franchiseId}
           showFinancialTotals={false}

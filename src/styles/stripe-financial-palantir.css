@@ -2005,6 +2005,25 @@
 .pal-fin-kpi-row {
   padding: 0 18px 16px;
   border-bottom: 1px solid var(--erpx-border);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pal-stripe-tab-panel .pal-fin-kpi-row {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+@media (max-width: 1280px) {
+  .pal-stripe-tab-panel .pal-fin-kpi-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .pal-stripe-tab-panel .pal-fin-kpi-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .pal-fin-kpi-sharp {
@@ -2022,9 +2041,9 @@
 }
 
 .pal-fin-badge-paid {
-  background: var(--vs-violet-dim, rgba(109, 93, 252, 0.12)) !important;
-  border: 1px solid var(--vs-violet-border, rgba(109, 93, 252, 0.35)) !important;
-  color: var(--vs-violet, #6d5dfc) !important;
+  background: var(--erpx-green-bg) !important;
+  border: 1px solid var(--erpx-green-border) !important;
+  color: var(--erpx-green) !important;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -2069,9 +2088,9 @@
 }
 
 .pal-fin-badge-increased {
-  background: var(--erpx-amber-bg) !important;
-  border: 1px solid var(--erpx-amber-border) !important;
-  color: var(--erpx-amber) !important;
+  background: var(--vs-purple-dim, var(--fd-purple-dim, rgba(157, 124, 216, 0.14))) !important;
+  border: 1px solid rgba(157, 124, 216, 0.38) !important;
+  color: var(--vs-purple, var(--fd-purple, #9D7CD8)) !important;
   font-weight: 700;
   text-transform: uppercase;
   font-size: 10px;
@@ -2818,15 +2837,9 @@
   color: var(--erpx-brand);
 }
 
-/* Customer workbench modal (center, like new deposit) */
-.pal-cust-workbench {
-  width: min(880px, 96vw);
-  max-height: min(92vh, 900px);
-}
-
+/* Customer workbench modal (center) — size set in extended block below */
 .pal-cust-workbench-body {
-  max-height: min(68vh, 640px);
-  overflow-y: auto;
+  max-height: none;
 }
 
 .pal-cust-signal-row-modal {
@@ -3787,9 +3800,10 @@
 }
 
 .pal-fin-compact-cat-active {
-  border-color: var(--pal-brand, #6d5bd0);
-  background: rgba(109, 91, 208, 0.08);
-  color: var(--erpx-ink);
+  border-color: var(--erpx-amber) !important;
+  background: var(--erpx-amber-bg) !important;
+  color: var(--erpx-amber) !important;
+  box-shadow: inset 0 -2px 0 var(--erpx-amber);
 }
 
 .pal-fin-card-label-row {
@@ -4032,4 +4046,457 @@
 .pal-new-payment-choice-icon-mail {
   background: rgba(99, 91, 255, 0.12);
   color: #635bff;
+}
+
+/* Center payment detail modal */
+.pal-pay-detail-modal {
+  width: min(520px, 96vw);
+  max-height: min(88vh, 820px);
+}
+
+.pal-pay-modal-amount {
+  font-size: 22px;
+  font-family: var(--erpx-font-data, ui-monospace, monospace);
+  margin: 4px 0 8px;
+}
+
+.pal-pay-detail-body {
+  padding-top: 0;
+}
+
+.pal-pay-action-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--erpx-border);
+  background: var(--erpx-subtle);
+}
+
+.pal-pay-error-text {
+  color: var(--erpx-red) !important;
+  font-weight: 600;
+}
+
+.pal-pay-expand-toggle {
+  border: none;
+  background: transparent;
+  color: var(--erpx-brand);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 8px;
+}
+
+.pal-pay-expand-toggle-danger {
+  color: var(--erpx-red);
+}
+
+.pal-fin-field-label-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.pal-fin-res-prefill-row {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--erpx-border);
+  border-radius: var(--erpx-radius-sm);
+  overflow: hidden;
+  background: var(--erpx-canvas);
+}
+
+.pal-fin-res-prefix {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--erpx-font-data, ui-monospace, monospace);
+  color: var(--erpx-ink-muted);
+  background: var(--erpx-subtle);
+  border-right: 1px solid var(--erpx-border);
+}
+
+.pal-fin-res-input {
+  flex: 1;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+.pal-fin-field-block {
+  margin-bottom: 0.75rem;
+}
+
+.pal-fin-inline-form-row-padded {
+  gap: 1rem !important;
+  padding: 0.25rem 0;
+}
+
+.pal-fin-attachment-preview-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pal-fin-attachment-preview-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid var(--erpx-border);
+  border-radius: var(--erpx-radius-sm);
+  background: var(--erpx-subtle);
+}
+
+.pal-fin-attachment-preview-size {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--erpx-ink-muted);
+}
+
+.pal-cust-unified-tx-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pal-cust-unified-tx-row {
+  display: grid;
+  grid-template-columns: 72px auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--erpx-border);
+  border-radius: var(--erpx-radius-sm);
+  background: var(--erpx-canvas);
+  font-size: 12px;
+}
+
+.pal-cust-unified-tx-type {
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--erpx-ink-muted);
+}
+
+.pal-cust-unified-tx-amount {
+  text-align: right;
+}
+
+.pal-cust-actions-compact .pal-cust-action-card-compact {
+  padding: 12px 14px;
+  margin-top: 10px;
+}
+
+.pal-cust-actions-compact .pal-cust-action-card-head svg {
+  width: 16px;
+  height: 16px;
+}
+
+.pal-fin-modal-charge-body {
+  padding-bottom: 24px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.dark .stripe-pay-status-note,
+.dark .pal-pay-error-text {
+  color: #f87171 !important;
+}
+
+/* ─── Symmetric Stripe KPI row (6 equal tiles) ─── */
+.pal-stripe-tab-panel .pal-analytics-kpi-row.pal-fin-kpi-row {
+  display: grid !important;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.pal-stripe-tab-panel .pal-analytics-kpi-row .pal-analytics-kpi {
+  min-height: 92px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  padding: 12px 14px;
+}
+
+.pal-stripe-tab-panel .pal-analytics-kpi-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pal-fin-badge-refunded {
+  background: var(--erpx-amber-bg) !important;
+  border: 1px solid var(--erpx-amber-border) !important;
+  color: var(--erpx-amber) !important;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+
+/* ─── Customer workbench modal — fixed size, clean payments tab ─── */
+.pal-cust-workbench {
+  width: min(720px, 94vw);
+  height: min(640px, 88vh);
+  max-height: min(640px, 88vh);
+  display: flex;
+  flex-direction: column;
+}
+
+.pal-cust-workbench-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 18px;
+}
+
+.pal-cust-workbench-grid {
+  max-width: none;
+}
+
+.pal-cust-deposit-status-card {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--erpx-border);
+  background: var(--erpx-subtle);
+}
+
+.pal-cust-deposit-status-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--erpx-ink-muted);
+  margin: 0 0 6px;
+}
+
+.pal-cust-deposit-status-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.pal-cust-deposit-status-meta {
+  font-size: 12px;
+  color: var(--erpx-ink-secondary);
+  margin: 4px 0 0;
+}
+
+.pal-cust-payments-tab {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 14px;
+}
+
+.pal-cust-pay-toolbar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.pal-cust-pay-tool {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 72px;
+  padding: 10px 12px;
+  border: 1px solid var(--erpx-border);
+  background: var(--erpx-surface);
+  color: var(--erpx-ink);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.pal-cust-pay-tool-capture {
+  border-color: rgba(59, 130, 246, 0.45);
+  background: rgba(59, 130, 246, 0.1);
+  color: #2563eb;
+}
+
+.pal-cust-pay-tool-capture:hover:not(:disabled) {
+  border-color: rgba(59, 130, 246, 0.65);
+  background: rgba(59, 130, 246, 0.16);
+}
+
+.pal-cust-pay-tool-capture svg {
+  color: #3b82f6;
+}
+
+.pal-cust-pay-tool-new {
+  border-color: rgba(22, 163, 74, 0.45);
+  background: rgba(22, 163, 74, 0.1);
+  color: #15803d;
+}
+
+.pal-cust-pay-tool-new:hover:not(:disabled) {
+  border-color: rgba(22, 163, 74, 0.65);
+  background: rgba(22, 163, 74, 0.16);
+}
+
+.pal-cust-pay-tool-new svg {
+  color: #16a34a;
+}
+
+.pal-cust-pay-tool-refund.pal-cust-pay-tool-active {
+  border-color: var(--erpx-amber);
+  background: var(--erpx-amber-bg);
+}
+
+.pal-cust-pay-tool-new.pal-cust-pay-tool-active {
+  border-color: #16a34a;
+  background: rgba(22, 163, 74, 0.18);
+}
+
+.pal-cust-pay-tool:hover:not(:disabled) {
+  border-color: var(--erpx-border-strong);
+  background: var(--erpx-subtle);
+}
+
+.pal-cust-pay-tool:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pal-cust-pay-tool-active {
+  border-color: var(--erpx-amber);
+  background: var(--erpx-amber-bg);
+}
+
+.pal-cust-pay-tool small {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--erpx-ink-secondary);
+  font-family: var(--fd-mono, ui-monospace, monospace);
+}
+
+.pal-cust-pay-panel-slot {
+  min-height: 88px;
+  padding: 12px 14px;
+  border: 1px solid var(--erpx-border);
+  background: var(--erpx-canvas);
+}
+
+.pal-cust-pay-inline-form-stack {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.pal-cust-pay-field-full {
+  width: 100%;
+}
+
+.pal-cust-pay-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--erpx-ink-muted);
+  line-height: 1.5;
+}
+
+.pal-cust-pay-inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.pal-cust-pay-field {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--erpx-ink-secondary);
+}
+
+.pal-cust-chf-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--erpx-border);
+  background: var(--erpx-surface);
+  min-height: 40px;
+}
+
+.pal-cust-chf-input svg {
+  color: var(--erpx-ink-muted);
+  flex-shrink: 0;
+}
+
+.pal-cust-chf-prefix {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--erpx-ink-muted);
+  font-family: var(--fd-mono, ui-monospace, monospace);
+}
+
+.pal-cust-chf-input .pal-fin-input {
+  border: none;
+  background: transparent;
+  flex: 1;
+  min-width: 0;
+  padding: 8px 0;
+}
+
+.pal-cust-tx-section {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pal-cust-tx-table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--erpx-border);
+}
+
+.pal-cust-tx-table th,
+.pal-cust-tx-table td {
+  padding: 10px 12px;
+  font-size: 12px;
+}
+
+.pal-cust-tx-type-cell {
+  color: var(--erpx-ink-secondary);
+  text-transform: capitalize;
+}
+
+.pal-fin-kpi-increased.pal-analytics-kpi-warning .pal-dash-kpi-value {
+  color: var(--fd-purple, #9D7CD8) !important;
+}
+
+.pal-cust-actions-modal {
+  display: block;
+  grid-template-columns: none;
 }

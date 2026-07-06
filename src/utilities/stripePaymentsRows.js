@@ -318,19 +318,19 @@ export function paymentStatusDisplay(row) {
     return { variant: 'danger', label: 'Blocked', note: paymentFailureNote(row) };
   }
   if (row.bucket === 'refunded') {
-    return { variant: 'neutral', label: 'Refunded' };
+    return { variant: 'refunded', label: 'Refunded' };
   }
   if (row.bucket === 'disputed') {
     return { variant: 'warning', label: 'Disputed' };
   }
   if (row.depositDisplayStatus === 'increased') {
-    return { variant: 'warning', label: 'Increased' };
+    return { variant: 'purple', label: 'Increased' };
   }
   if (row.bucket === 'successful' || row.depositDisplayStatus === 'captured') {
     return { variant: 'success', label: 'Succeeded' };
   }
   if (row.bucket === 'cancelled' || row.depositDisplayStatus === 'cancelled') {
-    return { variant: 'neutral', label: 'Canceled' };
+    return { variant: 'danger', label: 'Canceled' };
   }
   if (row.bucket === 'hold' || row.depositDisplayStatus === 'hold') {
     return { variant: 'hold', label: 'Uncaptured' };

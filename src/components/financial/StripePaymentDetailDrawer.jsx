@@ -1,22 +1,26 @@
-import React, { useMemo, useState } from 'react';
-import { X, Ban, TrendingUp, CreditCard } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { X, Ban, CreditCard, RotateCcw, Plus } from 'lucide-react';
 import { StripeStatusBadge } from '../StripeListUI';
 import { StripePaymentMethodCell } from './StripePaymentMethodCell';
+import { StripeNewPaymentModal } from './StripeNewPaymentModal';
 import {
   stripeFinancialCancelPaymentHold,
   stripeFinancialCaptureDeposit,
   stripeFinancialIncrementDeposit,
+  stripeFinancialRefundPayment,
 } from '../../services/stripeFinancialApi';
 import { humanizeStripeFinancialError } from './StripeFinFeedback';
+import { logPaymentUiAction } from '../../utilities/logPaymentUiAction';
+import { paymentFailureNote } from '../../utilities/stripePaymentsRows';
 
 const BUCKET_VARIANT = {
   successful: 'success',
   hold: 'info',
   pending: 'warning',
-  cancelled: 'neutral',
+  cancelled: 'danger',
   failed: 'danger',
   blocked: 'danger',
-  refunded: 'neutral',
+  refunded: 'warning',
   disputed: 'warning',
 };
 
@@ -36,7 +40,6 @@ const CHANNEL_VARIANT = {
   'WheelSys · Deposit': 'wheelsys',
   Terminal: 'info',
   'Mail order': 'neutral',
-  Online: 'neutral',
 };
 
 function formatMoney(amount, currency) {
@@ -55,11 +58,19 @@ function formatDate(iso) {
   return new Date(iso).toLocaleString();
 }
 
-function DetailRow({ label, value, mono }) {
+function DetailRow({ label, value, mono, error }) {
   return (
     <div className="pal-pay-detail-row">
       <span className="pal-pay-detail-label">{label}</span>
-      <span className={mono ? 'pal-pay-detail-value pal-fin-mono' : 'pal-pay-detail-value'}>
+      <span
+        className={
+          error
+            ? 'pal-pay-detail-value pal-pay-error-text'
+            : mono
+              ? 'pal-pay-detail-value pal-fin-mono'
+              : 'pal-pay-detail-value'
+        }
+      >
         {value || '—'}
       </span>
     </div>
@@ -121,7 +132,9 @@ export function StripePaymentDetailDrawer({
   transaction,
   deposit,
   franchiseId,
-  layout = 'drawer',
+  layout = 'modal',
+  fleetCars = [],
+  canPerformOperations = true,
   onClose,
   onChanged,
   onFeedback,
@@ -130,8 +143,25 @@ export function StripePaymentDetailDrawer({
   const [cancelConfirmStep, setCancelConfirmStep] = useState(false);
   const [cancelConfirmText, setCancelConfirmText] = useState('');
   const [totalAmountChf, setTotalAmountChf] = useState('');
+  const [showIncreasePanel, setShowIncreasePanel] = useState(false);
+  const [showCancelPanel, setShowCancelPanel] = useState(false);
+  const [showNewPayment, setShowNewPayment] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose?.();
+      }
+    };
+    if (layout !== 'inline') {
+      window.addEventListener('keydown', onKeyDown);
+      return () => window.removeEventListener('keydown', onKeyDown);
+    }
+    return undefined;
+  }, [layout, onClose]);
 
   const lifecycle = useMemo(
     () => resolveDepositLifecycle(transaction, deposit),
@@ -152,7 +182,6 @@ export function StripePaymentDetailDrawer({
   const currentHoldCents =
     deposit?.currentHoldAmount || deposit?.initialAmount || transaction?.depositCurrentHold || 0;
   const currentHoldChf = currentHoldCents / 100;
-  const maxAuthChf = (deposit?.maxAuthAmount || transaction?.depositMaxAuthAmount || 0) / 100;
   const increasePreview = useMemo(() => {
     const total = Number(totalAmountChf);
     if (!Number.isFinite(total) || total <= 0) return null;
@@ -160,6 +189,16 @@ export function StripePaymentDetailDrawer({
     if (additional <= 0) return { additional: 0, valid: false };
     return { additional, valid: true, total };
   }, [totalAmountChf, currentHoldChf]);
+
+  const failureNote = useMemo(
+    () => paymentFailureNote(transaction || {}),
+    [transaction],
+  );
+
+  const canRefund =
+    canPerformOperations &&
+    isCaptured &&
+    Boolean(deposit?.paymentIntentId || transaction?.paymentIntentId);
 
   const amountDisplay = useMemo(() => {
     if (!transaction) return '—';
@@ -192,7 +231,17 @@ export function StripePaymentDetailDrawer({
     );
   };
 
+  const logClick = (button, extra = {}) => {
+    logPaymentUiAction(franchiseId, button, {
+      resCode: transaction.resCode || transaction.reference,
+      paymentIntentId: transaction.paymentIntentId,
+      depositId: deposit?.id || transaction.depositId,
+      ...extra,
+    });
+  };
+
   const runCancel = async () => {
+    logClick('release_hold');
     if (!cancelReason.trim()) {
       setError('Please enter a cancellation reason.');
       return;
@@ -227,6 +276,7 @@ export function StripePaymentDetailDrawer({
   };
 
   const runCapture = async () => {
+    logClick('capture');
     const depositId = deposit?.id || transaction.depositId;
     if (!depositId) return;
     setBusy(true);
@@ -250,7 +300,27 @@ export function StripePaymentDetailDrawer({
     }
   };
 
+  const runRefund = async () => {
+    logClick('refund');
+    const pi = deposit?.paymentIntentId || transaction.paymentIntentId;
+    if (!pi) return;
+    setBusy(true);
+    setError('');
+    try {
+      await stripeFinancialRefundPayment({ franchiseId, paymentIntentId: pi });
+      pushFeedback('success', 'Refund issued', 'Full refund processed — logged to admin audit.');
+      onChanged?.();
+      onClose?.();
+    } catch (e) {
+      pushFeedbackFromError('Refund failed', e);
+      setError(e?.message || 'Refund failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const runIncrement = async () => {
+    logClick('increase_hold');
     const depositId = deposit?.id || transaction.depositId;
     if (!depositId || !increasePreview?.valid) return;
     setBusy(true);
@@ -279,104 +349,142 @@ export function StripePaymentDetailDrawer({
 
   const panelBody = (
     <>
-        <header className="pal-pay-drawer-header">
-          <div>
-            <p className="pal-fin-eyebrow">{isCaptured ? 'Captured deposit' : 'Deposit preview'}</p>
-            <p className="pal-pay-drawer-amount">{amountDisplay}</p>
-            <div className="pal-pay-drawer-badges">
+      <header className={inline ? 'pal-pay-drawer-header' : 'pal-fin-modal-header'}>
+        <div>
+          <p className="pal-fin-eyebrow">{isCaptured ? 'Payment detail' : 'Deposit preview'}</p>
+          <p className={inline ? 'pal-pay-drawer-amount' : 'pal-fin-modal-title pal-pay-modal-amount'}>
+            {amountDisplay}
+          </p>
+          <div className="pal-pay-drawer-badges">
+            <StripeStatusBadge
+              sharp
+              variant={BUCKET_VARIANT[bucket] || 'neutral'}
+              label={statusLabel}
+            />
+            {channelLabel && (
               <StripeStatusBadge
                 sharp
-                variant={BUCKET_VARIANT[bucket] || 'neutral'}
-                label={statusLabel}
+                variant={CHANNEL_VARIANT[channelLabel] || 'neutral'}
+                label={channelLabel}
               />
-              {channelLabel && (
-                <StripeStatusBadge
-                  sharp
-                  variant={CHANNEL_VARIANT[channelLabel] || 'neutral'}
-                  label={channelLabel}
-                />
-              )}
-            </div>
+            )}
           </div>
-          <button type="button" className="pal-fin-modal-close" onClick={onClose} aria-label="Close">
-            <X size={18} />
-          </button>
-        </header>
+        </div>
+        <button type="button" className="pal-fin-modal-close" onClick={onClose} aria-label="Close">
+          <X size={18} />
+        </button>
+      </header>
 
-        <div className="pal-pay-drawer-body">
-          <DetailRow label="Customer" value={transaction.customerName} />
-          <DetailRow label="Email" value={transaction.customerEmail} />
-          <DetailRow label="Plate" value={transaction.plate} mono />
-          <DetailRow label="RES code" value={transaction.resCode || transaction.reference || deposit?.resCode || transaction.displayDescription} mono />
-          <DetailRow label="Date" value={formatDate(transaction.createdAt)} />
-          {isDeposit && (
-            <DetailRow
-              label="Deposit hold"
-              value={formatMoney(currentHoldCents, transaction.currency)}
-            />
+      {canPerformOperations && (canCaptureDeposit || canRefund || (deposit?.tokenSaved || transaction?.tokenSaved)) && (
+        <div className="pal-pay-action-bar">
+          {canCaptureDeposit && (
+            <button
+              type="button"
+              className="gm-btn gm-btn-primary gm-btn-sm"
+              disabled={busy}
+              onClick={runCapture}
+            >
+              <CreditCard size={14} /> Capture
+            </button>
+          )}
+          {canRefund && (
+            <button
+              type="button"
+              className="gm-btn gm-btn-secondary gm-btn-sm"
+              disabled={busy}
+              onClick={runRefund}
+            >
+              <RotateCcw size={14} /> Refund
+            </button>
           )}
           {(deposit?.tokenSaved || transaction?.tokenSaved) && (
-            <div className="pal-pay-detail-row">
-              <span className="pal-pay-detail-label">Token</span>
-              <span className="pal-fin-token-saved-badge">Token saved</span>
-            </div>
+            <button
+              type="button"
+              className="gm-btn gm-btn-secondary gm-btn-sm"
+              disabled={busy}
+              onClick={() => {
+                logClick('new_payment');
+                setShowNewPayment(true);
+              }}
+            >
+              <Plus size={14} /> New payment
+            </button>
           )}
-          {transaction.depositSource === 'wheelsys' && (
-            <DetailRow label="Origin" value="WheelSys rental flow" />
-          )}
+        </div>
+      )}
+
+      <div className={inline ? 'pal-pay-drawer-body' : 'pal-fin-modal-body pal-pay-detail-body'}>
+        <DetailRow label="Customer" value={transaction.customerName} />
+        <DetailRow label="Email" value={transaction.customerEmail} />
+        <DetailRow label="Plate" value={transaction.plate} mono />
+        <DetailRow
+          label="RES code"
+          value={transaction.resCode || transaction.reference || deposit?.resCode || transaction.displayDescription}
+          mono
+        />
+        <DetailRow label="Date" value={formatDate(transaction.createdAt)} />
+        {isDeposit && (
+          <DetailRow label="Deposit hold" value={formatMoney(currentHoldCents, transaction.currency)} />
+        )}
+        {(deposit?.tokenSaved || transaction?.tokenSaved) && (
           <div className="pal-pay-detail-row">
-            <span className="pal-pay-detail-label">Card</span>
-            <StripePaymentMethodCell
-              brand={transaction.cardBrand}
-              last4={transaction.cardLast4}
-              methodType={transaction.paymentMethod}
-            />
+            <span className="pal-pay-detail-label">Token</span>
+            <span className="pal-fin-token-saved-badge">Token saved</span>
           </div>
-          {transaction.paymentIntentId && (
-            <DetailRow label="Payment intent" value={transaction.paymentIntentId} mono />
-          )}
-          {(transaction.failureMessage || transaction.declineCode || transaction.failureCode) && (
-            <DetailRow
-              label="Decline reason"
-              value={[transaction.failureMessage, transaction.declineCode || transaction.failureCode]
-                .filter(Boolean)
-                .join(' · ')}
-            />
-          )}
-          {isCaptured && deposit?.capturedAt && (
-            <DetailRow label="Captured at" value={formatDate(deposit.capturedAt)} />
-          )}
+        )}
+        {transaction.depositSource === 'wheelsys' && (
+          <DetailRow label="Origin" value="WheelSys rental flow" />
+        )}
+        <div className="pal-pay-detail-row">
+          <span className="pal-pay-detail-label">Card</span>
+          <StripePaymentMethodCell
+            brand={transaction.cardBrand}
+            last4={transaction.cardLast4}
+            methodType={transaction.paymentMethod}
+          />
+        </div>
+        {transaction.paymentIntentId && (
+          <DetailRow label="Payment intent" value={transaction.paymentIntentId} mono />
+        )}
+        {failureNote && <DetailRow label="Decline reason" value={failureNote} error />}
+        {isCaptured && deposit?.capturedAt && (
+          <DetailRow label="Captured at" value={formatDate(deposit.capturedAt)} />
+        )}
+        {deposit?.cancelReason && <DetailRow label="Cancel note" value={deposit.cancelReason} />}
 
-          {deposit?.cancelReason && (
-            <DetailRow label="Cancel note" value={deposit.cancelReason} />
-          )}
+        {isPendingCollection && (
+          <p className="pal-fin-alert pal-fin-alert-warn">
+            Waiting for card on POS — capture is available only after the hold is authorized.
+          </p>
+        )}
 
-          {isPendingCollection && (
-            <div className="pal-pay-drawer-section">
-              <p className="pal-fin-alert pal-fin-alert-warn">
-                Waiting for card on POS — capture is available only after the hold is authorized.
-              </p>
-            </div>
-          )}
+        {isCaptured && (
+          <p className="pal-fin-alert pal-fin-alert-ok">
+            Funds captured — reported as Paid / Successful.
+          </p>
+        )}
 
-          {isCaptured && (
-            <div className="pal-pay-drawer-section">
-              <p className="pal-fin-alert pal-fin-alert-ok">
-                Funds captured — reported as Paid / Successful. Hold release and cancel are disabled.
-              </p>
-            </div>
-          )}
+        {deposit?.emailSentAt && (
+          <DetailRow
+            label="Email"
+            value={
+              deposit.emailSentOk
+                ? `Sent ${new Date(deposit.emailSentAt).toLocaleString()}`
+                : deposit.emailSentMessage || 'Failed'
+            }
+          />
+        )}
 
-          {deposit?.emailSentAt && (
-            <DetailRow
-              label="Email"
-              value={deposit.emailSentOk ? `Sent ${new Date(deposit.emailSentAt).toLocaleString()}` : deposit.emailSentMessage || 'Failed'}
-            />
-          )}
-
-          {canManageDeposit && (
-            <div className="pal-pay-drawer-section">
-              <p className="pal-fin-eyebrow">Increase hold</p>
+        {canManageDeposit && (
+          <div className="pal-pay-drawer-section">
+            <button
+              type="button"
+              className="pal-pay-expand-toggle"
+              onClick={() => setShowIncreasePanel((v) => !v)}
+            >
+              {showIncreasePanel ? 'Hide' : 'Increase hold'}
+            </button>
+            {showIncreasePanel && (
               <div className="pal-pay-increase-panel">
                 <p className="text-caption">
                   Current hold: <strong>{formatMoney(currentHoldCents, transaction.currency)}</strong>
@@ -388,13 +496,10 @@ export function StripePaymentDetailDrawer({
                     min={currentHoldChf + 0.05}
                     step="0.05"
                     value={totalAmountChf}
-                    onChange={(e) => {
-                      setTotalAmountChf(e.target.value);
-                    }}
+                    onChange={(e) => setTotalAmountChf(e.target.value)}
                     placeholder={`e.g. ${(currentHoldChf + 100).toFixed(2)}`}
                     disabled={busy}
                   />
-                  <small>Enter the full amount to hold after damage — not just the extra.</small>
                 </label>
                 {increasePreview && (
                   <p
@@ -409,77 +514,59 @@ export function StripePaymentDetailDrawer({
                       : 'Total must be greater than current deposit hold'}
                   </p>
                 )}
-                <div className="pal-pay-drawer-actions">
-                  {canCaptureDeposit && (
-                    <button
-                      type="button"
-                      className="gm-btn gm-btn-primary gm-btn-sm"
-                      disabled={busy}
-                      onClick={runCapture}
-                    >
-                      <CreditCard size={14} /> Capture hold
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="gm-btn gm-btn-secondary gm-btn-sm"
-                    disabled={busy || !increasePreview?.valid}
-                    onClick={runIncrement}
-                  >
-                    Authorize {increasePreview?.valid ? `${increasePreview.total.toFixed(2)} CHF` : 'increase'}
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  className="gm-btn gm-btn-secondary gm-btn-sm"
+                  disabled={busy || !increasePreview?.valid}
+                  onClick={runIncrement}
+                >
+                  Authorize increase
+                </button>
               </div>
-            </div>
-          )}
+            )}
+          </div>
+        )}
 
-          {canCancel && (
-            <div className="pal-pay-drawer-section pal-pay-drawer-cancel">
-              <p className="pal-fin-eyebrow">Release hold</p>
-              <label className="pal-fin-field pal-fin-field-full">
-                <span>Reason (required)</span>
-                <textarea
-                  rows={3}
-                  value={cancelReason}
-                  onChange={(e) => setCancelReason(e.target.value)}
-                  placeholder="e.g. Customer declined, wrong amount, duplicate attempt…"
-                  disabled={busy}
-                />
-              </label>
-              {cancelConfirmStep && (
-                <>
-                  <p className="pal-cust-confirm-warn">
-                    Type <strong>CANCEL</strong> to release this deposit hold. This action is logged with your name, RES and customer.
-                  </p>
-                  <label className="pal-fin-field pal-fin-field-full">
-                    <span>Confirmation</span>
-                    <input
-                      type="text"
-                      className="pal-fin-input"
-                      value={cancelConfirmText}
-                      onChange={(e) => setCancelConfirmText(e.target.value)}
-                      placeholder="CANCEL"
-                      disabled={busy}
-                      autoComplete="off"
-                      spellCheck={false}
-                    />
-                  </label>
-                </>
-              )}
-              <div className="pal-cust-action-row">
-                {cancelConfirmStep && (
-                  <button
-                    type="button"
-                    className="gm-btn gm-btn-secondary gm-btn-sm"
+        {canCancel && (
+          <div className="pal-pay-drawer-section pal-pay-drawer-cancel">
+            <button
+              type="button"
+              className="pal-pay-expand-toggle pal-pay-expand-toggle-danger"
+              onClick={() => setShowCancelPanel((v) => !v)}
+            >
+              {showCancelPanel ? 'Hide release' : 'Release hold'}
+            </button>
+            {showCancelPanel && (
+              <>
+                <label className="pal-fin-field pal-fin-field-full">
+                  <span>Reason (required)</span>
+                  <textarea
+                    rows={3}
+                    value={cancelReason}
+                    onChange={(e) => setCancelReason(e.target.value)}
+                    placeholder="e.g. Customer declined, wrong amount…"
                     disabled={busy}
-                    onClick={() => {
-                      setCancelConfirmStep(false);
-                      setCancelConfirmText('');
-                      setError('');
-                    }}
-                  >
-                    Back
-                  </button>
+                  />
+                </label>
+                {cancelConfirmStep && (
+                  <>
+                    <p className="pal-cust-confirm-warn">
+                      Type <strong>CANCEL</strong> to release this deposit hold.
+                    </p>
+                    <label className="pal-fin-field pal-fin-field-full">
+                      <span>Confirmation</span>
+                      <input
+                        type="text"
+                        className="pal-fin-input"
+                        value={cancelConfirmText}
+                        onChange={(e) => setCancelConfirmText(e.target.value)}
+                        placeholder="CANCEL"
+                        disabled={busy}
+                        autoComplete="off"
+                        spellCheck={false}
+                      />
+                    </label>
+                  </>
                 )}
                 <button
                   type="button"
@@ -489,33 +576,64 @@ export function StripePaymentDetailDrawer({
                 >
                   <Ban size={14} /> {cancelConfirmStep ? 'Release deposit' : 'Cancel & release hold'}
                 </button>
-              </div>
-            </div>
-          )}
+              </>
+            )}
+          </div>
+        )}
 
-          {error && <p className="pal-fin-alert">{error}</p>}
-        </div>
+        {error && <p className="pal-fin-alert pal-pay-error-text">{error}</p>}
+      </div>
     </>
   );
 
+  if (showNewPayment) {
+    return (
+      <StripeNewPaymentModal
+        franchiseId={franchiseId}
+        fleetCars={fleetCars}
+        onClose={() => setShowNewPayment(false)}
+        onFeedback={onFeedback}
+        onSuccess={() => {
+          setShowNewPayment(false);
+          onChanged?.();
+        }}
+      />
+    );
+  }
+
   if (inline) {
     return (
-      <aside className="pal-pay-drawer pal-pay-panel-inline" aria-label="Deposit detail">
+      <aside className="pal-pay-drawer pal-pay-panel-inline" aria-label="Payment detail">
         {panelBody}
       </aside>
     );
   }
 
+  if (layout === 'drawer') {
+    return (
+      <div className="pal-pay-drawer-backdrop" role="presentation" onClick={onClose}>
+        <aside
+          className="pal-pay-drawer"
+          role="dialog"
+          aria-modal="true"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {panelBody}
+        </aside>
+      </div>
+    );
+  }
+
   return (
-    <div className="pal-pay-drawer-backdrop" role="presentation" onClick={onClose}>
-      <aside
-        className="pal-pay-drawer"
+    <div className="pal-fin-modal-backdrop" role="presentation" onClick={onClose}>
+      <div
+        className="pal-fin-modal pal-fin-modal-wide pal-pay-detail-modal"
         role="dialog"
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
       >
         {panelBody}
-      </aside>
+      </div>
     </div>
   );
 }

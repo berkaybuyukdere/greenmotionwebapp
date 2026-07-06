@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { X, ExternalLink, Mail } from 'lucide-react';
 import { StripeStatusBadge } from '../StripeListUI';
 import {
@@ -35,6 +35,18 @@ function categoryLabel(category) {
 }
 
 export function StripeMailOrderDetailDrawer({ order, onClose }) {
+  useEffect(() => {
+    if (!order) return undefined;
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose?.();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [order, onClose]);
+
   if (!order) return null;
 
   const paid = order.status === 'paid';
@@ -43,32 +55,38 @@ export function StripeMailOrderDetailDrawer({ order, onClose }) {
   const rem2 = getMailOrderReminderDisplay(order.reminder2, '2nd');
 
   return (
-    <div className="pal-pay-drawer-backdrop" onClick={onClose} role="presentation">
-      <aside className="pal-pay-drawer" onClick={(e) => e.stopPropagation()} aria-label="Mail order details">
-        <header className="pal-pay-drawer-header">
+    <div className="pal-fin-modal-backdrop" onClick={onClose} role="presentation">
+      <div
+        className="pal-fin-modal pal-fin-modal-compact pal-pay-detail-modal"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Mail order details"
+      >
+        <header className="pal-fin-modal-header pal-fin-modal-header-compact">
           <div>
             <p className="pal-fin-eyebrow">Mail order</p>
-            <h2 className="pal-pay-drawer-amount">{order.resNo || order.productName}</h2>
-            <p className="pal-pay-drawer-sub">{formatMoney(order.amount, order.currency)}</p>
+            <h2 className="pal-fin-modal-title pal-pay-modal-amount">{order.resNo || order.productName}</h2>
+            <p className="pal-fin-modal-sub">{formatMoney(order.amount, order.currency)}</p>
           </div>
-          <button type="button" className="pal-pay-drawer-close" onClick={onClose} aria-label="Close">
+          <button type="button" className="pal-fin-modal-close" onClick={onClose} aria-label="Close">
             <X size={18} />
           </button>
         </header>
 
-        <div className="pal-pay-drawer-badges">
-          <StripeStatusBadge
-            sharp
-            variant={paid ? 'success' : emailSent ? 'info' : 'warning'}
-            label={paid ? 'Paid' : emailSent ? 'Email sent' : 'Awaiting payment'}
-          />
-          <StripeStatusBadge sharp variant="neutral" label={categoryLabel(order.category)} />
-          {order.linkStatus === 'expired' && !paid && (
-            <StripeStatusBadge sharp variant="danger" label="Link expired" />
-          )}
-        </div>
+        <div className="pal-fin-modal-body pal-fin-modal-body-compact pal-pay-drawer-body">
+          <div className="pal-pay-drawer-badges">
+            <StripeStatusBadge
+              sharp
+              variant={paid ? 'success' : emailSent ? 'info' : 'warning'}
+              label={paid ? 'Paid' : emailSent ? 'Email sent' : 'Awaiting payment'}
+            />
+            <StripeStatusBadge sharp variant="neutral" label={categoryLabel(order.category)} />
+            {order.linkStatus === 'expired' && !paid && (
+              <StripeStatusBadge sharp variant="danger" label="Link expired" />
+            )}
+          </div>
 
-        <div className="pal-pay-drawer-body">
           <DetailRow label="Customer" value={order.customerName} />
           <DetailRow label="Email" value={order.customerEmail} />
           <DetailRow label="Mail content" value={order.mailContent || order.description} />
@@ -121,7 +139,13 @@ export function StripeMailOrderDetailDrawer({ order, onClose }) {
             </p>
           )}
         </div>
-      </aside>
+
+        <footer className="pal-fin-modal-footer">
+          <button type="button" className="gm-btn gm-btn-secondary gm-btn-sm" onClick={onClose}>
+            Close
+          </button>
+        </footer>
+      </div>
     </div>
   );
 }

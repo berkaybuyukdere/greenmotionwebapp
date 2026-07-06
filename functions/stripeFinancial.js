@@ -2391,6 +2391,19 @@ async function runListPayments(request) {
   };
 }
 
+async function runLogStaffAction(request) {
+  await assertFinancialCallable(request);
+  const data = request.data || {};
+  const franchiseId = normalizeFranchiseId(data.franchiseId);
+  assertSwitzerlandFranchise(franchiseId);
+  const uid = request.auth?.uid || 'unknown';
+  const action = String(data.action || 'payment_ui_click').slice(0, 80);
+  const detail =
+    data.detail && typeof data.detail === 'object' && !Array.isArray(data.detail) ? data.detail : {};
+  await writeAudit(franchiseId, uid, action, { ...detail, uiOnly: true });
+  return { ok: true };
+}
+
 async function runListAudit(request) {
   await assertFinancialCallable(request);
   const data = request.data || {};
@@ -2587,5 +2600,6 @@ module.exports = {
   runListMailOrders,
   runListPayments,
   runListAudit,
+  runLogStaffAction,
   runMailOrderCheckoutRedirect,
 };

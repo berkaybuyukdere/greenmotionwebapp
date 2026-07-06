@@ -343,13 +343,13 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false, 
 
       {workbenchGroupLive && (
         <StripeCustomerWorkbenchModal
-          layout="drawer"
+          layout="modal"
           group={workbenchGroupLive}
           franchiseId={franchiseId}
           showFinancialTotals={showFinancialTotals}
           canPerformOperations={canPerformOperations}
           auditEntries={audit}
-          initialTab="actions"
+          initialTab="general"
           hideSignalStrip
           onClose={() => setWorkbenchGroup(null)}
           onChanged={load}

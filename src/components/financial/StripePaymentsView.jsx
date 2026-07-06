@@ -28,7 +28,7 @@ const BUCKET_VARIANT = {
 
 const DEPOSIT_STATUS_VARIANT = {
   hold: 'info',
-  increased: 'warning',
+  increased: 'purple',
   captured: 'success',
   captured_increased: 'success',
   pending: 'warning',
@@ -516,7 +516,7 @@ export function StripePaymentsView({ franchiseId, showFinancialTotals = true, fl
           <p className="pal-fin-eyebrow">Finance · Stripe · Switzerland</p>
           <h1 className="pal-fin-title">Deposits</h1>
           <p className="pal-fin-subtitle">
-            Terminal deposit holds and capture — select a row to charge or release on the right.
+            Terminal deposit holds and capture — select a row to open the detail modal.
           </p>
           {stripeMode === 'live' && <span className="pal-fin-mode-live mt-2">Live mode</span>}
           {stripeMode === 'test' && <span className="pal-fin-mode-test mt-2">Test mode</span>}

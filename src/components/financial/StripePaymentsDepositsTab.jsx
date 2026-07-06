@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDownUp, RefreshCw } from 'lucide-react';
 import {
   StripeDataTable,
@@ -81,15 +81,16 @@ export function StripePaymentsDepositsTab({
   const [filter, setFilter] = useState('all');
   const [sortBy, setSortBy] = useState('date_desc');
   const [workbenchGroup, setWorkbenchGroup] = useState(null);
-  const [workbenchInitialTab, setWorkbenchInitialTab] = useState('overview');
+  const [workbenchInitialTab, setWorkbenchInitialTab] = useState('general');
   const [selectedPayment, setSelectedPayment] = useState(null);
   const [centerFeedback, setCenterFeedback] = useState(null);
+  const hasLoadedRef = useRef(false);
 
   const load = useCallback(
     async ({ syncStripe = false } = {}) => {
       if (!franchiseId) return;
       setError('');
-      const hasCached = paymentRows.length > 0;
+      const hasCached = hasLoadedRef.current;
       if (!hasCached) setLoading(true);
       if (syncStripe) setSyncing(true);
 
@@ -119,9 +120,10 @@ export function StripePaymentsDepositsTab({
       } finally {
         setLoading(false);
         setSyncing(false);
+        hasLoadedRef.current = true;
       }
     },
-    [franchiseId, paymentRows.length],
+    [franchiseId],
   );
 
   useEffect(() => {
@@ -170,11 +172,11 @@ export function StripePaymentsDepositsTab({
     () => [
       { id: 'all', label: 'All', count: kpi.total },
       { id: 'captured', label: 'Succeeded', count: kpi.captured, dotColor: '#16a34a' },
-      { id: 'refunded', label: 'Refunded', count: kpi.refunded, dotColor: '#64748b' },
+      { id: 'refunded', label: 'Refunded', count: kpi.refunded, dotColor: '#d97706' },
       { id: 'failed', label: 'Failed', count: kpi.failed, dotColor: '#dc2626' },
       { id: 'hold', label: 'Uncaptured', count: kpi.hold, dotColor: '#2563eb' },
-      { id: 'increased', label: 'Increased', count: kpi.increased, dotColor: '#d97706' },
-      { id: 'released', label: 'Canceled', count: kpi.released, dotColor: '#94a3b8' },
+      { id: 'increased', label: 'Increased', count: kpi.increased, dotColor: '#9D7CD8' },
+      { id: 'released', label: 'Canceled', count: kpi.released, dotColor: '#dc2626' },
     ],
     [kpi],
   );
@@ -259,7 +261,7 @@ export function StripePaymentsDepositsTab({
     setSelectedPayment(null);
     const group = resolvePaymentGroup(row, groups, deposits, mailOrders);
     if (group) {
-      setWorkbenchInitialTab(row.bucket === 'hold' ? 'actions' : 'overview');
+      setWorkbenchInitialTab(row.bucket === 'hold' ? 'payments' : 'general');
       setWorkbenchGroup(group);
       return;
     }
@@ -324,6 +326,7 @@ export function StripePaymentsDepositsTab({
           value={kpi.increased}
           sub="Hold raised"
           tone="warning"
+          className="pal-fin-kpi-increased"
           active={filter === 'increased'}
           onClick={() => setFilter('increased')}
         />
@@ -385,10 +388,10 @@ export function StripePaymentsDepositsTab({
 
       {workbenchGroupLive && (
         <StripeCustomerWorkbenchModal
-          layout="drawer"
+          layout="modal"
           group={workbenchGroupLive}
           franchiseId={franchiseId}
-          initialTab={workbenchInitialTab}
+          initialTab={workbenchInitialTab === 'actions' ? 'payments' : workbenchInitialTab === 'overview' ? 'general' : workbenchInitialTab}
           showFinancialTotals={showFinancialTotals}
           canPerformOperations={canPerformOperations}
           auditEntries={audit}

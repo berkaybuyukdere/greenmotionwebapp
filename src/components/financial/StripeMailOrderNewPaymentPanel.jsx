@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Upload, X } from 'lucide-react';
+import { Upload, X, User, Mail, Hash, Paperclip } from 'lucide-react';
 import { ref, uploadBytes } from 'firebase/storage';
 import { storage } from '../../firebase/client';
 import {
@@ -33,16 +33,11 @@ const CATEGORY_OPTIONS = [
   { id: 'extra', title: 'Extra', sub: 'Misc. charges · damage mailbox', tone: 'extra' },
 ];
 
-function categoryBtnClass(category, active, tone) {
+function categoryBtnClass(category, active) {
   const base = 'pal-fin-category-btn';
   if (!active) return base;
-  const toneClass =
-    tone === 'traffic'
-      ? 'pal-fin-category-btn-active-traffic'
-      : tone === 'damage' || tone === 'extra'
-        ? 'pal-fin-category-btn-active-damage'
-        : '';
-  return `${base} pal-fin-category-btn-active ${toneClass}`.trim();
+  const tone = CATEGORY_OPTIONS.find((o) => o.id === category)?.tone || 'damage';
+  return `${base} pal-fin-category-btn-active pal-fin-category-btn-active-${tone}`;
 }
 
 function mailPreviewSubject({ category, resNo }) {
@@ -81,10 +76,16 @@ function MailComposePreview({ to, subject, body, onBodyChange, files = [] }) {
       </div>
       {files.length > 0 && (
         <div className="pal-fin-mail-compose-attachments">
-          <span className="pal-fin-mail-compose-label">Attachments</span>
-          <ul>
+          <span className="pal-fin-mail-compose-label">
+            <Paperclip size={12} aria-hidden /> Attachments ({files.length})
+          </span>
+          <ul className="pal-fin-attachment-preview-list">
             {files.map((f) => (
-              <li key={f.name}>{f.name}</li>
+              <li key={`${f.name}-${f.size}`} className="pal-fin-attachment-preview-item">
+                <Paperclip size={12} aria-hidden />
+                <span className="truncate">{f.name}</span>
+                <span className="pal-fin-attachment-preview-size">{Math.round(f.size / 1024)} KB</span>
+              </li>
             ))}
           </ul>
         </div>
@@ -236,7 +237,7 @@ export function StripeMailOrderNewPaymentPanel({
               <button
                 key={opt.id}
                 type="button"
-                className={categoryBtnClass(opt.id, form.category === opt.id, opt.tone)}
+                className={categoryBtnClass(opt.id, form.category === opt.id)}
                 onClick={() => setForm((f) => ({ ...f, category: opt.id }))}
               >
                 <span className="pal-fin-category-btn-title">{opt.title}</span>
@@ -245,24 +246,36 @@ export function StripeMailOrderNewPaymentPanel({
             ))}
           </div>
 
-          <label className="block">
-            <span className="pal-fin-field-label">RES code *</span>
-            <input
-              className="pal-fin-input pal-fin-mono"
-              value={form.resNo}
-              onChange={(e) => setForm((f) => ({ ...f, resNo: normalizeResCodeInput(e.target.value) }))}
-              placeholder="17505"
-            />
-            <span className="text-caption">Type number only — RES- is prefilled.</span>
+          <label className="block pal-fin-field-block">
+            <span className="pal-fin-field-label-row">
+              <Hash size={14} aria-hidden />
+              RES code *
+            </span>
+            <div className="pal-fin-res-prefill-row">
+              <span className="pal-fin-res-prefix">RES-</span>
+              <input
+                className="pal-fin-input pal-fin-mono pal-fin-res-input"
+                value={form.resNo}
+                onChange={(e) => setForm((f) => ({ ...f, resNo: normalizeResCodeInput(e.target.value) }))}
+                placeholder="17505"
+              />
+            </div>
+            <span className="text-caption">Type number only — RES- prefix is added automatically.</span>
           </label>
-          <div className="pal-fin-inline-form-row">
-            <label className="block">
-              <span className="pal-fin-field-label">Customer name *</span>
-              <input className="pal-fin-input" value={form.customerName} onChange={(e) => setForm((f) => ({ ...f, customerName: e.target.value }))} />
+          <div className="pal-fin-inline-form-row pal-fin-inline-form-row-padded">
+            <label className="block pal-fin-field-block">
+              <span className="pal-fin-field-label-row">
+                <User size={14} aria-hidden />
+                Customer name *
+              </span>
+              <input className="pal-fin-input" value={form.customerName} onChange={(e) => setForm((f) => ({ ...f, customerName: e.target.value }))} placeholder="First and last name" />
             </label>
-            <label className="block">
-              <span className="pal-fin-field-label">Customer email *</span>
-              <input type="email" className="pal-fin-input" value={form.customerEmail} onChange={(e) => setForm((f) => ({ ...f, customerEmail: e.target.value }))} />
+            <label className="block pal-fin-field-block">
+              <span className="pal-fin-field-label-row">
+                <Mail size={14} aria-hidden />
+                Customer email *
+              </span>
+              <input type="email" className="pal-fin-input" value={form.customerEmail} onChange={(e) => setForm((f) => ({ ...f, customerEmail: e.target.value }))} placeholder="name@example.com" />
             </label>
           </div>
           <MailComposePreview
@@ -294,7 +307,11 @@ export function StripeMailOrderNewPaymentPanel({
                 multiple
                 id="new-payment-mail-order-files"
                 className="sr-only"
-                onChange={(e) => setFiles(Array.from(e.target.files || []))}
+                onChange={(e) => {
+                  const picked = Array.from(e.target.files || []);
+                  if (picked.length) setFiles((prev) => [...prev, ...picked]);
+                  e.target.value = '';
+                }}
               />
               <label htmlFor="new-payment-mail-order-files" className="gm-btn gm-btn-secondary gm-btn-sm cursor-pointer">
                 <Upload size={14} />

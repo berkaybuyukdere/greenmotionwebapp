@@ -202,15 +202,18 @@ function CompactChargeForm({ franchiseId, onClose, onSuccess, onFeedback }) {
             ))}
           </div>
           <div className="pal-fin-form-grid pal-fin-form-grid-compact">
-            <label className="pal-fin-field">
+            <label className="pal-fin-field pal-fin-field-full">
               <span>RES code *</span>
-              <input
-                className="pal-fin-mono"
-                value={resNo}
-                onChange={(e) => setResNo(normalizeResCodeInput(e.target.value))}
-                placeholder="17505"
-                disabled={busy}
-              />
+              <div className="pal-fin-res-prefill-row">
+                <span className="pal-fin-res-prefix">RES-</span>
+                <input
+                  className="pal-fin-mono pal-fin-res-input"
+                  value={resNo}
+                  onChange={(e) => setResNo(normalizeResCodeInput(e.target.value))}
+                  placeholder="17505"
+                  disabled={busy}
+                />
+              </div>
             </label>
             <label className="pal-fin-field">
               <span>Customer name *</span>
@@ -391,7 +394,7 @@ export function StripeManualChargeModal({ franchiseId, onClose, onSuccess, onFee
             <X size={18} />
           </button>
         </header>
-        <div className="pal-fin-modal-body">
+        <div className="pal-fin-modal-body pal-fin-modal-charge-body">
           {loading && <p className="pal-fin-empty">Loading Stripe…</p>}
           {loadError && <div className="pal-fin-alert">{loadError}</div>}
           {!loading && !loadError && stripePromise && (

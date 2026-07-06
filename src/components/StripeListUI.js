@@ -9,6 +9,7 @@ const BADGE_CLASS = {
     info: 'gm-badge gm-badge-info',
     neutral: 'gm-badge gm-badge-neutral',
     purple: 'gm-badge gm-badge-purple',
+    refunded: 'gm-badge pal-fin-badge-refunded',
     deposit: 'gm-badge gm-badge-deposit',
     wheelsys: 'gm-badge gm-badge-wheelsys',
     paid: 'gm-badge pal-fin-badge-paid',

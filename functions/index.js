@@ -3707,6 +3707,7 @@ exports.stripeFinancialMailOrderCheckout = onRequest(
 );
 exports.stripeFinancialListPayments = onCall(stripeFinancialOpts, stripeFinancial.runListPayments);
 exports.stripeFinancialListAudit = onCall(stripeFinancialOpts, stripeFinancial.runListAudit);
+exports.stripeFinancialLogStaffAction = onCall(stripeFinancialOpts, stripeFinancial.runLogStaffAction);
 
 const stripeTerminalDeposits = require('./stripeTerminalDeposits');
 const stripeTerminalOpts = stripeTerminalDeposits.callableOpts;

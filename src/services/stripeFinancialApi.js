@@ -254,3 +254,8 @@ export function stripeFinancialRefundPayment({ franchiseId, paymentIntentId, mai
     ...(reason ? { reason } : {}),
   });
 }
+
+/** Record staff payment UI button click in admin audit log (no Stripe side effects). */
+export function stripeFinancialLogStaffAction({ franchiseId, action = 'payment_ui_click', detail = {} } = {}) {
+  return call('stripeFinancialLogStaffAction', { franchiseId, action, detail });
+}

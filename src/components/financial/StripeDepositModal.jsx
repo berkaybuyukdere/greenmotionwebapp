@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, Loader2, X, XCircle } from 'lucide-react';
+import { CheckCircle2, Loader2, X, XCircle, User, Hash, Banknote, Terminal as TerminalIcon } from 'lucide-react';
 import {
   stripeFinancialCreateDeposit,
   stripeFinancialConfirmDepositCollection,
@@ -240,20 +240,12 @@ export function StripeDepositModal({ franchiseId, onClose, onSuccess, onFeedback
         return;
       }
       if (msg.includes('timed out')) {
-        if (createdDepositId) {
-          try {
-            await stripeFinancialCancelDeposit({
-              franchiseId,
-              depositId: createdDepositId,
-              reason: e?.message || 'Timed out',
-            });
-          } catch {
-            /* ignore */
-          }
-        }
-        depositIdRef.current = '';
-        setRetryDepositId('');
-        setError(e?.message || 'Deposit timed out');
+        depositIdRef.current = createdDepositId;
+        setRetryDepositId(createdDepositId);
+        setError(
+          e?.message ||
+            'Timed out waiting for card. The deposit hold was NOT released — cancel manually if needed.',
+        );
         setStep('form');
         return;
       }
@@ -381,7 +373,10 @@ export function StripeDepositModal({ franchiseId, onClose, onSuccess, onFeedback
                 </small>
               </div>
               <label className="pal-fin-field">
-                <span>{bookingCodeKind === BOOKING_CODE_RNT ? 'RNT code *' : 'RES code *'}</span>
+                <span className="pal-fin-field-label-row">
+                  <Hash size={14} aria-hidden />
+                  {bookingCodeKind === BOOKING_CODE_RNT ? 'RNT code *' : 'RES code *'}
+                </span>
                 <input
                   value={resCode}
                   onChange={(e) => setResCode(normalizeResCodeInput(e.target.value, bookingCodeKind))}
@@ -394,15 +389,24 @@ export function StripeDepositModal({ franchiseId, onClose, onSuccess, onFeedback
                 </small>
               </label>
               <label className="pal-fin-field pal-fin-field-full">
-                <span>Customer name *</span>
+                <span className="pal-fin-field-label-row">
+                  <User size={14} aria-hidden />
+                  Customer name *
+                </span>
                 <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="First and last name" />
               </label>
               <label className="pal-fin-field">
-                <span>Deposit amount (CHF) *</span>
+                <span className="pal-fin-field-label-row">
+                  <Banknote size={14} aria-hidden />
+                  Deposit amount (CHF) *
+                </span>
                 <input type="number" min="1" step="0.05" value={depositAmountChf} onChange={(e) => setDepositAmountChf(e.target.value)} />
               </label>
               <label className="pal-fin-field pal-fin-field-full">
-                <span>POS terminal *</span>
+                <span className="pal-fin-field-label-row">
+                  <TerminalIcon size={14} aria-hidden />
+                  POS terminal *
+                </span>
                 <select value={selectedReaderId} onChange={(e) => setSelectedReaderId(e.target.value)}>
                   <option value="">Select terminal…</option>
                   {readers.map((r) => (
