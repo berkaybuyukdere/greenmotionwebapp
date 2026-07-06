@@ -303,8 +303,11 @@ function extractCardholderName(charge, pi) {
   return String(fromCharge || fromPresent || fromPi || '').trim();
 }
 
-async function writeAudit(franchiseId, uid, action, detail = {}) {
+async function writeAudit(franchiseId, uid, action, detail = {}, profile = null) {
   try {
+    const actor = profile
+      ? actorFromProfile(profile, uid)
+      : { actorName: await resolveUserDisplayName(uid), actorEmail: null };
     await admin
       .firestore()
       .collection('franchises')
@@ -312,14 +315,76 @@ async function writeAudit(franchiseId, uid, action, detail = {}) {
       .collection('stripeFinancialAudit')
       .add({
         action,
-        detail,
+        detail: { ...detail, actorName: actor.actorName, actorEmail: actor.actorEmail },
         uid,
+        actorName: actor.actorName,
+        actorEmail: actor.actorEmail || null,
         franchiseId,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
   } catch (e) {
     console.warn('[stripeTerminalDeposits] audit', e?.message);
   }
+}
+
+function actorFromProfile(profile, uid) {
+  if (!profile) {
+    return { actorName: uid ? String(uid).slice(0, 8) : 'Staff', actorEmail: null };
+  }
+  return {
+    actorName: String(profile.displayName || profile.email || uid || 'Staff').slice(0, 120),
+    actorEmail: profile.email || null,
+  };
+}
+
+function depositAuditContext(row, overrides = {}) {
+  return {
+    depositId: overrides.depositId ?? null,
+    paymentIntentId: row?.paymentIntentId || overrides.paymentIntentId || null,
+    resCode: row?.resCode || row?.reference || overrides.resCode || null,
+    customerName: row?.customerName || overrides.customerName || null,
+    customerEmail: row?.customerEmail || overrides.customerEmail || null,
+    plate: row?.plate || overrides.plate || null,
+  };
+}
+
+const auditNameCache = new Map();
+
+async function resolveUserDisplayName(uid) {
+  if (!uid) return 'Staff';
+  const cached = auditNameCache.get(uid);
+  if (cached && cached.expiresAt > Date.now()) return cached.name;
+  try {
+    const snap = await admin.firestore().collection('users').doc(uid).get();
+    const name = snap.exists
+      ? String((snap.data() || {}).displayName || (snap.data() || {}).email || uid).slice(0, 120)
+      : String(uid).slice(0, 8);
+    auditNameCache.set(uid, { name, expiresAt: Date.now() + PROFILE_CACHE_TTL_MS });
+    return name;
+  } catch {
+    return String(uid).slice(0, 8);
+  }
+}
+
+async function resolveUserDisplayNames(uids) {
+  const unique = [...new Set((uids || []).filter(Boolean))];
+  const map = new Map();
+  await Promise.all(
+    unique.map(async (uid) => {
+      map.set(uid, await resolveUserDisplayName(uid));
+    }),
+  );
+  return map;
+}
+
+function enrichDepositActorNames(mapped, nameByUid) {
+  const pick = (uid, stored) => stored || (uid ? nameByUid.get(uid) : null) || null;
+  return {
+    ...mapped,
+    createdByName: pick(mapped.createdBy, mapped.createdByName),
+    cancelledByName: pick(mapped.cancelledBy, mapped.cancelledByName),
+    capturedByName: pick(mapped.capturedBy, mapped.capturedByName),
+  };
 }
 
 function mapDepositDoc(id, row) {
@@ -352,6 +417,19 @@ function mapDepositDoc(id, row) {
     stripePaymentMethodId: row.stripePaymentMethodId || null,
     createdAt: row.createdAt?.toDate?.()?.toISOString?.() || null,
     updatedAt: row.updatedAt?.toDate?.()?.toISOString?.() || null,
+    createdBy: row.createdBy || null,
+    createdByName: row.createdByName || null,
+    cancelledBy: row.cancelledBy || null,
+    cancelledByName: row.cancelledByName || null,
+    cancelledAt: row.cancelledAt?.toDate?.()?.toISOString?.() || null,
+    cancelReason: row.cancelReason || '',
+    capturedBy: row.capturedBy || null,
+    capturedByName: row.capturedByName || null,
+    capturedAt: row.capturedAt?.toDate?.()?.toISOString?.() || null,
+    capturedAmount: row.capturedAmount || null,
+    stripeStatus: row.stripeStatus || null,
+    cardBrand: row.cardBrand || null,
+    cardLast4: row.cardLast4 || null,
   };
 }
 
@@ -478,7 +556,7 @@ async function runCreateTerminalConnectionToken(request) {
 }
 
 async function runCreateDeposit(request) {
-  const { uid } = await assertFinancialCallable(request);
+  const { uid, profile } = await assertFinancialCallable(request);
   const data = request.data || {};
   const franchiseId = normalizeFranchiseId(data.franchiseId);
   assertSwitzerlandFranchise(franchiseId);
@@ -486,7 +564,7 @@ async function runCreateDeposit(request) {
   const initialCents = parseChfToCents(data.initialAmountChf);
   const maxCents = data.maxAuthAmountChf != null && data.maxAuthAmountChf !== ''
     ? parseChfToCents(data.maxAuthAmountChf)
-    : parseChfToCents(DEFAULT_MAX_AUTH_CHF);
+    : initialCents;
   if (initialCents > parseChfToCents(MAX_DEPOSIT_CHF)) {
     throw new HttpsError('invalid-argument', `Initial deposit max ${MAX_DEPOSIT_CHF} CHF`);
   }
@@ -536,6 +614,8 @@ async function runCreateDeposit(request) {
     'metadata[customerName]': customerName,
     'metadata[customerReference]': reference,
     'metadata[resCode]': resCode,
+    'metadata[resNo]': resCode,
+    ...(customerEmail ? { 'metadata[customerEmail]': customerEmail } : {}),
     'metadata[maxAuthAmount]': String(maxCents),
     'metadata[source]': source === 'wheelsys' ? 'wheelsys' : 'terminal',
     'payment_method_options[card_present][request_incremental_authorization_support]': 'true',
@@ -580,16 +660,19 @@ async function runCreateDeposit(request) {
     createdBy: uid,
   });
 
-  await writeAudit(franchiseId, uid, 'deposit_created', {
-    depositId: docRef.id,
-    paymentIntentId: pi.id,
-    initialAmount: initialCents,
-    maxAuthAmount: maxCents,
-    resCode,
-    readerId: effectiveReaderId,
-    customerEmail: customerEmail || null,
-    documentCount: documents.length,
-  });
+  await writeAudit(
+    franchiseId,
+    uid,
+    'deposit_created',
+    {
+      ...depositAuditContext({ resCode, customerName, customerEmail, plate, paymentIntentId: pi.id }, { depositId: docRef.id }),
+      initialAmount: initialCents,
+      maxAuthAmount: maxCents,
+      readerId: effectiveReaderId,
+      documentCount: documents.length,
+    },
+    profile,
+  );
 
   return {
     depositId: docRef.id,
@@ -606,7 +689,7 @@ async function runListDeposits(request) {
   const { profile } = await assertFinancialCallable(request);
   const franchiseId = normalizeFranchiseId(request.data?.franchiseId);
   assertSwitzerlandFranchise(franchiseId);
-  const limit = Math.min(Math.max(Number(request.data?.limit) || 50, 1), 100);
+  const limit = Math.min(Math.max(Number(request.data?.limit) || 50, 1), 300);
   const syncStripe = request.data?.syncStripe === true;
 
   const snap = await depositsCol(franchiseId).orderBy('createdAt', 'desc').limit(limit).get();
@@ -630,15 +713,26 @@ async function runListDeposits(request) {
             `/payment_intents/${encodeURIComponent(entry.row.paymentIntentId)}`,
             null,
           );
+          const charge = pi.charges?.data?.[0];
+          const pmd = charge?.payment_method_details || {};
+          const cardPresent = pmd.card_present || {};
+          const card = pmd.card || {};
+          const isSucceeded = pi.status === 'succeeded';
+          const amountReceived = Number(pi.amount_received) || 0;
           entry.mapped = {
             ...entry.mapped,
             stripeStatus: pi.status,
-            currentHoldAmount: Number(pi.amount_capturable) || entry.mapped.currentHoldAmount,
-            cardBrand: pi.charges?.data?.[0]?.payment_method_details?.card_present?.brand || null,
-            cardLast4: pi.charges?.data?.[0]?.payment_method_details?.card_present?.last4 || null,
+            currentHoldAmount: isSucceeded
+              ? amountReceived || entry.mapped.currentHoldAmount || entry.mapped.initialAmount
+              : Number(pi.amount_capturable) || entry.mapped.currentHoldAmount,
+            capturedAmount: isSucceeded
+              ? amountReceived || entry.mapped.capturedAmount || entry.mapped.initialAmount
+              : entry.mapped.capturedAmount,
+            cardBrand: cardPresent.brand || card.brand || entry.mapped.cardBrand || null,
+            cardLast4: cardPresent.last4 || card.last4 || entry.mapped.cardLast4 || null,
           };
           if (pi.status === 'requires_capture') entry.mapped.status = 'authorized';
-          if (pi.status === 'succeeded') entry.mapped.status = 'captured';
+          if (isSucceeded) entry.mapped.status = 'captured';
           if (pi.status === 'canceled') entry.mapped.status = 'cancelled';
         } catch {
           /* keep firestore status */
@@ -649,18 +743,18 @@ async function runListDeposits(request) {
 
   const deposits = [];
   const summarySource = [];
+  const actorUids = [];
   for (const entry of baseRows) {
-    let mapped = entry.mapped;
+    const row = entry.row;
+    if (row.createdBy) actorUids.push(row.createdBy);
+    if (row.cancelledBy) actorUids.push(row.cancelledBy);
+    if (row.capturedBy) actorUids.push(row.capturedBy);
+  }
+  const nameByUid = await resolveUserDisplayNames(actorUids);
+
+  for (const entry of baseRows) {
+    let mapped = enrichDepositActorNames(entry.mapped, nameByUid);
     summarySource.push(mapped);
-    if (!canViewStripeFinancialTotals(profile)) {
-      mapped = {
-        ...mapped,
-        initialAmount: null,
-        maxAuthAmount: null,
-        currentHoldAmount: null,
-        capturedAmount: null,
-      };
-    }
     deposits.push(mapped);
   }
 
@@ -676,7 +770,7 @@ async function runListDeposits(request) {
 }
 
 async function runIncrementDeposit(request) {
-  const { uid } = await assertFinancialCallable(request);
+  const { uid, profile } = await assertFinancialCallable(request);
   const data = request.data || {};
   const franchiseId = normalizeFranchiseId(data.franchiseId);
   assertSwitzerlandFranchise(franchiseId);
@@ -708,7 +802,8 @@ async function runIncrementDeposit(request) {
       `New total must be greater than current hold (${(currentCents / 100).toFixed(2)} CHF)`,
     );
   }
-  if (newCents > maxCents) {
+  const customIncrease = data.customIncrease === true;
+  if (!customIncrease && newCents > maxCents) {
     throw new HttpsError(
       'invalid-argument',
       `Amount exceeds maximum authorization (${(maxCents / 100).toFixed(2)} CHF)`,
@@ -721,22 +816,31 @@ async function runIncrementDeposit(request) {
     { amount: newCents },
   );
 
+  const nextMaxCents = customIncrease ? Math.max(maxCents, newCents) : maxCents;
+
   await docRef.set(
     {
       currentHoldAmount: Number(pi.amount_capturable) || newCents,
+      maxAuthAmount: nextMaxCents,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       status: 'authorized',
     },
     { merge: true },
   );
 
-  await writeAudit(franchiseId, uid, 'deposit_incremented', {
-    depositId,
-    paymentIntentId,
-    previousAmount: currentCents,
-    newAmount: newCents,
-    delta: newCents - currentCents,
-  });
+  await writeAudit(
+    franchiseId,
+    uid,
+    'deposit_incremented',
+    {
+      ...depositAuditContext(row, { depositId, paymentIntentId }),
+      previousAmount: currentCents,
+      newAmount: newCents,
+      delta: newCents - currentCents,
+      customIncrease,
+    },
+    profile,
+  );
 
   return {
     depositId,
@@ -748,7 +852,7 @@ async function runIncrementDeposit(request) {
 }
 
 async function runCaptureDeposit(request) {
-  const { uid } = await assertFinancialCallable(request);
+  const { uid, profile } = await assertFinancialCallable(request);
   const data = request.data || {};
   const franchiseId = normalizeFranchiseId(data.franchiseId);
   assertSwitzerlandFranchise(franchiseId);
@@ -762,10 +866,75 @@ async function runCaptureDeposit(request) {
   }
   const row = docSnap.data() || {};
   const paymentIntentId = String(row.paymentIntentId || '').trim();
+  if (!paymentIntentId) {
+    throw new HttpsError('failed-precondition', 'Missing payment intent');
+  }
 
+  const piBefore = await stripeRequest(
+    'GET',
+    `/payment_intents/${encodeURIComponent(paymentIntentId)}`,
+    {},
+  );
+
+  if (piBefore.status === 'canceled') {
+    await docRef.set(
+      {
+        status: 'cancelled',
+        stripeStatus: 'canceled',
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+    throw new HttpsError(
+      'failed-precondition',
+      'This deposit hold was already released or cancelled. Refresh the list — it cannot be captured.',
+    );
+  }
+
+  if (piBefore.status === 'succeeded') {
+    await docRef.set(
+      {
+        status: 'captured',
+        stripeStatus: 'succeeded',
+        capturedAmount: piBefore.amount_received,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+    throw new HttpsError(
+      'failed-precondition',
+      'This deposit was already captured. Refresh the list.',
+    );
+  }
+
+  if (piBefore.status !== 'requires_capture') {
+    throw new HttpsError(
+      'failed-precondition',
+      `Cannot capture — Stripe status is "${piBefore.status}". Use Sync, then try again.`,
+    );
+  }
+
+  const capturableCents = Number(piBefore.amount_capturable) || 0;
+  const requestedCents =
+    amountChf != null && amountChf !== '' ? parseChfToCents(amountChf) : null;
+
+  // Total above the hold: capture the full hold, then charge the remainder
+  // off-session from the saved card (e.g. hold 400, requested 3000 → capture
+  // 400 + charge 2600).
+  let topUpCents = 0;
   const params = {};
-  if (amountChf != null && amountChf !== '') {
-    params.amount_to_capture = parseChfToCents(amountChf);
+  if (requestedCents != null) {
+    if (requestedCents <= capturableCents) {
+      params.amount_to_capture = requestedCents;
+    } else {
+      topUpCents = requestedCents - capturableCents;
+      if (topUpCents < 50) {
+        throw new HttpsError(
+          'invalid-argument',
+          `Amount above the hold must be at least CHF 0.50 — hold is CHF ${(capturableCents / 100).toFixed(2)}.`,
+        );
+      }
+    }
   }
 
   const pi = await stripeRequest(
@@ -774,21 +943,95 @@ async function runCaptureDeposit(request) {
     params,
   );
 
+  const actor = actorFromProfile(profile, uid);
+
   await docRef.set(
     {
       status: 'captured',
       capturedAmount: pi.amount_received,
+      capturedBy: uid,
+      capturedByName: actor.actorName,
+      capturedAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     },
     { merge: true },
   );
 
-  await writeAudit(franchiseId, uid, 'deposit_captured', { depositId, paymentIntentId });
-  return { ok: true, status: pi.status, amountReceived: pi.amount_received };
+  await writeAudit(
+    franchiseId,
+    uid,
+    'deposit_captured',
+    {
+      ...depositAuditContext(row, { depositId, paymentIntentId }),
+      amountReceived: pi.amount_received,
+      capturedBy: actor.actorName,
+      requestedTotal: requestedCents,
+      topUpPlanned: topUpCents || null,
+    },
+    profile,
+  );
+
+  let topUpResult = null;
+  let topUpError = null;
+  if (topUpCents > 0) {
+    try {
+      const resolved = await resolveDepositCardForReuse(franchiseId, row, paymentIntentId);
+      const resCode = row.resCode || row.reference || '';
+      const charged = await stripeRequest('POST', '/payment_intents', {
+        amount: topUpCents,
+        currency: row.currency || 'chf',
+        customer: resolved.customerId,
+        payment_method: resolved.paymentMethodId,
+        off_session: true,
+        confirm: true,
+        capture_method: 'automatic',
+        description: `Capture top-up — ${resCode || paymentIntentId}`,
+        'metadata[franchiseId]': franchiseId,
+        'metadata[flow]': 'saved_token_charge',
+        'metadata[parentPaymentIntentId]': paymentIntentId,
+        'metadata[resCode]': resCode,
+        'metadata[customerName]': row.customerName || '',
+        'metadata[note]': 'capture_top_up',
+      });
+      topUpResult = {
+        paymentIntentId: charged.id,
+        amount: charged.amount_received || topUpCents,
+        status: charged.status,
+      };
+      await writeAudit(franchiseId, uid, 'saved_token_charge', {
+        depositId,
+        parentPaymentIntentId: paymentIntentId,
+        paymentIntentId: charged.id,
+        amountChf: topUpCents / 100,
+        status: charged.status,
+        via: 'capture_top_up',
+      });
+    } catch (e) {
+      topUpError = friendlyPmReuseError(e?.message);
+      await writeAudit(franchiseId, uid, 'saved_token_charge_failed', {
+        depositId,
+        parentPaymentIntentId: paymentIntentId,
+        amountChf: topUpCents / 100,
+        error: topUpError,
+        via: 'capture_top_up',
+      });
+    }
+  }
+
+  return {
+    ok: true,
+    status: pi.status,
+    amountReceived: pi.amount_received,
+    capturedAmount: pi.amount_received,
+    requestedTotal: requestedCents,
+    topUp: topUpResult,
+    topUpAmount: topUpCents || null,
+    topUpError,
+  };
 }
 
 async function runCancelDeposit(request) {
-  const { uid } = await assertFinancialCallable(request);
+  const { uid, profile } = await assertFinancialCallable(request);
   const data = request.data || {};
   const franchiseId = normalizeFranchiseId(data.franchiseId);
   assertSwitzerlandFranchise(franchiseId);
@@ -837,16 +1080,28 @@ async function runCancelDeposit(request) {
     }
   }
 
+  const actor = actorFromProfile(profile, uid);
+  const cancelPatch = {
+    status: 'cancelled',
+    cancelReason: cancelReason || null,
+    cancelledBy: uid,
+    cancelledByName: actor.actorName,
+    cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
   if (!paymentIntentId) {
-    await docRef.set(
+    await docRef.set({ ...cancelPatch, ...tokenPatch }, { merge: true });
+    await writeAudit(
+      franchiseId,
+      uid,
+      'deposit_released',
       {
-        status: 'cancelled',
-        cancelReason: cancelReason || null,
-        cancelledBy: uid,
-        cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        ...depositAuditContext(row, { depositId }),
+        reason: cancelReason || null,
+        releasedBy: actor.actorName,
       },
-      { merge: true },
+      profile,
     );
     return { ok: true, alreadyCancelled: true };
   }
@@ -866,29 +1121,25 @@ async function runCancelDeposit(request) {
     }
   }
 
-  await docRef.set(
-    {
-      status: 'cancelled',
-      cancelReason: cancelReason || null,
-      cancelledBy: uid,
-      cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      ...tokenPatch,
-    },
-    { merge: true },
-  );
+  await docRef.set({ ...cancelPatch, ...tokenPatch }, { merge: true });
 
-  await writeAudit(franchiseId, uid, 'deposit_cancelled', {
-    depositId,
-    paymentIntentId,
-    reason: cancelReason || null,
-  });
+  await writeAudit(
+    franchiseId,
+    uid,
+    'deposit_released',
+    {
+      ...depositAuditContext(row, { depositId, paymentIntentId }),
+      reason: cancelReason || null,
+      releasedBy: actor.actorName,
+    },
+    profile,
+  );
   return { ok: true };
 }
 
 /** Off-session charge using card saved during a prior deposit (staff+). */
 async function runChargeSavedPaymentMethod(request) {
-  const { uid } = await assertFinancialCallable(request);
+  const { uid, profile } = await assertFinancialCallable(request);
   const data = request.data || {};
   const franchiseId = normalizeFranchiseId(data.franchiseId);
   assertSwitzerlandFranchise(franchiseId);
@@ -927,6 +1178,121 @@ async function runChargeSavedPaymentMethod(request) {
   const sourcePiId = String(row.paymentIntentId || paymentIntentId || '').trim();
   if (!sourcePiId.startsWith('pi_')) {
     throw new HttpsError('failed-precondition', 'Deposit has no PaymentIntent');
+  }
+
+  const sourcePi = await stripeRequest(
+    'GET',
+    `/payment_intents/${encodeURIComponent(sourcePiId)}`,
+    { expand: ['payment_method'] },
+  );
+
+  if (sourcePi.status === 'requires_capture') {
+    const capturable = Number(sourcePi.amount_capturable) || 0;
+    // Funds on hold must be captured, not re-charged (avoids double reserve /
+    // false insufficient-funds). Amount above the hold is charged separately.
+    const topUpCents = amountChf > capturable ? amountChf - capturable : 0;
+    if (topUpCents > 0 && topUpCents < 50) {
+      throw new HttpsError(
+        'invalid-argument',
+        `Amount above the hold must be at least CHF 0.50 — hold is CHF ${(capturable / 100).toFixed(2)}.`,
+      );
+    }
+    const captureParams =
+      amountChf < capturable && topUpCents === 0 ? { amount_to_capture: amountChf } : {};
+    const captured = await stripeRequest(
+      'POST',
+      `/payment_intents/${encodeURIComponent(sourcePiId)}/capture`,
+      captureParams,
+    );
+    const actor = actorFromProfile(profile, uid);
+    await docRef.set(
+      {
+        status: 'captured',
+        stripeStatus: captured.status,
+        capturedAmount: captured.amount_received,
+        capturedBy: uid,
+        capturedByName: actor.actorName,
+        capturedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+    await writeAudit(franchiseId, uid, 'deposit_captured', {
+      ...depositAuditContext(row, { depositId: docRef.id, paymentIntentId: sourcePiId }),
+      amountReceived: captured.amount_received,
+      capturedBy: actor.actorName,
+      via: 'saved_token_charge_routed_to_capture',
+      requestedTotal: amountChf,
+      topUpPlanned: topUpCents || null,
+    }, profile);
+
+    let topUpResult = null;
+    let topUpError = null;
+    if (topUpCents > 0) {
+      try {
+        const resolvedTopUp = await resolveDepositCardForReuse(franchiseId, row, sourcePiId);
+        const resCodeTopUp = row.resCode || row.reference || '';
+        const chargedTopUp = await stripeRequest('POST', '/payment_intents', {
+          amount: topUpCents,
+          currency: row.currency || 'chf',
+          customer: resolvedTopUp.customerId,
+          payment_method: resolvedTopUp.paymentMethodId,
+          off_session: true,
+          confirm: true,
+          capture_method: 'automatic',
+          description: note || `Charge top-up — ${resCodeTopUp || sourcePiId}`,
+          'metadata[franchiseId]': franchiseId,
+          'metadata[flow]': 'saved_token_charge',
+          'metadata[parentPaymentIntentId]': sourcePiId,
+          'metadata[resCode]': resCodeTopUp,
+          'metadata[customerName]': row.customerName || '',
+          'metadata[note]': note || 'charge_top_up',
+        });
+        topUpResult = {
+          paymentIntentId: chargedTopUp.id,
+          amount: chargedTopUp.amount_received || topUpCents,
+          status: chargedTopUp.status,
+        };
+        await writeAudit(franchiseId, uid, 'saved_token_charge', {
+          depositId: docRef.id,
+          parentPaymentIntentId: sourcePiId,
+          paymentIntentId: chargedTopUp.id,
+          amountChf: topUpCents / 100,
+          status: chargedTopUp.status,
+          via: 'charge_top_up',
+        });
+      } catch (e) {
+        topUpError = friendlyPmReuseError(e?.message);
+        await writeAudit(franchiseId, uid, 'saved_token_charge_failed', {
+          depositId: docRef.id,
+          parentPaymentIntentId: sourcePiId,
+          amountChf: topUpCents / 100,
+          error: topUpError,
+          via: 'charge_top_up',
+        });
+      }
+    }
+
+    return {
+      ok: true,
+      mode: topUpCents > 0 ? 'capture_plus_charge' : 'capture',
+      franchiseId,
+      depositId: docRef.id,
+      paymentIntentId: captured.id,
+      chargedAmount: (captured.amount_received || 0) + (topUpResult?.amount || 0),
+      capturedAmount: captured.amount_received,
+      topUp: topUpResult,
+      topUpAmount: topUpCents || null,
+      topUpError,
+      status: captured.status,
+    };
+  }
+
+  if (sourcePi.status === 'canceled') {
+    throw new HttpsError(
+      'failed-precondition',
+      'The deposit hold was cancelled — use a new manual charge or create a fresh deposit.',
+    );
   }
 
   let resolved;
@@ -1472,7 +1838,7 @@ async function runProcessDepositOnTerminal(request) {
 }
 
 async function runConfirmDepositCollection(request) {
-  const { uid } = await assertFinancialCallable(request);
+  const { uid, profile } = await assertFinancialCallable(request);
   const data = request.data || {};
   const franchiseId = normalizeFranchiseId(data.franchiseId);
   assertSwitzerlandFranchise(franchiseId);
@@ -1528,13 +1894,18 @@ async function runConfirmDepositCollection(request) {
     { merge: true },
   );
 
-  await writeAudit(franchiseId, uid, 'deposit_collection_confirmed', {
-    depositId,
-    paymentIntentId,
-    status,
-    amountCapturable: pi.amount_capturable,
-    cardLast4: charge?.payment_method_details?.card_present?.last4 || null,
-  });
+  await writeAudit(
+    franchiseId,
+    uid,
+    'deposit_collection_confirmed',
+    {
+      ...depositAuditContext(row, { depositId, paymentIntentId }),
+      status,
+      amountCapturable: pi.amount_capturable,
+      cardLast4: charge?.payment_method_details?.card_present?.last4 || null,
+    },
+    profile,
+  );
 
   let emailResult = null;
   if (status === 'authorized' && row.sendEmailAfterAuth && row.customerEmail) {

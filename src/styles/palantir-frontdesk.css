@@ -74,6 +74,27 @@
     background: var(--erpx-subtle);
 }
 
+/* Customer list — avoid Safari/table-fixed collapse; always show rows on all breakpoints */
+.pal-fd-table-wrap {
+    background: var(--erpx-surface);
+    border: 1px solid var(--erpx-border);
+    border-radius: var(--erpx-radius);
+    overflow-x: auto;
+    overflow-y: visible;
+}
+
+.pal-fd-table-wrap .gm-table {
+    min-width: 720px;
+}
+
+.pal-fd-table-wrap .gm-table tbody tr {
+    visibility: visible;
+}
+
+.pal-fd-table-wrap .gm-table tbody td {
+    color: var(--erpx-ink);
+}
+
 .pal-fd-pagination {
     display: flex;
     flex-wrap: wrap;

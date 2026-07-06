@@ -3676,6 +3676,10 @@ exports.stripeFinancialFinalizeDirectCardOperation = onCall(
   stripeFinancialOpts,
   stripeFinancial.runFinalizeDirectCardOperation
 );
+exports.stripeFinancialRefundPayment = onCall(
+  stripeFinancialOpts,
+  stripeFinancial.runRefundPayment
+);
 exports.stripeFinancialPersistDirectCardSnapshot = onCall(
   stripeFinancialOpts,
   stripeFinancial.runPersistDirectCardSnapshot

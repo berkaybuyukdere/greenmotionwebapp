@@ -15,22 +15,22 @@ import {
   isResCodeComplete,
   normalizeResCodeInput,
   resCodeNumberPart,
+  BOOKING_CODE_RES,
+  BOOKING_CODE_RNT,
 } from '../../utilities/resCodeInput';
 import { formatStripeDeclineForDisplay } from '../../utilities/stripeDeclineMessages';
+import { humanizeStripeFinancialError } from './StripeFinFeedback';
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export function StripeDepositModal({ franchiseId, fleetCars = [], onClose, onSuccess }) {
+export function StripeDepositModal({ franchiseId, onClose, onSuccess, onFeedback }) {
   const [step, setStep] = useState('form');
   const [depositAmountChf, setDepositAmountChf] = useState('400');
-  const [maxAuthAmountChf, setMaxAuthAmountChf] = useState('3000');
   const [customerName, setCustomerName] = useState('');
-  const [customerEmail, setCustomerEmail] = useState('');
-  const [resCode, setResCode] = useState(defaultResCodeValue);
-  const [plate, setPlate] = useState('');
-  const [plateSuggestOpen, setPlateSuggestOpen] = useState(false);
+  const [resCode, setResCode] = useState(defaultResCodeValue());
+  const [bookingCodeKind, setBookingCodeKind] = useState(BOOKING_CODE_RES);
   const [declineDetail, setDeclineDetail] = useState(null);
   const [readers, setReaders] = useState([]);
   const [selectedReaderId, setSelectedReaderId] = useState('');
@@ -42,31 +42,21 @@ export function StripeDepositModal({ franchiseId, fleetCars = [], onClose, onSuc
   const depositIdRef = useRef('');
   const abortRef = useRef(false);
   const inFlightRef = useRef(false);
-  const plateOptions = useMemo(() => {
-    const seen = new Set();
-    const out = [];
-    for (const car of fleetCars || []) {
-      const p = String(car?.plaka || car?.plate || '').trim();
-      if (!p || p === '—' || seen.has(p.toLowerCase())) continue;
-      seen.add(p.toLowerCase());
-      out.push(p);
-    }
-    return out.sort((a, b) => a.localeCompare(b));
-  }, [fleetCars]);
-
-  const plateSuggestions = useMemo(() => {
-    const q = plate.trim().toLowerCase();
-    if (!q) return plateOptions.slice(0, 8);
-    return plateOptions.filter((p) => p.toLowerCase().includes(q)).slice(0, 8);
-  }, [plate, plateOptions]);
-
-  const showPlateSuggest = plateSuggestOpen && plateSuggestions.length > 0;
 
   const setDeclineError = (err) => {
     const friendly = formatStripeDeclineForDisplay(err);
     setDeclineDetail(friendly);
     setError(friendly.displayText);
     setStep('declined');
+    const human = humanizeStripeFinancialError(err);
+    onFeedback?.({
+      type: 'error',
+      title: human.title || friendly.title || 'Deposit declined',
+      detail: human.detail || friendly.displayText,
+      code: human.code || friendly.code,
+      nextSteps: human.nextSteps || friendly.nextSteps,
+      at: new Date().toISOString(),
+    });
   };
 
   useEffect(() => {
@@ -77,9 +67,7 @@ export function StripeDepositModal({ franchiseId, fleetCars = [], onClose, onSuc
         const def = list.find((r) => r.isDefault) || list[0];
         if (def) setSelectedReaderId(def.readerId);
       })
-      .catch(() => {
-        setReaders([]);
-      });
+      .catch(() => setReaders([]));
   }, [franchiseId]);
 
   const pollUntilAuthorized = useCallback(
@@ -104,7 +92,7 @@ export function StripeDepositModal({ franchiseId, fleetCars = [], onClose, onSuc
         if (status.terminalActionStatus === 'in_progress') {
           setStatusMessage('Card detected on POS — authorizing hold…');
         } else {
-          setStatusMessage('Waiting for card on POS (DEPOSIT)…');
+          setStatusMessage('Waiting for card on POS — screen shows DEPOSIT…');
         }
         await sleep(2000);
       }
@@ -136,9 +124,15 @@ export function StripeDepositModal({ franchiseId, fleetCars = [], onClose, onSuc
       setStep('form');
       setStatusMessage('');
       setError('Deposit cancelled. POS closed and authorization voided.');
+      onFeedback?.({
+        type: 'info',
+        title: 'Deposit cancelled',
+        detail: 'POS closed and authorization voided.',
+        at: new Date().toISOString(),
+      });
       if (closeModal) onClose?.();
     },
-    [aborting, franchiseId, onClose],
+    [aborting, franchiseId, onClose, onFeedback],
   );
 
   useEffect(() => {
@@ -173,11 +167,11 @@ export function StripeDepositModal({ franchiseId, fleetCars = [], onClose, onSuc
       return;
     }
     if (!isResCodeComplete(resCode)) {
-      setError('RES number is required.');
+      setError(bookingCodeKind === BOOKING_CODE_RNT ? 'RNT number is required.' : 'RES number is required.');
       return;
     }
     if (!selectedReaderId) {
-      setError('Select a POS terminal in Settings → Add device first.');
+      setError('Select a POS terminal in Settings → Stripe Terminal first.');
       return;
     }
 
@@ -187,15 +181,13 @@ export function StripeDepositModal({ franchiseId, fleetCars = [], onClose, onSuc
     let createdDepositId = '';
 
     try {
+      const amount = Number(depositAmountChf);
       const created = await stripeFinancialCreateDeposit({
         franchiseId,
-        initialAmountChf: Number(depositAmountChf),
-        maxAuthAmountChf: Number(maxAuthAmountChf) || 3000,
+        initialAmountChf: amount,
         customerName: customerName.trim(),
-        customerEmail: customerEmail.trim(),
-        resCode: formatResCodeForSubmit(resCode),
-        reference: formatResCodeForSubmit(resCode),
-        plate: plate.trim(),
+        resCode: formatResCodeForSubmit(resCode, bookingCodeKind),
+        reference: formatResCodeForSubmit(resCode, bookingCodeKind),
         readerId: selectedReaderId,
       });
       createdDepositId = created.depositId;
@@ -209,7 +201,7 @@ export function StripeDepositModal({ franchiseId, fleetCars = [], onClose, onSuc
         depositId: created.depositId,
         readerId: selectedReaderId,
       });
-      setStatusMessage(sent.message || 'Present card on POS device.');
+      setStatusMessage(sent.message || 'Present card on POS — terminal shows DEPOSIT.');
 
       if (!sent.alreadyAuthorized) {
         await pollUntilAuthorized(created.depositId);
@@ -290,7 +282,7 @@ export function StripeDepositModal({ franchiseId, fleetCars = [], onClose, onSuc
         depositId,
         readerId: selectedReaderId,
       });
-      setStatusMessage(sent.message || 'Present card on POS device.');
+      setStatusMessage(sent.message || 'Present card on POS — terminal shows DEPOSIT.');
       if (!sent.alreadyAuthorized) {
         await pollUntilAuthorized(depositId);
       }
@@ -311,7 +303,6 @@ export function StripeDepositModal({ franchiseId, fleetCars = [], onClose, onSuc
         setRetryDepositId(depositId);
         setDeclineError(e);
       }
-      return;
     }
   };
 
@@ -323,13 +314,10 @@ export function StripeDepositModal({ franchiseId, fleetCars = [], onClose, onSuc
       step === 'form' &&
       Boolean(
         customerName.trim() ||
-          customerEmail.trim() ||
           resCodeNumberPart(resCode) ||
-          plate.trim() ||
-          depositAmountChf !== '400' ||
-          maxAuthAmountChf !== '3000',
+          depositAmountChf !== '400',
       ),
-    [step, customerName, customerEmail, resCode, plate, depositAmountChf, maxAuthAmountChf],
+    [step, customerName, resCode, depositAmountChf],
   );
 
   const requestClose = useConfirmDirtyClose({
@@ -348,10 +336,10 @@ export function StripeDepositModal({ franchiseId, fleetCars = [], onClose, onSuc
       <div className="pal-fin-modal pal-fin-modal-wide">
         <header className="pal-fin-modal-header">
           <div>
-            <p className="pal-fin-eyebrow">New deposit</p>
-            <h2 className="pal-fin-modal-title">Rental deposit (Terminal hold)</h2>
+            <p className="pal-fin-eyebrow">Deposit</p>
+            <h2 className="pal-fin-modal-title">Terminal deposit hold</h2>
             <p className="pal-fin-modal-sub">
-              Authorize a card hold via POS. Increment later (e.g. 400 → 3&apos;000 CHF) using incremental authorization on the same card.
+              RES, customer and amount — POS displays <strong>DEPOSIT</strong> in English.
             </p>
           </div>
           <button type="button" className="pal-fin-modal-close" onClick={requestClose} disabled={aborting} aria-label="Close">
@@ -362,65 +350,56 @@ export function StripeDepositModal({ franchiseId, fleetCars = [], onClose, onSuc
         {step === 'form' && (
           <div className="pal-fin-modal-body">
             <div className="pal-fin-form-grid">
+              <div className="pal-fin-field pal-fin-field-full">
+                <span>Booking code *</span>
+                <div className="pal-fin-booking-kind-toggle" role="group" aria-label="Booking code type">
+                  <button
+                    type="button"
+                    className={`pal-fin-booking-kind-btn ${bookingCodeKind === BOOKING_CODE_RES ? 'pal-fin-booking-kind-btn-active' : ''}`}
+                    onClick={() => {
+                      setBookingCodeKind(BOOKING_CODE_RES);
+                      setResCode(defaultResCodeValue(BOOKING_CODE_RES));
+                    }}
+                  >
+                    RES
+                  </button>
+                  <button
+                    type="button"
+                    className={`pal-fin-booking-kind-btn ${bookingCodeKind === BOOKING_CODE_RNT ? 'pal-fin-booking-kind-btn-active' : ''}`}
+                    onClick={() => {
+                      setBookingCodeKind(BOOKING_CODE_RNT);
+                      setResCode(defaultResCodeValue(BOOKING_CODE_RNT));
+                    }}
+                  >
+                    RNT
+                  </button>
+                </div>
+                <small>
+                  {bookingCodeKind === BOOKING_CODE_RNT
+                    ? 'Walk-in customer — saved as RNT-xxxxx.'
+                    : 'Reservation — saved as RES-xxxxx.'}
+                </small>
+              </div>
               <label className="pal-fin-field">
-                <span>RES code *</span>
+                <span>{bookingCodeKind === BOOKING_CODE_RNT ? 'RNT code *' : 'RES code *'}</span>
                 <input
                   value={resCode}
-                  onChange={(e) => setResCode(normalizeResCodeInput(e.target.value))}
-                  placeholder="17505"
+                  onChange={(e) => setResCode(normalizeResCodeInput(e.target.value, bookingCodeKind))}
+                  placeholder={bookingCodeKind === BOOKING_CODE_RNT ? '12345' : '17505'}
                   className="pal-fin-mono"
                 />
-                <small>Type reservation number only — RES- is added automatically.</small>
-              </label>
-              <label className="pal-fin-field pal-fin-plate-field">
-                <span>Plate</span>
-                <input
-                  value={plate}
-                  onChange={(e) => {
-                    setPlate(e.target.value);
-                    setPlateSuggestOpen(true);
-                  }}
-                  onFocus={() => setPlateSuggestOpen(true)}
-                  onBlur={() => setTimeout(() => setPlateSuggestOpen(false), 150)}
-                  placeholder="ZG108875"
-                  className="pal-fin-mono"
-                  autoComplete="off"
-                />
-                {showPlateSuggest && (
-                  <ul className="pal-fin-plate-suggest" role="listbox">
-                    {plateSuggestions.map((p) => (
-                      <li key={p}>
-                        <button
-                          type="button"
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => {
-                            setPlate(p);
-                            setPlateSuggestOpen(false);
-                          }}
-                        >
-                          {p}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                <small>
+                  Type {bookingCodeKind === BOOKING_CODE_RNT ? 'walk-in' : 'reservation'} number only —{' '}
+                  {bookingCodeKind === BOOKING_CODE_RNT ? 'RNT-' : 'RES-'} is added automatically.
+                </small>
               </label>
               <label className="pal-fin-field pal-fin-field-full">
                 <span>Customer name *</span>
                 <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="First and last name" />
               </label>
-              <label className="pal-fin-field pal-fin-field-full">
-                <span>Customer email</span>
-                <input type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} />
-              </label>
               <label className="pal-fin-field">
-                <span>Initial hold (CHF) *</span>
+                <span>Deposit amount (CHF) *</span>
                 <input type="number" min="1" step="0.05" value={depositAmountChf} onChange={(e) => setDepositAmountChf(e.target.value)} />
-              </label>
-              <label className="pal-fin-field">
-                <span>Max authorization (CHF)</span>
-                <input type="number" min="1" step="0.05" value={maxAuthAmountChf} onChange={(e) => setMaxAuthAmountChf(e.target.value)} />
-                <small>Upper limit for &quot;Increase deposit&quot; (default 3&apos;000 CHF)</small>
               </label>
               <label className="pal-fin-field pal-fin-field-full">
                 <span>POS terminal *</span>
@@ -428,7 +407,8 @@ export function StripeDepositModal({ franchiseId, fleetCars = [], onClose, onSuc
                   <option value="">Select terminal…</option>
                   {readers.map((r) => (
                     <option key={r.readerId} value={r.readerId}>
-                      {r.readerLabel || r.readerId}{r.isDefault ? ' (default)' : ''}
+                      {r.readerLabel || r.readerId}
+                      {r.isDefault ? ' (default)' : ''}
                     </option>
                   ))}
                 </select>
@@ -436,8 +416,8 @@ export function StripeDepositModal({ franchiseId, fleetCars = [], onClose, onSuc
             </div>
             {selectedReader ? (
               <p className="pal-fin-hint">
-                Terminal: <strong>{selectedReader.readerLabel || selectedReader.readerId}</strong> — customer will see <strong>DEPOSIT</strong> on POS.
-                Card details are saved for future off-session use.
+                Terminal: <strong>{selectedReader.readerLabel || selectedReader.readerId}</strong> — customer sees{' '}
+                <strong>DEPOSIT</strong> on the reader.
               </p>
             ) : (
               <p className="pal-fin-alert pal-fin-alert-warn">No terminal selected. Add readers under Settings → Stripe Terminal.</p>
@@ -445,7 +425,7 @@ export function StripeDepositModal({ franchiseId, fleetCars = [], onClose, onSuc
             {error && <p className="pal-fin-alert">{error}</p>}
             {retryDepositId && (
               <p className="pal-fin-hint">
-                POS declined this card — use <strong>Try another card</strong> below (same deposit hold, no double charge).
+                POS declined — use <strong>Try another card</strong> below (same deposit, no double charge).
               </p>
             )}
           </div>
@@ -469,9 +449,7 @@ export function StripeDepositModal({ franchiseId, fleetCars = [], onClose, onSuc
             </div>
             <p className="pal-fin-terminal-state-title">{declineDetail?.title || 'Card declined on POS'}</p>
             <p className="pal-fin-terminal-state-detail">{declineDetail?.detail || error}</p>
-            {declineDetail?.nextSteps && (
-              <p className="pal-fin-terminal-state-detail">{declineDetail.nextSteps}</p>
-            )}
+            {declineDetail?.nextSteps && <p className="pal-fin-terminal-state-detail">{declineDetail.nextSteps}</p>}
             {declineDetail?.code && <span className="pal-fin-decline-code">{declineDetail.code}</span>}
           </div>
         )}
@@ -483,7 +461,7 @@ export function StripeDepositModal({ franchiseId, fleetCars = [], onClose, onSuc
             </div>
             <p className="pal-fin-terminal-state-title">Deposit authorized</p>
             <p className="pal-fin-terminal-state-detail">
-              {Number(depositAmountChf).toFixed(2)} CHF hold on card · max {Number(maxAuthAmountChf).toFixed(2)} CHF
+              {Number(depositAmountChf).toFixed(2)} CHF hold on card — listed under Payments → Deposits.
             </p>
             {tokenSaved && <span className="pal-fin-token-saved-badge">Token saved</span>}
           </div>
@@ -492,13 +470,17 @@ export function StripeDepositModal({ franchiseId, fleetCars = [], onClose, onSuc
         <footer className="pal-fin-modal-footer">
           {step === 'form' && (
             <>
-              <button type="button" className="gm-btn gm-btn-secondary" onClick={handleClose}>Close</button>
+              <button type="button" className="gm-btn gm-btn-secondary" onClick={handleClose}>
+                Close
+              </button>
               {retryDepositId ? (
                 <button type="button" className="gm-btn gm-btn-primary" onClick={retryOnTerminal}>
                   Try another card on POS
                 </button>
               ) : (
-                <button type="button" className="gm-btn gm-btn-primary" onClick={handleStart}>Send deposit to terminal</button>
+                <button type="button" className="gm-btn gm-btn-primary" onClick={handleStart}>
+                  Send deposit to terminal
+                </button>
               )}
             </>
           )}
@@ -509,7 +491,14 @@ export function StripeDepositModal({ franchiseId, fleetCars = [], onClose, onSuc
           )}
           {step === 'declined' && (
             <>
-              <button type="button" className="gm-btn gm-btn-secondary" onClick={() => { setStep('form'); setDeclineDetail(null); }}>
+              <button
+                type="button"
+                className="gm-btn gm-btn-secondary"
+                onClick={() => {
+                  setStep('form');
+                  setDeclineDetail(null);
+                }}
+              >
                 Back to form
               </button>
               {retryDepositId && (
@@ -520,7 +509,9 @@ export function StripeDepositModal({ franchiseId, fleetCars = [], onClose, onSuc
             </>
           )}
           {step === 'done' && (
-            <button type="button" className="gm-btn gm-btn-primary" onClick={onClose}>Done</button>
+            <button type="button" className="gm-btn gm-btn-primary" onClick={onClose}>
+              Done
+            </button>
           )}
         </footer>
       </div>

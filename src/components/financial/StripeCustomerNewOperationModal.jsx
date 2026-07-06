@@ -111,7 +111,7 @@ async function trafficContractStableDocId(franchiseId, canonicalRes) {
  * contract for the RES gets a supplement line instead of being overwritten).
  * Fire-and-forget: a failure here must never break the payment flow itself.
  */
-async function recordOfficeOperationForCharge({
+export async function recordOfficeOperationForCharge({
   franchiseId,
   category,
   resNo,

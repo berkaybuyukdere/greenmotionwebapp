@@ -238,7 +238,8 @@ import { StripeChargebacksView } from './components/financial/StripeChargebacksV
 import { StripeCustomersView } from './components/financial/StripeCustomersView';
 import { StripeDailyReportsView } from './components/financial/StripeDailyReportsView';
 import { StripeMailOrderView } from './components/financial/StripeMailOrderView';
-import { StripePaymentsView } from './components/financial/StripePaymentsView';
+import { StripePaymentsHub } from './components/financial/StripePaymentsHub';
+import { StripePosDailyClosingOfficeCard } from './components/financial/StripePosDailyClosingOfficeCard';
 import { StripeTerminalSettingsSection } from './components/financial/StripeTerminalSettingsSection';
 import { StripeDepositEmailTemplatesSection } from './components/financial/StripeDepositEmailTemplatesSection';
 
@@ -2686,7 +2687,7 @@ function AppContent({ user, userProfile: initialUserProfile }) {
                                 )}
                                 {currentView === 'office' && (
                                     <div className="erpx-view-layer w-full min-w-0">
-                                        <OfficeOperationsView operations={officeOperations} cars={fleetCars} onRefresh={loadData} addActivity={addActivity} user={user} franchiseId={effectiveFranchiseId || 'ch'} canViewFinancials={canViewFinancials} />
+                                        <OfficeOperationsView operations={officeOperations} cars={fleetCars} onRefresh={loadData} addActivity={addActivity} user={user} franchiseId={effectiveFranchiseId || 'ch'} canViewFinancials={canViewFinancials} showStripeFinancialTotals={showStripeFinancialTotals} />
                                     </div>
                                 )}
                                 {currentView === 'workingTimetable' && (
@@ -2711,7 +2712,7 @@ function AppContent({ user, userProfile: initialUserProfile }) {
                                 )}
                                 {currentView === 'stripePayments' && canAccessStripeFinance && (
                                     <div className="erpx-view-layer w-full min-w-0">
-                                        <StripePaymentsView
+                                        <StripePaymentsHub
                                             franchiseId={effectiveFranchiseId || 'ch'}
                                             showFinancialTotals={showStripeFinancialTotals}
                                             fleetCars={fleetCars}
@@ -2721,10 +2722,12 @@ function AppContent({ user, userProfile: initialUserProfile }) {
                                 )}
                                 {currentView === 'stripeMailOrder' && canAccessStripeFinance && (
                                     <div className="erpx-view-layer w-full min-w-0">
-                                        <StripeMailOrderView
+                                        <StripePaymentsHub
                                             franchiseId={effectiveFranchiseId || 'ch'}
                                             showFinancialTotals={showStripeFinancialTotals}
+                                            fleetCars={fleetCars}
                                             canPerformOperations={canPerformStripeOperations}
+                                            initialTab="mailorder"
                                         />
                                     </div>
                                 )}
@@ -3683,6 +3686,9 @@ function Sidebar({
                                 <NavButton collapsed={!showText} navKey="operations" label="Operations" active={currentView === 'operations'} onClick={() => goTo('operations')} />
                             )}
                             <NavButton collapsed={!showText} navKey="returns" label="Returns" active={currentView === 'returns'} onClick={() => goTo('returns')} />
+                            {canAccessFrontDeskCustomers && (
+                                <NavButton collapsed={!showText} navKey="frontDeskCustomers" label="Front-desk customers" active={currentView === 'frontDeskCustomers'} onClick={() => goTo('frontDeskCustomers')} />
+                            )}
                             <NavButton collapsed={!showText} navKey="damage" label="Damage" active={currentView === 'damage'} onClick={() => goTo('damage')} />
                             <NavButton collapsed={!showText} navKey="service" label="Service" active={currentView === 'service'} onClick={() => goTo('service')} />
                             <NavButton collapsed={!showText} navKey="serviceFirms" label="Service Firms" active={currentView === 'serviceFirms'} onClick={() => goTo('serviceFirms')} />
@@ -3690,17 +3696,11 @@ function Sidebar({
                         <SidebarSection title="Finance & office" sectionKey="finance" collapsed={!showText} expanded={sectionExpanded('finance')} toggle={toggleSection}>
                             <NavButton collapsed={!showText} navKey="office" label="Office Operations" active={currentView === 'office'} onClick={() => goTo('office')} />
                             <NavButton collapsed={!showText} navKey="officeReturns" label="Office Returns" active={currentView === 'officeReturns'} onClick={() => goTo('officeReturns')} />
-                            {canAccessFrontDeskCustomers && (
-                                <NavButton collapsed={!showText} navKey="frontDeskCustomers" label="Front-desk customers" active={currentView === 'frontDeskCustomers'} onClick={() => goTo('frontDeskCustomers')} />
-                            )}
                             {canAccessStripeFinance && (
                                 <NavButton collapsed={!showText} navKey="stripeChargebacks" label="Chargebacks" active={currentView === 'stripeChargebacks'} onClick={() => goTo('stripeChargebacks')} />
                             )}
                             {canAccessStripeFinance && (
-                                <NavButton collapsed={!showText} navKey="stripePayments" label="Deposits" active={currentView === 'stripePayments'} onClick={() => goTo('stripePayments')} />
-                            )}
-                            {canAccessStripeFinance && (
-                                <NavButton collapsed={!showText} navKey="stripeMailOrder" label="Mail order (Stripe)" active={currentView === 'stripeMailOrder'} onClick={() => goTo('stripeMailOrder')} />
+                                <NavButton collapsed={!showText} navKey="stripePayments" label="Payments" active={currentView === 'stripePayments' || currentView === 'stripeMailOrder'} onClick={() => goTo('stripePayments')} />
                             )}
                             {canAccessStripeFinance && (
                                 <NavButton collapsed={!showText} navKey="stripeCustomers" label="Customers" active={currentView === 'stripeCustomers'} onClick={() => goTo('stripeCustomers')} />
@@ -3849,8 +3849,7 @@ function Header({
         shuttle: 'Shuttle',
         officeReturns: 'Office Returns',
         stripeChargebacks: 'Chargebacks',
-        stripePayments: 'Deposits',
-        stripeMailOrder: 'Mail order (Stripe)',
+        stripePayments: 'Payments',
         stripeCustomers: 'Customers',
         stripeDailyReports: 'Stripe reports',
         workingTimetable: 'Working timetable',
@@ -3898,8 +3897,7 @@ function Header({
             { view: 'shuttle', label: 'Shuttle', keywords: 'shuttle transfer', popular: false },
             { view: 'officeReturns', label: 'Office Returns', keywords: 'office iade return', popular: false },
             ...(canAccessStripeFinance ? [{ view: 'stripeChargebacks', label: 'Chargebacks', keywords: 'stripe dispute chargeback', popular: false }] : []),
-            ...(canAccessStripeFinance ? [{ view: 'stripePayments', label: 'Deposits', keywords: 'stripe terminal pos deposit hold incremental', popular: false }] : []),
-            ...(canAccessStripeFinance ? [{ view: 'stripeMailOrder', label: 'Mail order (Stripe)', keywords: 'stripe product payment link mail order', popular: false }] : []),
+            ...(canAccessStripeFinance ? [{ view: 'stripePayments', label: 'Payments', keywords: 'stripe terminal pos deposit hold payment logs mail order', popular: false }] : []),
             ...(canAccessStripeFinance ? [{ view: 'stripeCustomers', label: 'Customers', keywords: 'stripe customer res deposit mail order timeline', popular: false }] : []),
             ...(canAccessStripeFinance && showStripeReports ? [{ view: 'stripeDailyReports', label: 'Daily reports (Stripe)', keywords: 'stripe kpi chart chargeback mail order analytics', popular: false }] : []),
             { view: 'assistantNumbers', label: 'Assistant Numbers', keywords: 'phone assistant', popular: false },
@@ -11853,7 +11851,6 @@ function ReturnsView({ returns, cars, onRefresh, addActivity, franchiseId = 'ch'
     const [selectedDate, setSelectedDate] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
     const [selectedReturn, setSelectedReturn] = useState(null);
-    const [showDetailModal, setShowDetailModal] = useState(false);
     const [contextMenu, setContextMenu] = useState(null);
     const [showImageGallery, setShowImageGallery] = useState(null);
 
@@ -11930,7 +11927,8 @@ function ReturnsView({ returns, cars, onRefresh, addActivity, franchiseId = 'ch'
                 </div>
             </div>
 
-            <div className="gm-table-wrap gm-list-panel overflow-x-auto">
+            <div className="pal-ops-master-detail">
+            <div className="pal-ops-master-detail-main gm-table-wrap gm-list-panel overflow-x-auto">
             <StripeFilterChips
                 variant="strip"
                 value={statusFilter}
@@ -11991,7 +11989,8 @@ function ReturnsView({ returns, cars, onRefresh, addActivity, franchiseId = 'ch'
                         return (
                                     <tr 
                                         key={`${ret.documentId || ret.id || 'return'}-${idx}`}
-                                        onClick={() => { setSelectedReturn(ret); setShowDetailModal(true); }}
+                                        className={selectedReturn && (selectedReturn.documentId || selectedReturn.id) === (ret.documentId || ret.id) ? 'gm-table-row-selected' : undefined}
+                                        onClick={() => setSelectedReturn(ret)}
                                         onContextMenu={(e) => {
                                             e.preventDefault();
                                             setContextMenu({ x: e.pageX, y: e.pageY, return: ret });
@@ -12035,7 +12034,7 @@ function ReturnsView({ returns, cars, onRefresh, addActivity, franchiseId = 'ch'
                                         </td>
                                         <td className="gm-table-actions-col" onClick={(e) => e.stopPropagation()}>
                                             <StripeRowAction
-                                                onClick={() => { setSelectedReturn(ret); setShowDetailModal(true); }}
+                                                onClick={() => setSelectedReturn(ret)}
                                             />
                                         </td>
                                     </tr>
@@ -12064,6 +12063,24 @@ function ReturnsView({ returns, cars, onRefresh, addActivity, franchiseId = 'ch'
             )}
             </div>
 
+            <aside className="pal-ops-master-detail-aside">
+                {selectedReturn ? (
+                    <ReturnDetailModal
+                        embedded
+                        return={selectedReturn}
+                        cars={cars}
+                        onClose={() => setSelectedReturn(null)}
+                        onSoftDeleteReturn={onSoftDeleteReturn}
+                    />
+                ) : (
+                    <div className="pal-ops-master-detail-empty">
+                        <ArrowLeft size={28} className="mb-3 opacity-40" />
+                        <p>Select a return record to open details on the right.</p>
+                    </div>
+                )}
+            </aside>
+            </div>
+
             {/* Context Menu */}
             {contextMenu && (
                 <ContextMenu
@@ -12072,7 +12089,7 @@ function ReturnsView({ returns, cars, onRefresh, addActivity, franchiseId = 'ch'
                         { 
                             label: 'View Details', 
                             icon: <Eye size={16} />, 
-                            onClick: () => { setSelectedReturn(contextMenu.return); setShowDetailModal(true); }
+                            onClick: () => { setSelectedReturn(contextMenu.return); }
                         },
                         { 
                             label: 'View Photos', 
@@ -12124,14 +12141,6 @@ function ReturnsView({ returns, cars, onRefresh, addActivity, franchiseId = 'ch'
                 />
             )}
 
-            {showDetailModal && selectedReturn && (
-                <ReturnDetailModal
-                    return={selectedReturn}
-                    cars={cars}
-                    onClose={() => setShowDetailModal(false)}
-                    onSoftDeleteReturn={onSoftDeleteReturn}
-                />
-            )}
         </div>
     );
 }
@@ -12192,7 +12201,7 @@ async function generateReturnReportPdfDocument({ ret, car, returnPhotos, lang, t
     }
 }
 
-function ReturnDetailModal({ return: ret, cars, onClose, onSoftDeleteReturn }) {
+function ReturnDetailModal({ return: ret, cars, onClose, onSoftDeleteReturn, embedded = false }) {
     const toast = useToast();
     const car = findFleetCarByAracId(cars, ret.aracId);
     const returnPhotos = ret.fotograflar || [];
@@ -12230,7 +12239,7 @@ function ReturnDetailModal({ return: ret, cars, onClose, onSoftDeleteReturn }) {
     const resCode = getBookingCode(ret);
 
     return (
-        <PalantirWorkbench onClose={onClose} size="drawer">
+        <PalantirWorkbench onClose={onClose} size={embedded ? 'large' : 'drawer'} embedded={embedded}>
             <PalantirCommandBar
                 eyebrow="Return operation"
                 title={ret.aracPlaka || '—'}
@@ -12346,7 +12355,7 @@ function ReturnDetailModal({ return: ret, cars, onClose, onSoftDeleteReturn }) {
     );
 }
 
-function CheckoutDetailModal({ exit, cars, onClose, runPdfFlow, generateCheckoutPDF, setShowImageGallery, onSoftDeleteExit }) {
+function CheckoutDetailModal({ exit, cars, onClose, runPdfFlow, generateCheckoutPDF, setShowImageGallery, onSoftDeleteExit, embedded = false }) {
     const toast = useToast();
     const car = findFleetCarByAracId(cars, exit.aracId);
     const checkoutPhotos = exit.fotograflar || [];
@@ -12356,7 +12365,7 @@ function CheckoutDetailModal({ exit, cars, onClose, runPdfFlow, generateCheckout
     const resCode = getExitBookingCode(exit);
 
     return (
-        <PalantirWorkbench onClose={onClose} size="drawer">
+        <PalantirWorkbench onClose={onClose} size={embedded ? 'large' : 'drawer'} embedded={embedded}>
             <PalantirCommandBar
                 eyebrow="Checkout operation"
                 title={exit.aracPlaka || '—'}
@@ -13180,7 +13189,7 @@ function ServiceFirmDetailModal({ firm, onClose, onUpdate, addActivity, initialE
 // Devam Part 4'te: OfficeOperationsView ve ReportsView
 
 // OFFICE OPERATIONS VIEW - Includes Banking Transactions and Traffic Fines
-function OfficeOperationsView({ operations, cars, onRefresh, addActivity, user, franchiseId = 'ch', canViewFinancials = true }) {
+function OfficeOperationsView({ operations, cars, onRefresh, addActivity, user, franchiseId = 'ch', canViewFinancials = true, showStripeFinancialTotals = false }) {
     const toast = useToast();
     const [selectedType, setSelectedType] = useState('all');
     const [searchQuery, setSearchQuery] = useState('');
@@ -13200,6 +13209,8 @@ function OfficeOperationsView({ operations, cars, onRefresh, addActivity, user, 
         const now = new Date();
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     });
+
+    const isCHFranchise = /^CH/i.test(String(franchiseId || ''));
 
     const operationTypes = useMemo(() => {
         const all = [
@@ -13464,6 +13475,13 @@ function OfficeOperationsView({ operations, cars, onRefresh, addActivity, user, 
                             />
                         );
                     })}
+                    {isCHFranchise && (
+                        <StripePosDailyClosingOfficeCard
+                            franchiseId={franchiseId}
+                            selectedMonth={selectedMonth}
+                            showFinancialTotals={showStripeFinancialTotals}
+                        />
+                    )}
                 </StripeMetricRow>
             )}
 
@@ -23700,7 +23718,6 @@ function CheckoutOperationsView({ exits, cars, onRefresh, addActivity, onSoftDel
     const [selectedDate, setSelectedDate] = useState('');
     const [photoFilter, setPhotoFilter] = useState('all');
     const [selectedExit, setSelectedExit] = useState(null);
-    const [showDetailModal, setShowDetailModal] = useState(false);
     const [contextMenu, setContextMenu] = useState(null);
     const [showImageGallery, setShowImageGallery] = useState(null);
     const [pdfOverlay, setPdfOverlay] = useState(null);
@@ -23788,6 +23805,8 @@ function CheckoutOperationsView({ exits, cars, onRefresh, addActivity, onSoftDel
                 </div>
             </div>
 
+            <div className="pal-ops-master-detail">
+            <div className="pal-ops-master-detail-main">
             <StripeFilterChips
                 value={photoFilter}
                 onChange={setPhotoFilter}
@@ -23848,7 +23867,8 @@ function CheckoutOperationsView({ exits, cars, onRefresh, addActivity, onSoftDel
                                     return (
                                         <tr 
                                             key={`${exit.documentId || exit.id || 'exit'}-${idx}`}
-                                            onClick={() => { setSelectedExit(exit); setShowDetailModal(true); }}
+                                            className={selectedExit && (selectedExit.documentId || selectedExit.id) === (exit.documentId || exit.id) ? 'gm-table-row-selected' : undefined}
+                                            onClick={() => setSelectedExit(exit)}
                                             onContextMenu={(e) => {
                                                 e.preventDefault();
                                                 setContextMenu({ x: e.pageX, y: e.pageY, exit: exit });
@@ -23890,7 +23910,7 @@ function CheckoutOperationsView({ exits, cars, onRefresh, addActivity, onSoftDel
                                             </td>
                                             <td className="gm-table-actions-col" onClick={(e) => e.stopPropagation()}>
                                                 <StripeRowAction
-                                                    onClick={() => { setSelectedExit(exit); setShowDetailModal(true); }}
+                                                    onClick={() => setSelectedExit(exit)}
                                                 />
                                             </td>
                                         </tr>
@@ -23918,6 +23938,29 @@ function CheckoutOperationsView({ exits, cars, onRefresh, addActivity, onSoftDel
                 </div>
             )}
 
+            </div>
+
+            <aside className="pal-ops-master-detail-aside">
+                {selectedExit ? (
+                    <CheckoutDetailModal
+                        embedded
+                        exit={selectedExit}
+                        cars={cars}
+                        onClose={() => setSelectedExit(null)}
+                        runPdfFlow={runPdfFlow}
+                        generateCheckoutPDF={generateCheckoutPDF}
+                        setShowImageGallery={setShowImageGallery}
+                        onSoftDeleteExit={onSoftDeleteExit}
+                    />
+                ) : (
+                    <div className="pal-ops-master-detail-empty">
+                        <ArrowRight size={28} className="mb-3 opacity-40" />
+                        <p>Select a checkout record to open details on the right.</p>
+                    </div>
+                )}
+            </aside>
+            </div>
+
             {/* Context Menu */}
             {contextMenu && (
                 <ContextMenu
@@ -23926,7 +23969,7 @@ function CheckoutOperationsView({ exits, cars, onRefresh, addActivity, onSoftDel
                         { 
                             label: 'View Details', 
                             icon: <Eye size={16} />, 
-                            onClick: () => { setSelectedExit(contextMenu.exit); setShowDetailModal(true); }
+                            onClick: () => { setSelectedExit(contextMenu.exit); }
                         },
                         { 
                             label: 'View Photos', 
@@ -23975,20 +24018,6 @@ function CheckoutOperationsView({ exits, cars, onRefresh, addActivity, onSoftDel
                 />
             )}
 
-            {showDetailModal && selectedExit && (
-                <CheckoutDetailModal
-                    exit={selectedExit}
-                    cars={cars}
-                    onClose={() => {
-                        setShowDetailModal(false);
-                        setSelectedExit(null);
-                    }}
-                    runPdfFlow={runPdfFlow}
-                    generateCheckoutPDF={generateCheckoutPDF}
-                    setShowImageGallery={setShowImageGallery}
-                    onSoftDeleteExit={onSoftDeleteExit}
-                />
-            )}
             <PalantirPdfTransferOverlay state={pdfOverlay} />
         </div>
     );

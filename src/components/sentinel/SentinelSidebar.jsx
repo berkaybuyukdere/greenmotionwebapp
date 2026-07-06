@@ -72,6 +72,9 @@ export function SentinelSidebar({
                     <NavItem icon={<CalendarDays size={14} />} label="Operations" active={currentView === 'operations'} onClick={go('operations')} />
                 ) : null}
                 <NavItem icon={<ArrowLeft size={14} />} label="Returns" active={currentView === 'returns'} onClick={go('returns')} />
+                {canAccessFrontDeskCustomers ? (
+                    <NavItem icon={<Users size={14} />} label="Front-desk customers" active={currentView === 'frontDeskCustomers'} onClick={go('frontDeskCustomers')} />
+                ) : null}
                 <NavItem icon={<AlertCircle size={14} />} label="Damage" active={currentView === 'damage'} onClick={go('damage')} />
                 <NavItem icon={<Package size={14} />} label="Service" active={currentView === 'service'} onClick={go('service')} />
                 <NavItem icon={<Building2 size={14} />} label="Service Firms" active={currentView === 'serviceFirms'} onClick={go('serviceFirms')} />
@@ -83,9 +86,6 @@ export function SentinelSidebar({
                 <div className="sidebar-label">Finance &amp; office</div>
                 <NavItem icon={<DollarSign size={14} />} label="Office Operations" active={currentView === 'office'} onClick={go('office')} />
                 <NavItem icon={<ArrowLeft size={14} />} label="Office Returns" active={currentView === 'officeReturns'} onClick={go('officeReturns')} />
-                {canAccessFrontDeskCustomers ? (
-                    <NavItem icon={<Users size={14} />} label="Front-desk customers" active={currentView === 'frontDeskCustomers'} onClick={go('frontDeskCustomers')} />
-                ) : null}
             </div>
 
             <div className="sidebar-divider" />

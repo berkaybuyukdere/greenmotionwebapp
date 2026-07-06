@@ -1,4 +1,4 @@
-import { normalizeRoleKey } from './userAccess';
+import { normalizeRoleKey, isGlobalAdmin } from './userAccess';
 import { formatCurrency } from './dateFormatters';
 import { isSwissFranchiseId } from './fileLibraryHelpers';
 import { _franchiseLegalBundle, emptyFranchiseLegalBundle } from '../firebase/authScope';
@@ -197,7 +197,8 @@ export function canPerformStripeOperations(userProfile, franchiseId) {
         r === 'admin' ||
         r === 'manager' ||
         r === 'staff' ||
-        r === 'shuttle'
+        r === 'shuttle' ||
+        r === 'viewer'
     );
 }
 
@@ -216,8 +217,20 @@ export function isGarageOnlyRole(userProfile) {
     return normalizeRoleKey(userProfile?.role) === 'garage';
 }
 
+/** Front-desk customer list + kiosk admin — all franchise operational roles (CH/TR), not admin-only. */
 export function canAccessFrontDeskCustomersWeb(userProfile) {
-    return !isGarageOnlyRole(userProfile);
+    if (!userProfile || isGarageOnlyRole(userProfile)) return false;
+    if (isGlobalAdmin(userProfile)) return true;
+    const r = normalizeRoleKey(userProfile?.role);
+    if (!r) return true;
+    return (
+        r === 'superadmin' ||
+        r === 'admin' ||
+        r === 'manager' ||
+        r === 'staff' ||
+        r === 'shuttle' ||
+        r === 'viewer'
+    );
 }
 
 /** Fleet category rename / bulk delete (matches iOS `UserProfile.canManageVehicleCategories`). */

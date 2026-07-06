@@ -20,6 +20,22 @@ export function chStripeGetDailyReports({ franchiseId, period = '7d', startDayKe
   });
 }
 
+/** POS daily closing for one Zurich day (staff+). */
+export function chStripeListPosDailyClosing({ franchiseId, dayKey } = {}) {
+  return callEu('listCHStripePosDailyClosing', {
+    franchiseId: String(franchiseId || 'CH').toUpperCase(),
+    ...(dayKey ? { dayKey } : {}),
+  });
+}
+
+/** POS daily closing calendar-month total (admin+). */
+export function chStripeSumPosDailyClosingMonth({ franchiseId, yearMonth } = {}) {
+  return callEu('sumCHStripePosDailyClosingMonth', {
+    franchiseId: String(franchiseId || 'CH').toUpperCase(),
+    yearMonth,
+  });
+}
+
 /** Charge saved card from prior deposit (us-central1, admin+). */
 export function stripeFinancialChargeSavedPaymentMethod({ franchiseId, depositId, paymentIntentId, amountChf, note } = {}) {
   return call('stripeFinancialChargeSavedPaymentMethod', {
@@ -128,8 +144,8 @@ export function stripeFinancialCreateDeposit(payload) {
   return call('stripeFinancialCreateDeposit', payload);
 }
 
-export function stripeFinancialListDeposits({ franchiseId, limit = 50 } = {}) {
-  return call('stripeFinancialListDeposits', { franchiseId, limit });
+export function stripeFinancialListDeposits({ franchiseId, limit = 50, syncStripe = false } = {}) {
+  return call('stripeFinancialListDeposits', { franchiseId, limit, syncStripe });
 }
 
 export function stripeFinancialIncrementDeposit(payload) {
@@ -226,4 +242,15 @@ export function stripeFinancialSendMailOrderEmail(payload) {
 
 export function stripeFinancialAttachMailOrderDocuments(payload) {
   return call('stripeFinancialAttachMailOrderDocuments', payload);
+}
+
+/** Refund succeeded direct charge or saved-card charge. */
+export function stripeFinancialRefundPayment({ franchiseId, paymentIntentId, mailOrderId, amountChf, reason } = {}) {
+  return call('stripeFinancialRefundPayment', {
+    franchiseId,
+    ...(paymentIntentId ? { paymentIntentId } : {}),
+    ...(mailOrderId ? { mailOrderId } : {}),
+    ...(amountChf != null ? { amountChf } : {}),
+    ...(reason ? { reason } : {}),
+  });
 }

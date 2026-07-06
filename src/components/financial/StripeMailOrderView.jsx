@@ -9,6 +9,7 @@ import {
 import { StripeDataTable, StripeStatusBadge } from '../StripeListUI';
 import { StripeMailOrderDetailDrawer } from './StripeMailOrderDetailDrawer';
 import { PalantirFinKpiCard, PalantirFinKpiRow } from './PalantirFinKpiCard';
+import { useStripeFinFeedback } from './StripeFinFeedback';
 import { useConfirmDirtyClose } from '../../utilities/useConfirmDirtyClose';
 import {
   defaultResCodeValue,
@@ -144,7 +145,7 @@ function ReminderCell({ reminder, slotLabel }) {
   );
 }
 
-export function StripeMailOrderView({ franchiseId, showFinancialTotals = true, canPerformOperations = true }) {
+export function StripeMailOrderView({ franchiseId, showFinancialTotals = true, canPerformOperations = true, embedded = false }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [configured, setConfigured] = useState(true);
@@ -158,6 +159,7 @@ export function StripeMailOrderView({ franchiseId, showFinancialTotals = true, c
   const [saving, setSaving] = useState(false);
   const [drawerOrder, setDrawerOrder] = useState(null);
   const [stripeMode, setStripeMode] = useState('unset');
+  const { showSuccess, showFromError, toast: feedbackToast } = useStripeFinFeedback();
 
   const load = useCallback(async () => {
     if (!franchiseId) return;
@@ -332,8 +334,15 @@ export function StripeMailOrderView({ franchiseId, showFinancialTotals = true, c
       setShowNewPayment(false);
       setForm(emptyForm);
       setFiles([]);
+      showSuccess(
+        'Payment e-mail sent',
+        customerEmail
+          ? `Payment link e-mailed to ${customerEmail} for CHF ${major.toFixed(2)}.`
+          : `Payment link created for CHF ${major.toFixed(2)}.`,
+      );
       await load();
     } catch (e) {
+      showFromError('Could not send payment mail', e);
       setError(e?.message || 'Could not send payment mail');
     } finally {
       setSaving(false);
@@ -406,7 +415,8 @@ export function StripeMailOrderView({ franchiseId, showFinancialTotals = true, c
   );
 
   return (
-    <div className="pal-fin-root pal-analytics-page pal-fin-stripe-page">
+    <div className={`pal-fin-root pal-analytics-page pal-fin-stripe-page${embedded ? ' pal-fin-stripe-embedded' : ''}`}>
+      {!embedded && (
       <header className="pal-fin-command">
         <div>
           <p className="pal-fin-eyebrow">Finance · Stripe · Switzerland</p>
@@ -428,6 +438,7 @@ export function StripeMailOrderView({ franchiseId, showFinancialTotals = true, c
           </button>
         </div>
       </header>
+      )}
 
       {!configured && <div className="pal-fin-alert">Stripe CH secret key missing.</div>}
       {!MAIL_ORDER_REMINDER_SMTP_ENABLED && (
@@ -626,6 +637,8 @@ export function StripeMailOrderView({ franchiseId, showFinancialTotals = true, c
           </div>
         </PalantirWorkbench>
       )}
+
+      {feedbackToast}
     </div>
   );
 }

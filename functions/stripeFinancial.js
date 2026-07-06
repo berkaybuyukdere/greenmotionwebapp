@@ -58,13 +58,14 @@ function buildDailyFinancialSummary(rows, { amountField = 'amount', dayKey, time
 }
 
 function redactMailOrderForStaff(row, profile) {
+  // Per-row amounts stay visible for all finance roles; KPI totals are gated separately.
   if (canViewStripeFinancialTotals(profile)) return row;
-  return { ...row, amount: null };
+  return row;
 }
 
 function redactPaymentForStaff(row, profile) {
   if (canViewStripeFinancialTotals(profile)) return row;
-  return { ...row, amount: null, holdAmount: null, capturedAmount: null };
+  return row;
 }
 
 function normalizeRoleKey(role) {
@@ -1169,12 +1170,14 @@ async function runCreateDirectCardOperation(request) {
     payment_method_types: ['card'],
     capture_method: 'automatic',
     description: `${category === 'traffic_fine' ? 'Traffic fine' : 'Damage'} — ${resNo}`,
+    ...(customerEmail ? { receipt_email: customerEmail } : {}),
     'metadata[franchiseId]': franchiseId,
     'metadata[flow]': 'direct_card_operation',
     'metadata[mailOrderId]': mailOrderId,
     'metadata[category]': category,
     'metadata[resNo]': resNo,
     'metadata[customerName]': customerName,
+    ...(customerEmail ? { 'metadata[customerEmail]': customerEmail } : {}),
   });
 
   await mailOrderRef.set({
@@ -1246,6 +1249,14 @@ async function extractCardSnapshotFromPaymentIntent(pi) {
   };
 }
 
+function deriveMailOrderUiStatus(row) {
+  const raw = String(row?.status || '').toLowerCase();
+  if (raw === 'paid') return 'paid';
+  if (raw === 'pending_charge' || raw === 'pending') return 'pending';
+  if (raw === 'charge_failed' || raw === 'failed' || raw === 'declined') return 'failed';
+  return 'unpaid';
+}
+
 /** Save card snapshot from a PaymentIntent after entry (incl. failed attempts) for retry. */
 async function runPersistDirectCardSnapshot(request) {
   const { uid } = await assertFinancialCallable(request);
@@ -1305,6 +1316,14 @@ async function runPersistDirectCardSnapshot(request) {
     cardholderName: cardSnap.cardholderName || row.cardholderName || row.customerName || null,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
+
+  if (pi.status === 'canceled' || pi.status === 'requires_payment_method') {
+    const err = pi.last_payment_error;
+    patch.status = 'charge_failed';
+    patch.chargeErrorCode = err?.code || null;
+    patch.chargeErrorMessage = err?.message || 'Card declined';
+    patch.chargeFailedAt = admin.firestore.FieldValue.serverTimestamp();
+  }
 
   await docRef.set(patch, { merge: true });
 
@@ -1420,6 +1439,82 @@ async function runFinalizeDirectCardOperation(request) {
     status: pi.status,
     emailSent: emailResult.sent === true,
     cardLast4: card?.last4 || null,
+  };
+}
+
+/** Refund a succeeded direct charge or saved-card charge (staff+). */
+async function runRefundPayment(request) {
+  const { uid } = await assertFinancialCallable(request);
+  const data = request.data || {};
+  const franchiseId = normalizeFranchiseId(data.franchiseId);
+  assertSwitzerlandFranchise(franchiseId);
+  const paymentIntentId = String(data.paymentIntentId || '').trim();
+  const mailOrderId = String(data.mailOrderId || '').trim();
+  const reason = String(data.reason || 'requested_by_customer').trim().slice(0, 200);
+  const amountChf = data.amountChf != null ? Number(data.amountChf) : null;
+
+  if (!paymentIntentId.startsWith('pi_') && !mailOrderId) {
+    throw new HttpsError('invalid-argument', 'paymentIntentId or mailOrderId required');
+  }
+
+  let piId = paymentIntentId;
+  let mailRef = null;
+  let mailRow = null;
+  if (mailOrderId) {
+    mailRef = mailOrdersCol(franchiseId).doc(mailOrderId);
+    const snap = await mailRef.get();
+    if (!snap.exists) throw new HttpsError('not-found', 'Operation not found');
+    mailRow = snap.data() || {};
+    piId = String(mailRow.paymentIntentId || piId).trim();
+  }
+  if (!piId.startsWith('pi_')) {
+    throw new HttpsError('failed-precondition', 'No PaymentIntent to refund');
+  }
+
+  const pi = await stripeRequest('GET', `/payment_intents/${encodeURIComponent(piId)}`);
+  if (pi.status !== 'succeeded') {
+    throw new HttpsError('failed-precondition', `Payment is ${pi.status}; only succeeded charges can be refunded`);
+  }
+
+  const refundBody = { payment_intent: piId, reason: 'requested_by_customer' };
+  if (amountChf != null && Number.isFinite(amountChf) && amountChf > 0) {
+    const minor = Math.round(amountChf * 100);
+    if (minor < 50) throw new HttpsError('invalid-argument', 'Minimum refund is CHF 0.50');
+    refundBody.amount = minor;
+  }
+
+  const refund = await stripeRequest('POST', '/refunds', refundBody);
+
+  if (mailRef && mailRow) {
+    const refundedMinor = refund.amount || pi.amount_received || pi.amount;
+    const fullRefund = !refundBody.amount || refundedMinor >= (pi.amount_received || pi.amount);
+    await mailRef.set(
+      {
+        refundId: refund.id,
+        refundedAmount: refundedMinor,
+        refundedAt: admin.firestore.FieldValue.serverTimestamp(),
+        status: fullRefund ? 'refunded' : 'partially_refunded',
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+  }
+
+  await writeAudit(franchiseId, uid, 'payment_refunded', {
+    paymentIntentId: piId,
+    mailOrderId: mailOrderId || mailRow?.id || null,
+    refundId: refund.id,
+    amountChf: (refund.amount || pi.amount_received || 0) / 100,
+    reason,
+  });
+
+  return {
+    ok: true,
+    refundId: refund.id,
+    paymentIntentId: piId,
+    amount: refund.amount,
+    currency: refund.currency || pi.currency,
+    status: refund.status,
   };
 }
 
@@ -1631,7 +1726,7 @@ async function runListMailOrders(request) {
       paymentUrl: row.paymentUrl || '',
       amount: row.amount ?? null,
       currency: row.currency || 'chf',
-      status: row.status === 'paid' ? 'paid' : 'unpaid',
+      status: deriveMailOrderUiStatus(row),
       rawStatus: row.status || 'unpaid',
       chargeMode: row.chargeMode || '',
       paymentIntentId: row.paymentIntentId || '',
@@ -1757,26 +1852,78 @@ function resolveDepositDisplayStatus(tx, dep) {
   return null;
 }
 
+/**
+ * Buckets that come from a settled charge outcome and must never be
+ * overwritten by PaymentIntent-level state (mirrors Stripe dashboard).
+ */
+const TERMINAL_CHARGE_BUCKETS = new Set(['failed', 'blocked', 'refunded', 'disputed']);
+
+/**
+ * Maps a Stripe Charge to a dashboard bucket exactly like the Stripe
+ * Transactions list: Failed / Blocked / Disputed / Refunded / Uncaptured /
+ * Succeeded. A declined attempt is FAILED — never "cancelled".
+ * @param {object} ch Stripe charge
+ * @return {string} bucket id
+ */
 function paymentBucketFromCharge(ch) {
-  if (ch.status === 'failed') return 'cancelled';
+  if (ch.status === 'failed') {
+    return ch.outcome && ch.outcome.type === 'blocked' ? 'blocked' : 'failed';
+  }
+  if (ch.disputed) return 'disputed';
+  if (ch.refunded || Number(ch.amount_refunded) > 0) return 'refunded';
   if (ch.status === 'succeeded' && ch.captured === false) return 'hold';
   if (ch.status === 'succeeded') return 'successful';
   return 'pending';
 }
 
+/**
+ * Maps a Stripe PaymentIntent to a dashboard bucket. A PI whose last
+ * attempt was declined (last_payment_error) is FAILED, not canceled.
+ * @param {object} pi Stripe payment intent
+ * @return {string} bucket id
+ */
 function paymentBucketFromIntent(pi) {
   if (pi.status === 'canceled') return 'cancelled';
   if (pi.status === 'requires_capture') return 'hold';
   if (Number(pi.amount_capturable) > 0 && pi.status !== 'succeeded') return 'hold';
   if (pi.status === 'succeeded') return 'successful';
+  if (pi.last_payment_error) return 'failed';
   return 'pending';
 }
 
+/**
+ * Stripe-dashboard naming for each bucket.
+ * @param {string} bucket bucket id
+ * @return {string} display label
+ */
 function statusLabelForBucket(bucket) {
-  if (bucket === 'hold') return 'Hold';
-  if (bucket === 'successful') return 'Paid';
+  if (bucket === 'hold') return 'Uncaptured';
+  if (bucket === 'successful') return 'Succeeded';
   if (bucket === 'cancelled') return 'Canceled';
+  if (bucket === 'failed') return 'Failed';
+  if (bucket === 'blocked') return 'Blocked';
+  if (bucket === 'refunded') return 'Refunded';
+  if (bucket === 'disputed') return 'Disputed';
   return 'Pending';
+}
+
+/**
+ * Extracts human-readable failure details from a charge outcome so the UI
+ * can show the decline reason as a note on the row.
+ * @param {object} ch Stripe charge
+ * @return {{message: (string|null), code: (string|null), declineCode: (string|null)}|null} detail
+ */
+function chargeFailureDetail(ch) {
+  if (!ch) return null;
+  const outcome = ch.outcome || {};
+  const message = ch.failure_message || outcome.seller_message || null;
+  const code = ch.failure_code || outcome.reason || null;
+  if (!message && !code) return null;
+  return {
+    message,
+    code,
+    declineCode: outcome.network_decline_code || ch.failure_code || null,
+  };
 }
 
 function extractCardInfo(pmd) {
@@ -1825,14 +1972,32 @@ function detectPaymentChannel(chargeDetails, metadata) {
 }
 
 function extractCardholderName(charge, pi, meta) {
+  const customerObj = (charge?.customer && typeof charge.customer === 'object' && charge.customer) ||
+    (pi?.customer && typeof pi.customer === 'object' && pi.customer) ||
+    null;
   const fromCharge = charge?.billing_details?.name || '';
   const cardPresent = charge?.payment_method_details?.card_present;
   const fromPresent = cardPresent?.cardholder_name || '';
+  const fromCustomer = customerObj?.name || '';
   const fromMeta = meta?.customerName || pi?.metadata?.customerName || '';
-  return String(fromCharge || fromPresent || fromMeta || '').trim();
+  const name = String(fromCharge || fromPresent || fromCustomer || fromMeta || '').trim();
+  if (name && !/^cus_|^guest$/i.test(name)) return name;
+  return '';
+}
+
+function extractCardholderEmail(charge, pi, meta) {
+  const customerObj = (charge?.customer && typeof charge.customer === 'object' && charge.customer) ||
+    (pi?.customer && typeof pi.customer === 'object' && pi.customer) ||
+    null;
+  const fromCharge = charge?.billing_details?.email || charge?.receipt_email || '';
+  const fromCustomer = customerObj?.email || '';
+  const fromMeta = meta?.customerEmail || pi?.metadata?.customerEmail || '';
+  return String(fromCharge || fromCustomer || fromMeta || '').trim();
 }
 
 function channelLabel(channel, meta) {
+  if (meta?.flow === 'saved_token_charge') return 'Direct charge';
+  if (meta?.flow === 'direct_card_operation') return 'Manual charge';
   if (meta?.flow === 'deposit') {
     if (String(meta?.source || '').toLowerCase() === 'wheelsys') return 'WheelSys · Deposit';
     return 'Deposit';
@@ -1864,6 +2029,10 @@ function buildSummary(transactions) {
     hold: { count: 0, amount: 0 },
     pending: { count: 0, amount: 0 },
     cancelled: { count: 0, amount: 0 },
+    failed: { count: 0, amount: 0 },
+    blocked: { count: 0, amount: 0 },
+    refunded: { count: 0, amount: 0 },
+    disputed: { count: 0, amount: 0 },
   };
   for (const tx of transactions) {
     const bucket = summary[tx.bucket];
@@ -1873,6 +2042,8 @@ function buildSummary(transactions) {
       bucket.amount += Number(tx.amountReceived || tx.amount || 0);
     } else if (tx.bucket === 'hold') {
       bucket.amount += Number(tx.holdAmount || tx.amount || 0);
+    } else if (tx.bucket === 'refunded') {
+      bucket.amount += Number(tx.refundedAmount || tx.amount || 0);
     } else {
       bucket.amount += Number(tx.amount || 0);
     }
@@ -1900,8 +2071,16 @@ async function runListPayments(request) {
   // Firestore reads are independent of the Stripe list calls — run all four
   // together so total latency is max() of them instead of their sum.
   const [chargesRes, intentsRes, mailSnap, depSnapSettled] = await Promise.all([
-    stripeRequest('GET', '/charges', { limit: 100, 'created[gte]': createdGte }),
-    stripeRequest('GET', '/payment_intents', { limit: 100, 'created[gte]': createdGte }),
+    stripeRequest('GET', '/charges', {
+      limit: 100,
+      'created[gte]': createdGte,
+      expand: ['data.customer'],
+    }),
+    stripeRequest('GET', '/payment_intents', {
+      limit: 100,
+      'created[gte]': createdGte,
+      expand: ['data.customer'],
+    }),
     mailOrdersCol(franchiseId).orderBy('createdAt', 'desc').limit(100).get(),
     admin
       .firestore()
@@ -1915,6 +2094,8 @@ async function runListPayments(request) {
   ]);
 
   const byKey = new Map();
+  // pi id -> array of charge-derived rows (one row per attempt, like Stripe)
+  const rowsByPi = new Map();
 
   for (const ch of chargesRes.data || []) {
     if (!dayFilter(ch.created)) continue;
@@ -1922,7 +2103,8 @@ async function runListPayments(request) {
     if (meta.franchiseId && String(meta.franchiseId).toUpperCase() !== franchiseId) continue;
     const bucket = paymentBucketFromCharge(ch);
     const cardInfo = extractCardInfo(ch.payment_method_details);
-    const key = ch.payment_intent || ch.id;
+    const failure = chargeFailureDetail(ch);
+    const key = ch.id;
     byKey.set(key, {
       id: ch.id,
       paymentIntentId: ch.payment_intent || null,
@@ -1936,19 +2118,31 @@ async function runListPayments(request) {
       currency: ch.currency,
       channel: detectPaymentChannel(ch.payment_method_details, meta),
       channelLabel: channelLabel(detectPaymentChannel(ch.payment_method_details, meta), meta),
-      flowType: meta.flow === 'deposit' ? 'deposit' : null,
+      flowType: meta.flow === 'deposit' ? 'deposit' : meta.flow || null,
+      stripeFlow: meta.flow || null,
       depositSource: depositSourceFromMeta(meta),
       paymentMethod: cardInfo.paymentMethod,
       cardBrand: cardInfo.cardBrand,
       cardLast4: cardInfo.cardLast4,
       customerName: extractCardholderName(ch, null, meta),
       description: ch.description || meta.customerReference || meta.plate || '',
-      customerEmail: ch.billing_details?.email || '',
+      customerEmail: extractCardholderEmail(ch, null, meta),
       plate: meta.plate || '',
-      reference: meta.customerReference || meta.productId || '',
+      resCode: meta.resNo || meta.resCode || meta.customerReference || '',
+      reference: meta.resNo || meta.customerReference || meta.resCode || '',
+      mailOrderId: meta.mailOrderId || null,
+      failureMessage: failure?.message || null,
+      failureCode: failure?.code || null,
+      declineCode: failure?.declineCode || null,
+      refundedAmount: Number(ch.amount_refunded) || 0,
       created: ch.created,
       createdAt: new Date(ch.created * 1000).toISOString(),
     });
+    if (ch.payment_intent) {
+      const list = rowsByPi.get(ch.payment_intent) || [];
+      list.push(byKey.get(key));
+      rowsByPi.set(ch.payment_intent, list);
+    }
   }
 
   for (const pi of intentsRes.data || []) {
@@ -1956,19 +2150,43 @@ async function runListPayments(request) {
     const meta = pi.metadata || {};
     if (meta.franchiseId && String(meta.franchiseId).toUpperCase() !== franchiseId) continue;
     const bucket = paymentBucketFromIntent(pi);
-    const existing = byKey.get(pi.id);
-    if (existing) {
-      existing.bucket = bucket;
-      existing.status = pi.status;
-      existing.statusLabel = statusLabelForBucket(bucket);
-      existing.amountReceived = pi.amount_received || existing.amountReceived;
-      existing.holdAmount = holdAmountForIntent(pi) || existing.holdAmount;
-      if (!existing.customerName) {
-        existing.customerName = extractCardholderName(null, pi, meta);
-      }
-      if (meta.flow === 'deposit') {
-        existing.flowType = 'deposit';
-        existing.channelLabel = 'Deposit';
+    const chargeRows = rowsByPi.get(pi.id);
+    if (chargeRows && chargeRows.length) {
+      for (const existing of chargeRows) {
+        // Charge-level outcomes (Failed/Blocked/Refunded/Disputed) are what
+        // Stripe shows — never overwrite them with PI-level state.
+        const isTerminal = TERMINAL_CHARGE_BUCKETS.has(existing.bucket);
+        const holdReleased = existing.bucket === 'hold' && pi.status === 'canceled';
+        if (!isTerminal && (existing.bucket === 'pending' || holdReleased)) {
+          existing.bucket = holdReleased ? 'cancelled' : bucket;
+          existing.status = pi.status;
+          existing.statusLabel = statusLabelForBucket(existing.bucket);
+        }
+        if (existing.bucket === 'successful') {
+          existing.amountReceived = pi.amount_received || existing.amountReceived;
+        }
+        if (existing.bucket === 'hold') {
+          existing.holdAmount = holdAmountForIntent(pi) || existing.holdAmount;
+        }
+        if (!existing.customerName) {
+          existing.customerName = extractCardholderName(null, pi, meta);
+        }
+        if (!existing.customerEmail) {
+          existing.customerEmail = extractCardholderEmail(null, pi, meta);
+        }
+        if (!existing.resCode) existing.resCode = meta.resNo || meta.resCode || '';
+        if (meta.resNo) existing.reference = meta.resNo;
+        if (meta.mailOrderId) existing.mailOrderId = meta.mailOrderId;
+        if (meta.flow) {
+          existing.stripeFlow = meta.flow;
+          if (meta.flow === 'deposit') {
+            existing.flowType = 'deposit';
+            existing.channelLabel = 'Deposit';
+          } else {
+            existing.channelLabel = channelLabel(existing.channel, meta);
+            existing.flowType = meta.flow;
+          }
+        }
       }
       continue;
     }
@@ -1985,19 +2203,26 @@ async function runListPayments(request) {
       currency: pi.currency,
       channel: detectPaymentChannel(null, meta),
       channelLabel: channelLabel(detectPaymentChannel(null, meta), meta),
-      flowType: meta.flow === 'deposit' ? 'deposit' : null,
+      flowType: meta.flow === 'deposit' ? 'deposit' : meta.flow || null,
+      stripeFlow: meta.flow || null,
       depositSource: depositSourceFromMeta(meta),
       paymentMethod: Array.isArray(pi.payment_method_types) ? pi.payment_method_types[0] : 'card',
       cardBrand: null,
       cardLast4: null,
       customerName: extractCardholderName(null, pi, meta),
       description: pi.description || meta.customerReference || meta.plate || '',
-      customerEmail: '',
+      customerEmail: extractCardholderEmail(null, pi, meta),
       plate: meta.plate || '',
-      reference: meta.customerReference || meta.productId || meta.mailOrderId || '',
+      resCode: meta.resNo || meta.resCode || meta.customerReference || '',
+      reference: meta.resNo || meta.customerReference || meta.mailOrderId || '',
+      mailOrderId: meta.mailOrderId || null,
+      failureMessage: pi.last_payment_error?.message || null,
+      failureCode: pi.last_payment_error?.code || null,
+      declineCode: pi.last_payment_error?.decline_code || null,
       created: pi.created,
       createdAt: new Date(pi.created * 1000).toISOString(),
     });
+    rowsByPi.set(pi.id, [byKey.get(pi.id)]);
   }
 
   for (const docSnap of mailSnap.docs) {
@@ -2008,18 +2233,46 @@ async function runListPayments(request) {
 
     const sessionId = row.checkoutSessionId || row.stripeSessionId;
     const piKey = row.stripePaymentIntentId || row.paymentIntentId;
-    if (piKey && byKey.has(piKey)) continue;
+    const piRows = piKey ? rowsByPi.get(piKey) : null;
+    if (piRows && piRows.length) {
+      for (const existing of piRows) {
+        existing.customerName =
+          existing.customerName || row.customerName || row.cardholderName || '';
+        existing.customerEmail = existing.customerEmail || row.customerEmail || '';
+        existing.resCode = row.resNo || existing.resCode || '';
+        existing.resNo = row.resNo || existing.resNo || '';
+        if (row.resNo) existing.reference = row.resNo;
+        existing.mailOrderId = docSnap.id;
+        if (row.cardBrand && !existing.cardBrand) existing.cardBrand = row.cardBrand;
+        if (row.cardLast4 && !existing.cardLast4) existing.cardLast4 = row.cardLast4;
+        if (row.chargeMode === 'direct_card') {
+          existing.channelLabel = 'Manual charge';
+        } else if (!existing.channelLabel || existing.channelLabel === 'Online') {
+          existing.channelLabel = 'Mail order';
+        }
+      }
+      continue;
+    }
     const key = sessionId || `mail_${docSnap.id}`;
     if (byKey.has(key)) continue;
 
+    const mailUiStatus = deriveMailOrderUiStatus(row);
+    const mailBucket =
+      mailUiStatus === 'paid'
+        ? 'successful'
+        : mailUiStatus === 'failed'
+          ? 'failed'
+          : 'pending';
     byKey.set(key, {
       id: docSnap.id,
       paymentIntentId: piKey || null,
       chargeId: null,
       checkoutSessionId: sessionId,
-      bucket: row.status === 'paid' ? 'successful' : 'pending',
-      status: row.status === 'paid' ? 'paid' : 'unpaid',
-      statusLabel: row.status === 'paid' ? 'Succeeded' : 'Pending',
+      bucket: mailBucket,
+      status: mailUiStatus,
+      statusLabel: statusLabelForBucket(mailBucket),
+      failureMessage: row.chargeErrorMessage || null,
+      failureCode: row.chargeErrorCode || null,
       amount: row.amount,
       amountReceived: row.status === 'paid' ? row.amount : 0,
       currency: row.currency || 'chf',
@@ -2031,7 +2284,10 @@ async function runListPayments(request) {
       description: row.productName || row.description || '',
       customerEmail: row.customerEmail || '',
       plate: row.plate || '',
-      reference: row.productId || docSnap.id,
+      resCode: row.resNo || '',
+      resNo: row.resNo || '',
+      reference: row.resNo || row.productName || docSnap.id,
+      mailOrderId: docSnap.id,
       created: Math.floor(createdAt.getTime() / 1000),
       createdAt: createdAt.toISOString(),
     });
@@ -2068,9 +2324,26 @@ async function runListPayments(request) {
       tx.depositCurrentHold = dep.currentHoldAmount || dep.initialAmount || null;
       tx.tokenSaved = dep.tokenSaved === true;
       tx.depositDisplayStatus = resolveDepositDisplayStatus(tx, dep);
+      tx.customerName = tx.customerName || dep.customerName || '';
+      tx.customerEmail = tx.customerEmail || dep.customerEmail || '';
+      tx.resCode = dep.resCode || dep.reference || tx.resCode || '';
+      tx.plate = tx.plate || dep.plate || '';
+      tx.reference = tx.reference || dep.reference || dep.resCode || '';
+      tx.cancelledBy = dep.cancelledBy || null;
+      tx.cancelledByName = dep.cancelledByName || null;
+      tx.cancelledAt = dep.cancelledAt?.toDate?.()?.toISOString?.()
+        || (typeof dep.cancelledAt === 'string' ? dep.cancelledAt : null);
+      tx.cancelReason = dep.cancelReason || '';
+      tx.createdByName = dep.createdByName || null;
+      if (TERMINAL_CHARGE_BUCKETS.has(tx.bucket)) {
+        // A declined attempt on a deposit stays Failed/Blocked — the deposit
+        // doc must not repaint it as a hold or capture.
+        tx.depositDisplayStatus = null;
+        continue;
+      }
       if (tx.depositDisplayStatus === 'hold' || tx.depositDisplayStatus === 'increased') {
         tx.bucket = 'hold';
-        tx.statusLabel = tx.depositDisplayStatus === 'increased' ? 'Increased' : 'Hold';
+        tx.statusLabel = tx.depositDisplayStatus === 'increased' ? 'Increased' : 'Uncaptured';
       } else if (tx.depositDisplayStatus === 'captured' || tx.depositDisplayStatus === 'captured_increased') {
         tx.bucket = 'successful';
         tx.statusLabel =
@@ -2098,13 +2371,11 @@ async function runListPayments(request) {
         hold: { count: 0, amount: 0 },
         pending: { count: 0, amount: 0 },
         cancelled: { count: 0, amount: 0 },
+        failed: { count: 0, amount: 0 },
+        blocked: { count: 0, amount: 0 },
+        refunded: { count: 0, amount: 0 },
+        disputed: { count: 0, amount: 0 },
       };
-
-  await writeAudit(franchiseId, uid, 'list_payments', {
-    dayKey,
-    count: transactions.length,
-    visibility,
-  });
 
   return {
     dayKey,
@@ -2143,9 +2414,36 @@ async function runListAudit(request) {
       action: row.action,
       detail: row.detail || {},
       uid: row.uid,
+      actorName: row.actorName || row.detail?.actorName || null,
+      actorEmail: row.actorEmail || row.detail?.actorEmail || null,
       createdAt: row.createdAt?.toDate?.()?.toISOString?.() || null,
     };
   });
+
+  const missingActorUids = entries
+    .filter((e) => !e.actorName && e.uid)
+    .map((e) => e.uid);
+  if (missingActorUids.length > 0) {
+    const unique = [...new Set(missingActorUids)];
+    const nameByUid = new Map();
+    await Promise.all(
+      unique.map(async (uid) => {
+        try {
+          const userSnap = await admin.firestore().collection('users').doc(uid).get();
+          const d = userSnap.exists ? userSnap.data() || {} : {};
+          nameByUid.set(uid, String(d.displayName || d.email || uid).slice(0, 120));
+        } catch {
+          nameByUid.set(uid, String(uid).slice(0, 8));
+        }
+      }),
+    );
+    for (const entry of entries) {
+      if (!entry.actorName && entry.uid) {
+        entry.actorName = nameByUid.get(entry.uid) || entry.uid.slice(0, 8);
+      }
+    }
+  }
+
   return { entries };
 }
 
@@ -2280,6 +2578,7 @@ module.exports = {
   runCreateMailOrderPayment,
   runCreateDirectCardOperation,
   runFinalizeDirectCardOperation,
+  runRefundPayment,
   runPersistDirectCardSnapshot,
   runRetryDirectCardOperation,
   runRetryDirectCardSavedPayment,

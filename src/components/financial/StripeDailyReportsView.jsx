@@ -258,9 +258,7 @@ export function StripeDailyReportsView({ franchiseId }) {
 
     try {
 
-      const [data, depRes] = await Promise.all([
-
-        chStripeGetDailyReports({
+      const data = await chStripeGetDailyReports({
 
           franchiseId,
 
@@ -270,17 +268,17 @@ export function StripeDailyReportsView({ franchiseId }) {
 
           endDayKey: customMode ? endDayKey : undefined,
 
-        }),
-
-        stripeFinancialListDeposits({ franchiseId, limit: 100 }),
-
-      ]);
+        });
 
       setSnapshot(data);
 
-      setDeposits(depRes.deposits || []);
-
       setSelectedDayId(null);
+
+      stripeFinancialListDeposits({ franchiseId, limit: 80, syncStripe: false })
+
+        .then((depRes) => setDeposits(depRes.deposits || []))
+
+        .catch(() => setDeposits([]));
 
     } catch (e) {
 

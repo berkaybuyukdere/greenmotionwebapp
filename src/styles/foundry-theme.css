@@ -860,34 +860,14 @@
 .fd-photo-tile:hover { border-color: var(--fd-accent); }
 .fd-photo-tile > img { width: 100%; height: 100%; object-fit: cover; }
 
-/* ─── Login: wireframe split layout (brand panel + card) ─── */
-.pal-login-shell {
-    display: flex;
-    align-items: stretch;
-    gap: 0;
-    width: min(1060px, 94vw);
-}
-
-.fd-login-brand {
-    flex: 1.15;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    gap: 28px;
-    padding: 36px 40px;
-    border: 1px solid var(--fd-border);
-    border-right: none;
-    background:
-        linear-gradient(160deg, rgba(76, 144, 240, 0.06), transparent 55%),
-        var(--fd-bg);
-    min-height: 520px;
-}
-
-.fd-login-brand-top {
+/* ─── Login: compact centered card ─── */
+.pal-login-root {
+    min-height: 100vh;
     display: flex;
     align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
+    justify-content: center;
+    padding: 24px 16px;
+    background: linear-gradient(180deg, #f8f9fb 0%, #eef1f5 100%);
 }
 
 .fd-login-logo {
@@ -998,9 +978,12 @@
     letter-spacing: 0.04em;
 }
 
+.pal-login-shell {
+    width: min(400px, 94vw);
+}
+
 @media (max-width: 900px) {
     .fd-login-brand { display: none; }
-    .pal-login-shell { width: min(440px, 94vw); }
 }
 
 .pal-login-card .fd-section-head {
