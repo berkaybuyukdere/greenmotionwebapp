@@ -9,6 +9,22 @@ export function humanizeStripeFinancialError(err) {
     .replace(/^FirebaseError:\s*/i, '')
     .replace(/^functions\/[a-z-]+:\s*/i, '')
     .trim();
+  if (/deposit not found for paymentintent|deposit not found/i.test(msg)) {
+    return {
+      title: 'Deposit record missing',
+      detail:
+        'Stripe shows this payment but our deposit log was not linked yet. Wait for Sync to finish, then try again — the system will auto-link from Stripe.',
+      code: 'DEPOSIT_BACKFILL',
+    };
+  }
+  if (/deposit hold was cancelled|hold was cancelled|create a fresh deposit/i.test(msg)) {
+    return {
+      title: 'Could not charge saved card',
+      detail:
+        'The authorization hold is no longer active, but the saved card should still work. Refresh the customer, then try New payment again. If it still fails, run a new deposit on POS once.',
+      code: 'HOLD_RELEASED',
+    };
+  }
   if (
     /without Customer attachment/i.test(msg) ||
     /may not be used again/i.test(msg) ||

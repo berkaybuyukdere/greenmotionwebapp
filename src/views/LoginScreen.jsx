@@ -398,7 +398,7 @@ export function LoginScreen() {
                     )}
 
                     <div className="pal-login-card-head fd-section-head">
-                        <span>Sign in</span>
+                        <span className="pal-login-card-eyebrow">Sign in</span>
                         <span className="fd-section-head-meta fd-login-nominal">
                             <span className="fd-pulse-dot" /> Systems nominal
                         </span>
@@ -463,31 +463,35 @@ export function LoginScreen() {
                             </div>
                         </div>
 
-                        <label htmlFor="login-email" className="pal-login-field-label">
-                            Email
-                        </label>
-                        <input
-                            id="login-email"
-                            type="email"
-                            autoComplete="username"
-                            className="pal-login-field"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            placeholder="name@company.com"
-                        />
+                        <div className="pal-login-field-group">
+                            <label htmlFor="login-email" className="pal-login-field-label">
+                                Email
+                            </label>
+                            <input
+                                id="login-email"
+                                type="email"
+                                autoComplete="username"
+                                className="pal-login-field"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                placeholder="name@company.com"
+                            />
+                        </div>
 
-                        <label htmlFor="login-password" className="pal-login-field-label">
-                            Password
-                        </label>
-                        <input
-                            id="login-password"
-                            type="password"
-                            autoComplete="current-password"
-                            className="pal-login-field"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="Password"
-                        />
+                        <div className="pal-login-field-group">
+                            <label htmlFor="login-password" className="pal-login-field-label">
+                                Password
+                            </label>
+                            <input
+                                id="login-password"
+                                type="password"
+                                autoComplete="current-password"
+                                className="pal-login-field"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                placeholder="Password"
+                            />
+                        </div>
 
                         {error && (
                             <div role="alert" className="pal-login-error">

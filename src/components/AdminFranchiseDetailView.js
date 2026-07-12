@@ -856,6 +856,7 @@ const FRANCHISE_ROLE_LABELS = {
     shuttle: 'Shuttle',
     viewer: 'Viewer',
     garage: 'Garage',
+    finance_cashier: 'Finance Cashier (CH)',
 };
 
 function AddUserModal({ db, auth, franchise, actorProfile, functionsApp, onClose, toast }) {

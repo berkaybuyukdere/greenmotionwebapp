@@ -38,6 +38,9 @@ export function StripeDepositModal({ franchiseId, onClose, onSuccess, onFeedback
   const [statusMessage, setStatusMessage] = useState('');
   const [aborting, setAborting] = useState(false);
   const [tokenSaved, setTokenSaved] = useState(false);
+  const [holdExpiresAt, setHoldExpiresAt] = useState(null);
+  const [holdWindowDays, setHoldWindowDays] = useState(null);
+  const [extendedAuthApplied, setExtendedAuthApplied] = useState(false);
   const [retryDepositId, setRetryDepositId] = useState('');
   const depositIdRef = useRef('');
   const abortRef = useRef(false);
@@ -216,6 +219,11 @@ export function StripeDepositModal({ franchiseId, onClose, onSuccess, onFeedback
       depositIdRef.current = '';
       setRetryDepositId('');
       setTokenSaved(confirmed?.tokenSaved === true);
+      setHoldExpiresAt(confirmed?.captureBefore || null);
+      setHoldWindowDays(
+        confirmed?.captureWindowDays != null ? Number(confirmed.captureWindowDays) : null,
+      );
+      setExtendedAuthApplied(confirmed?.extendedAuthorizationApplied === true);
       setStep('done');
       onSuccess?.();
     } catch (e) {
@@ -283,6 +291,11 @@ export function StripeDepositModal({ franchiseId, onClose, onSuccess, onFeedback
       depositIdRef.current = '';
       setRetryDepositId('');
       setTokenSaved(confirmed?.tokenSaved === true);
+      setHoldExpiresAt(confirmed?.captureBefore || null);
+      setHoldWindowDays(
+        confirmed?.captureWindowDays != null ? Number(confirmed.captureWindowDays) : null,
+      );
+      setExtendedAuthApplied(confirmed?.extendedAuthorizationApplied === true);
       setStep('done');
       onSuccess?.();
     } catch (e) {
@@ -467,7 +480,33 @@ export function StripeDepositModal({ franchiseId, onClose, onSuccess, onFeedback
             <p className="pal-fin-terminal-state-detail">
               {Number(depositAmountChf).toFixed(2)} CHF hold on card — listed under Payments → Deposits.
             </p>
+            {holdExpiresAt && (
+              <p className="pal-fin-terminal-state-detail">
+                Hold expires{' '}
+                {new Date(holdExpiresAt).toLocaleString(undefined, {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })}
+                {holdWindowDays != null ? ` (~${holdWindowDays} days)` : ''}
+                {extendedAuthApplied || (holdWindowDays != null && holdWindowDays > 7)
+                  ? ' · extended authorization active'
+                  : ''}
+              </p>
+            )}
+            {!holdExpiresAt && (
+              <p className="pal-fin-terminal-state-detail">
+                Extended authorization active — hold window up to ~30 days (issuer permitting). Refresh Deposits after POS tap to see exact expiry.
+              </p>
+            )}
             {tokenSaved && <span className="pal-fin-token-saved-badge">Token saved</span>}
+            {holdWindowDays != null && holdWindowDays <= 5 && (
+              <p className="pal-fin-terminal-state-detail" style={{ color: 'var(--fd-amber, #d97706)' }}>
+                Short hold window (~{holdWindowDays}d). Issuer may not honor extended auth — capture before expiry or re-authorize.
+              </p>
+            )}
           </div>
         )}
 

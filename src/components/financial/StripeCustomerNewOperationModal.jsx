@@ -120,41 +120,41 @@ export async function recordOfficeOperationForCharge({
   mailOrderId,
   paymentIntentId,
 }) {
-  const officeType =
-    category === 'traffic_fine' ? 'Traffic Fine'
-      : category === 'damage' ? 'Traffic Accident'
-        : null;
-  if (!officeType) return;
   const amount = Number(amountMajor) || 0;
-  const operationId = crypto.randomUUID();
+  const officeType = category === 'traffic_fine' ? 'Traffic Fine' : null;
+  // Damage / traffic accidents → traffic_accident_contracts only
+  // (iOS has no OfficeOperationType for "Traffic Accident").
+  let operationId = crypto.randomUUID();
 
-  try {
-    const iosTimeInterval = (Date.now() - new Date('2001-01-01T00:00:00Z').getTime()) / 1000;
-    await setDoc(docRefHelper('office_operations', operationId), {
-      id: operationId,
-      type: officeType,
-      date: iosTimeInterval,
-      amount,
-      photos: [],
-      vehiclePlate: null,
-      posCount: null,
-      posAmounts: null,
-      notes: '',
-      isCompleted: false,
-      resCode: resNo || null,
-      referenceNumber: resNo || null,
-      plate: null,
-      customerName: customerName || null,
-      status: 'done',
-      washedBy: null,
-      washingDate: null,
-      source: 'stripe',
-      stripeMailOrderId: mailOrderId || null,
-      stripePaymentIntentId: paymentIntentId || null,
-      franchiseId,
-    });
-  } catch (err) {
-    console.warn('[stripe] office operation mirror failed', err?.message);
+  if (officeType) {
+    try {
+      const iosTimeInterval = (Date.now() - new Date('2001-01-01T00:00:00Z').getTime()) / 1000;
+      await setDoc(docRefHelper('office_operations', operationId), {
+        id: operationId,
+        type: officeType,
+        date: iosTimeInterval,
+        amount,
+        photos: [],
+        vehiclePlate: null,
+        posCount: null,
+        posAmounts: null,
+        notes: '',
+        isCompleted: false,
+        resCode: resNo || null,
+        referenceNumber: resNo || null,
+        plate: null,
+        customerName: customerName || null,
+        status: 'done',
+        washedBy: null,
+        washingDate: null,
+        source: 'stripe',
+        stripeMailOrderId: mailOrderId || null,
+        stripePaymentIntentId: paymentIntentId || null,
+        franchiseId,
+      });
+    } catch (err) {
+      console.warn('[stripe] office operation mirror failed', err?.message);
+    }
   }
 
   if (category !== 'damage') return;

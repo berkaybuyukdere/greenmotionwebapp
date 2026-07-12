@@ -10,8 +10,11 @@ import {
   stripeFinancialListMailOrders,
   stripeFinancialListAudit,
   stripeFinancialGetConfig,
+  stripeFinancialListPayments,
 } from '../../services/stripeFinancialApi';
 import { buildStripeCustomerGroups } from '../../utilities/stripeCustomerGroups';
+import { depositMatchesFilter } from '../../utilities/stripeDepositDisplay';
+import { mergePaymentsAndDeposits } from '../../utilities/stripePaymentsRows';
 import { sumMailOrderDailyKpi } from '../../utilities/stripeDailyTotals';
 
 function formatStripeMoney(minor, currency = 'chf') {
@@ -42,6 +45,7 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false, 
   const [syncedAt, setSyncedAt] = useState('');
   const [deposits, setDeposits] = useState([]);
   const [mailOrders, setMailOrders] = useState([]);
+  const [stripePayments, setStripePayments] = useState([]);
   const [depositDailySummary, setDepositDailySummary] = useState(null);
   const [mailDailySummary, setMailDailySummary] = useState(null);
   const [audit, setAudit] = useState([]);
@@ -62,14 +66,21 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false, 
       .catch(() => {});
 
     try {
-      const [cfg, depRes, mailRes] = await Promise.all([
+      const [cfg, depRes, mailRes, payRes] = await Promise.all([
         stripeFinancialGetConfig({ franchiseId }),
-        stripeFinancialListDeposits({ franchiseId, limit: 300, syncStripe: false }),
-        stripeFinancialListMailOrders({ franchiseId, limit: 300 }),
+        stripeFinancialListDeposits({ franchiseId, limit: 300, syncStripe: true }),
+        stripeFinancialListMailOrders({ franchiseId, limit: 300, syncStripe: true }),
+        stripeFinancialListPayments({ franchiseId, period: 'all', lookbackDays: 90 }),
       ]);
       setStripeMode(cfg?.mode || 'unset');
       setDeposits(depRes.deposits || []);
       setMailOrders(mailRes.orders || []);
+      const mergedStripe = mergePaymentsAndDeposits(
+        payRes.transactions || [],
+        depRes.deposits || [],
+        mailRes.orders || [],
+      );
+      setStripePayments(mergedStripe);
       setDepositDailySummary(depRes.dailySummary || null);
       setMailDailySummary(mailRes.dailySummary || null);
       setSyncedAt(new Date().toISOString());
@@ -88,7 +99,16 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false, 
     load();
   }, [load]);
 
-  const groups = useMemo(() => buildStripeCustomerGroups(deposits, mailOrders), [deposits, mailOrders]);
+  useEffect(() => {
+    if (!franchiseId) return undefined;
+    const timer = window.setInterval(() => load(), 60000);
+    return () => window.clearInterval(timer);
+  }, [franchiseId, load]);
+
+  const groups = useMemo(
+    () => buildStripeCustomerGroups(deposits, mailOrders, stripePayments),
+    [deposits, mailOrders, stripePayments],
+  );
 
   const kpi = useMemo(() => {
     let activeHolds = 0;
@@ -97,7 +117,7 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false, 
     let unpaidVol = 0;
     for (const g of groups) {
       for (const d of g.deposits) {
-        if (['authorized', 'pending_collection'].includes(d.status)) {
+        if (depositMatchesFilter(d, 'hold')) {
           activeHolds += 1;
           holdVol += Number(d.currentHoldAmount || d.initialAmount) || 0;
         }
@@ -117,7 +137,7 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false, 
   const filtered = useMemo(() => {
     let rows = groups;
     if (filter === 'hold') {
-      rows = rows.filter((g) => g.deposits.some((d) => ['authorized', 'pending_collection'].includes(d.status)));
+      rows = rows.filter((g) => g.deposits.some((d) => depositMatchesFilter(d, 'hold')));
     } else if (filter === 'mail_unpaid') {
       rows = rows.filter((g) => g.mailOrders.some((o) => o.status !== 'paid'));
     } else if (filter === 'direct_unpaid') {
@@ -163,7 +183,7 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false, 
       {
         id: 'hold',
         label: 'Active hold',
-        count: groups.filter((g) => g.deposits.some((d) => ['authorized', 'pending_collection'].includes(d.status))).length,
+        count: groups.filter((g) => g.deposits.some((d) => depositMatchesFilter(d, 'hold'))).length,
       },
       {
         id: 'mail_unpaid',
@@ -280,7 +300,7 @@ export function StripeCustomersView({ franchiseId, showFinancialTotals = false, 
                   </tr>
                 ) : (
                   filtered.map((row) => {
-                    const hasHold = row.deposits.some((d) => ['authorized', 'pending_collection'].includes(d.status));
+                    const hasHold = row.deposits.some((d) => depositMatchesFilter(d, 'hold'));
                     const unpaidMail = row.mailOrders.filter((o) => o.status !== 'paid').length;
                     const unpaidDirect = (row.directOrders || []).filter((o) => o.status !== 'paid').length;
                     const hasToken = row.deposits.some((d) => d.tokenSaved || d.stripePaymentMethodId);

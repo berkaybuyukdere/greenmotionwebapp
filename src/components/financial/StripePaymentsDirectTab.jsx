@@ -77,9 +77,9 @@ export function StripePaymentsDirectTab({
       .catch(() => {});
     try {
       const [depRes, payRes, mailRes] = await Promise.all([
-        stripeFinancialListDeposits({ franchiseId, limit: 120, syncStripe: false }),
-        stripeFinancialListPayments({ franchiseId, period: 'all', lookbackDays: 60 }),
-        stripeFinancialListMailOrders({ franchiseId, limit: 120, syncStripe: false }),
+        stripeFinancialListDeposits({ franchiseId, limit: 300, syncStripe: true }),
+        stripeFinancialListPayments({ franchiseId, period: 'all', lookbackDays: 90 }),
+        stripeFinancialListMailOrders({ franchiseId, limit: 300, syncStripe: true }),
       ]);
       const enrichedDeposits = (depRes.deposits || []).map(enrichDepositRow);
       const orders = mailRes.orders || [];
@@ -98,9 +98,15 @@ export function StripePaymentsDirectTab({
     load();
   }, [load, refreshToken]);
 
+  useEffect(() => {
+    if (!franchiseId) return undefined;
+    const timer = window.setInterval(() => load(), 60000);
+    return () => window.clearInterval(timer);
+  }, [franchiseId, load]);
+
   const groups = useMemo(
-    () => buildStripeCustomerGroups(deposits, mailOrders),
-    [deposits, mailOrders],
+    () => buildStripeCustomerGroups(deposits, mailOrders, paymentRows),
+    [deposits, mailOrders, paymentRows],
   );
 
   const directRows = useMemo(

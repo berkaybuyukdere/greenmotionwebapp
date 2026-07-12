@@ -143,20 +143,40 @@ function mergeDepositIntoTransaction(tx, dep) {
     dep.stripeStatus === 'cancelled' ||
     dep.status === 'cancelled';
   if (stripeCanceled || tx.bucket === 'cancelled') {
+    const reason = String(dep.cancelReason || tx.cancelReason || '').toLowerCase();
+    const expired = reason.includes('expired') || reason.includes('auto-release');
     return {
       ...next,
       bucket: 'cancelled',
       depositDisplayStatus: 'cancelled',
-      statusLabel: 'Canceled',
+      statusLabel: expired ? 'Expired' : 'Canceled',
+      cancelReason:
+        dep.cancelReason ||
+        tx.cancelReason ||
+        (expired ? 'Authorization expired (Stripe auto-release) — not a staff refund' : ''),
     };
   }
-  if (dep.status === 'authorized' && tx.bucket !== 'cancelled') {
+  if (dep.status === 'authorized' || dep.stripeStatus === 'requires_capture') {
     return {
       ...next,
       bucket: 'hold',
       depositDisplayStatus: 'hold',
       statusLabel: 'Uncaptured',
     };
+  }
+  if (
+    dep.stripeStatus === 'requires_capture' ||
+    dep.stripeBucket === 'hold' ||
+    tx.bucket === 'hold'
+  ) {
+    if (dep.status === 'pending_collection') {
+      return {
+        ...next,
+        bucket: 'hold',
+        depositDisplayStatus: 'hold',
+        statusLabel: 'Uncaptured',
+      };
+    }
   }
   if (dep.status === 'pending_collection' && tx.bucket !== 'successful' && tx.bucket !== 'cancelled') {
     return {
@@ -167,11 +187,14 @@ function mergeDepositIntoTransaction(tx, dep) {
     };
   }
   if (dep.status === 'cancelled') {
+    const st = depositStatusDisplay(dep);
     return {
       ...next,
       bucket: 'cancelled',
       depositDisplayStatus: 'cancelled',
-      statusLabel: 'Canceled',
+      statusLabel: st.label,
+      cancelReason: dep.cancelReason || next.cancelReason,
+      cancelledByName: dep.cancelledByName || next.cancelledByName,
     };
   }
   return next;
@@ -182,7 +205,7 @@ function depositToSyntheticTransaction(dep) {
   let bucket = 'pending';
   if (st.label === 'Succeeded') bucket = 'successful';
   else if (st.label === 'Uncaptured' || st.label === 'Increased') bucket = 'hold';
-  else if (st.label === 'Canceled') bucket = 'cancelled';
+  else if (st.label === 'Canceled' || st.label === 'Expired') bucket = 'cancelled';
   else if (st.label === 'Failed') bucket = 'failed';
 
   const createdMs = dep.createdAt ? new Date(dep.createdAt).getTime() : 0;
@@ -213,10 +236,14 @@ function depositToSyntheticTransaction(dep) {
           ? 'captured'
           : st.label === 'Uncaptured'
             ? 'hold'
-            : st.label === 'Canceled'
+            : st.label === 'Canceled' || st.label === 'Expired'
               ? 'cancelled'
               : 'pending',
     statusLabel: st.label,
+    cancelReason: dep.cancelReason || '',
+    cancelledByName: dep.cancelledByName || null,
+    cancelledAt: dep.cancelledAt || null,
+    tokenSaved: dep.tokenSaved === true,
     failureMessage: st.note || dep.terminalFailureMessage || dep.lastPaymentError || null,
     channelLabel: dep.source === 'wheelsys' ? 'WheelSys · Deposit' : 'Deposit',
     tokenSaved: dep.tokenSaved === true,
@@ -330,6 +357,19 @@ export function paymentStatusDisplay(row) {
     return { variant: 'success', label: 'Succeeded' };
   }
   if (row.bucket === 'cancelled' || row.depositDisplayStatus === 'cancelled') {
+    if (row.flowType === 'deposit' || row.depositId) {
+      const st = depositStatusDisplay({
+        status: 'cancelled',
+        cancelReason: row.cancelReason,
+        cancelledByName: row.cancelledByName,
+        stripeStatus: row.stripeStatus,
+      });
+      return {
+        variant: st.variant,
+        label: st.label,
+        ...(st.note ? { note: st.note } : {}),
+      };
+    }
     return { variant: 'danger', label: 'Canceled' };
   }
   if (row.bucket === 'hold' || row.depositDisplayStatus === 'hold') {

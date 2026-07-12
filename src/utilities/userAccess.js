@@ -81,10 +81,10 @@ export function canManageFranchises(userProfile) {
 /** Roles assignable when creating/editing users (never grant globaladmin from franchise admin). */
 export function assignableRolesForActor(actorProfile) {
     if (isGlobalAdmin(actorProfile)) {
-        return ['staff', 'shuttle', 'viewer', 'manager', 'admin', 'garage', 'globaladmin'];
+        return ['staff', 'shuttle', 'viewer', 'manager', 'admin', 'garage', 'finance_cashier', 'globaladmin'];
     }
     if (isFranchiseAdmin(actorProfile)) {
-        return ['staff', 'shuttle', 'viewer', 'manager', 'admin', 'garage'];
+        return ['staff', 'shuttle', 'viewer', 'manager', 'admin', 'garage', 'finance_cashier'];
     }
     return ['staff', 'shuttle', 'viewer'];
 }

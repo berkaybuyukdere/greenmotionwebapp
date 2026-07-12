@@ -2,6 +2,7 @@
 import { X, CreditCard, Lock, RotateCcw, Banknote } from 'lucide-react';
 import { StripeStatusBadge } from '../StripeListUI';
 import { StripePaymentMethodCell } from './StripePaymentMethodCell';
+import { StripePaymentDetailDrawer } from './StripePaymentDetailDrawer';
 import {
   stripeFinancialCancelDeposit,
   stripeFinancialCaptureDeposit,
@@ -10,8 +11,8 @@ import {
 } from '../../services/stripeFinancialApi';
 import { FoundryActivityLog } from './FoundryActivityLog';
 import { humanizeStripeFinancialError } from './StripeFinFeedback';
-import { filterAuditForCustomerGroup, formatStripeAuditEntry } from '../../utilities/stripeCustomerGroups';
-import { depositStatusDisplay, depositAmountMinor } from '../../utilities/stripeDepositDisplay';
+import { filterAuditForCustomerGroup, formatStripeAuditEntry, buildCustomerTransactionRows } from '../../utilities/stripeCustomerGroups';
+import { depositStatusDisplay, depositAmountMinor, depositIsCapturable, resolveCapturableHoldTarget, depositCanOffSessionCharge, resolveChargeableDepositTarget, collectGroupDeposits } from '../../utilities/stripeDepositDisplay';
 import { logPaymentUiAction } from '../../utilities/logPaymentUiAction';
 
 function formatMoney(amount, currency) {
@@ -34,12 +35,6 @@ function formatDate(iso) {
     hour: 'numeric',
     minute: '2-digit',
   });
-}
-
-function depositCanOffSessionCharge(d) {
-  if (!d?.paymentIntentId) return false;
-  if (d.tokenSaved || d.stripePaymentMethodId || d.stripeCustomerId) return true;
-  return ['authorized', 'pending_collection', 'cancelled', 'captured'].includes(d.status);
 }
 
 function sortDepositsNewestFirst(deposits) {
@@ -65,6 +60,7 @@ export function StripeCustomerWorkbenchModal({
 }) {
   const [tab, setTab] = useState('general');
   const [selectedDepositId, setSelectedDepositId] = useState(null);
+  const [selectedTxnDetail, setSelectedTxnDetail] = useState(null);
   const [chargeAmountChf, setChargeAmountChf] = useState('');
   const [refundAmountChf, setRefundAmountChf] = useState('');
   const [releaseReason, setReleaseReason] = useState('');
@@ -74,6 +70,7 @@ export function StripeCustomerWorkbenchModal({
   useEffect(() => {
     setTab(initialTab === 'overview' ? 'general' : initialTab === 'actions' ? 'payments' : (initialTab || 'general'));
     setSelectedDepositId(null);
+    setSelectedTxnDetail(null);
     setChargeAmountChf('');
     setRefundAmountChf('');
     setReleaseReason('');
@@ -82,58 +79,88 @@ export function StripeCustomerWorkbenchModal({
 
   const activeDeposits = useMemo(
     () =>
-      group?.deposits?.filter(
-        (d) =>
-          ['authorized', 'pending_collection'].includes(d.status) &&
-          d.stripeStatus !== 'canceled' &&
-          d.stripeStatus !== 'cancelled',
-      ) || [],
+      group?.deposits?.filter((d) => {
+        const label = depositStatusDisplay(d).label;
+        return label === 'Uncaptured' || label === 'Increased';
+      }) || [],
     [group],
   );
 
   const chargeableDeposits = useMemo(
-    () => sortDepositsNewestFirst((group?.deposits || []).filter(depositCanOffSessionCharge)),
+    () => sortDepositsNewestFirst(collectGroupDeposits(group).filter(depositCanOffSessionCharge)),
     [group],
   );
 
-  const primaryDeposit = useMemo(() => {
-    if (!group?.deposits?.length) return null;
-    const sorted = sortDepositsNewestFirst(group.deposits);
-    if (selectedDepositId) {
-      return sorted.find((d) => d.id === selectedDepositId) || sorted[0];
-    }
-    const capturable = sorted.find(
-      (d) =>
-        (d.status === 'authorized' || d.stripeStatus === 'requires_capture') &&
-        d.status !== 'cancelled' &&
-        d.stripeStatus !== 'canceled' &&
-        d.stripeStatus !== 'cancelled',
-    );
-    return capturable || sorted[0];
-  }, [group, selectedDepositId]);
+  const captureTarget = useMemo(() => resolveCapturableHoldTarget(group), [group]);
 
   const chargeDeposit = useMemo(() => {
-    if (!chargeableDeposits.length) return null;
+    const resolved = resolveChargeableDepositTarget(group);
+    if (!resolved) return null;
     if (selectedDepositId) {
-      const sel = chargeableDeposits.find((d) => d.id === selectedDepositId);
+      const sel = chargeableDeposits.find(
+        (d) => d.id === selectedDepositId || d.paymentIntentId === selectedDepositId,
+      );
       if (sel) return sel;
     }
-    return chargeableDeposits[0];
-  }, [chargeableDeposits, selectedDepositId]);
+    return resolved;
+  }, [group, chargeableDeposits, selectedDepositId]);
 
   const directOrders = group?.directOrders || [];
   const mailOrders = group?.mailOrders || [];
+  const pendingDirectOrders = useMemo(
+    () =>
+      directOrders.filter(
+        (o) => o.status !== 'paid' && o.status !== 'failed' && o.chargeMode === 'direct_card',
+      ),
+    [directOrders],
+  );
 
   const canCaptureDeposit =
     canPerformOperations &&
-    Boolean(primaryDeposit) &&
-    primaryDeposit.status !== 'captured' &&
-    primaryDeposit.status !== 'cancelled' &&
-    primaryDeposit.stripeStatus !== 'canceled' &&
-    primaryDeposit.stripeStatus !== 'cancelled' &&
-    (primaryDeposit.status === 'authorized' || primaryDeposit.stripeStatus === 'requires_capture');
+    Boolean(captureTarget?.paymentIntentId) &&
+    Number(captureTarget?.holdAmount || 0) > 0 &&
+    (depositIsCapturable(captureTarget.deposit, null) ||
+      Boolean(group?.stripePayments?.some((tx) => String(tx.bucket).toLowerCase() === 'hold' && tx.paymentIntentId === captureTarget.paymentIntentId)));
 
-  const canChargeSaved = canPerformOperations && Boolean(chargeDeposit?.id);
+  const canChargeSaved =
+    canPerformOperations &&
+    Boolean(chargeDeposit?.paymentIntentId) &&
+    depositCanOffSessionCharge(chargeDeposit);
+
+  const paymentActionHint = useMemo(() => {
+    if (!canPerformOperations) return 'You do not have permission to run payment actions.';
+    if (canChargeSaved) return null;
+    if (pendingDirectOrders.length > 0 && chargeableDeposits.length === 0) {
+      return 'A manual direct charge is pending because the card was never entered. Complete it from Direct payment, or wait for sync if a deposit exists on Stripe.';
+    }
+    if (chargeableDeposits.length === 0) {
+      return 'No deposit with a saved card found for this customer. Authorize a deposit on POS first.';
+    }
+    if (!chargeDeposit?.paymentIntentId) {
+      return 'Deposit is missing a Stripe payment reference — run Sync and try again.';
+    }
+    return 'Saved card is not available yet — open this customer after Sync completes.';
+  }, [
+    canPerformOperations,
+    canChargeSaved,
+    pendingDirectOrders.length,
+    chargeableDeposits.length,
+    chargeDeposit?.paymentIntentId,
+  ]);
+
+  const primaryDeposit = useMemo(() => {
+    if (captureTarget?.deposit) return captureTarget.deposit;
+    const sorted = sortDepositsNewestFirst(collectGroupDeposits(group));
+    if (!sorted.length) return null;
+    if (selectedDepositId) {
+      return (
+        sorted.find((d) => d.id === selectedDepositId || d.paymentIntentId === selectedDepositId) ||
+        sorted[0]
+      );
+    }
+    const capturable = sorted.find((d) => depositIsCapturable(d));
+    return capturable || sorted[0];
+  }, [group, selectedDepositId, captureTarget]);
 
   const refundableDeposits = useMemo(
     () =>
@@ -152,6 +179,14 @@ export function StripeCustomerWorkbenchModal({
     if (tab === 'overview') setTab('general');
     if (tab === 'actions' || tab === 'deposits' || tab === 'direct' || tab === 'mail') setTab('payments');
   }, [tab]);
+
+  useEffect(() => {
+    if (tab !== 'payments' || !onChanged) return undefined;
+    const timer = window.setInterval(() => {
+      onChanged();
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, [tab, onChanged, group?.id]);
 
   const currentHoldChf = (primaryDeposit?.currentHoldAmount || primaryDeposit?.initialAmount || 0) / 100;
 
@@ -173,16 +208,26 @@ export function StripeCustomerWorkbenchModal({
   if (!group) return null;
 
   const runCapture = async () => {
-    if (!primaryDeposit?.id || currentHoldChf <= 0) {
+    if (!captureTarget?.paymentIntentId) {
+      pushFeedback('error', 'No hold', 'There is no capturable deposit hold for this customer.');
+      return;
+    }
+    const holdMinor = captureTarget.holdAmount || 0;
+    if (holdMinor <= 0) {
       pushFeedback('error', 'No hold', 'There is no capturable deposit hold for this customer.');
       return;
     }
     setBusy(true);
-    logPaymentUiAction(franchiseId, 'capture_execute', { resCode: group.resCode, depositId: primaryDeposit.id });
+    logPaymentUiAction(franchiseId, 'capture_execute', {
+      resCode: group.resCode,
+      depositId: captureTarget.depositId,
+      paymentIntentId: captureTarget.paymentIntentId,
+    });
     try {
       const res = await stripeFinancialCaptureDeposit({
         franchiseId,
-        depositId: primaryDeposit.id,
+        ...(captureTarget.depositId ? { depositId: captureTarget.depositId } : {}),
+        paymentIntentId: captureTarget.paymentIntentId,
       });
       const capturedChf =
         (Number(res?.capturedAmount ?? res?.amountReceived) ||
@@ -283,20 +328,22 @@ export function StripeCustomerWorkbenchModal({
       pushFeedback('error', 'Invalid amount', 'Minimum charge is CHF 0.50');
       return;
     }
-    if (!chargeDeposit?.id) {
+    if (!chargeDeposit?.paymentIntentId) {
       pushFeedback('error', 'No saved card', 'Complete a deposit on POS first so the card is saved.');
       return;
     }
     setBusy(true);
     logPaymentUiAction(franchiseId, 'charge_saved_execute', {
       resCode: group.resCode,
-      depositId: chargeDeposit.id,
+      depositId: chargeDeposit.id || null,
+      paymentIntentId: chargeDeposit.paymentIntentId,
       amountChf: amount,
     });
     try {
       const res = await stripeFinancialChargeSavedPaymentMethod({
         franchiseId,
-        depositId: chargeDeposit.id,
+        ...(chargeDeposit.id ? { depositId: chargeDeposit.id } : {}),
+        paymentIntentId: chargeDeposit.paymentIntentId,
         amountChf: amount,
       });
       const charged = (res?.chargedAmount || amount * 100) / 100;
@@ -344,54 +391,66 @@ export function StripeCustomerWorkbenchModal({
     [auditEntries, group],
   );
 
-  const allTransactions = useMemo(() => {
-    const items = [];
-    for (const d of group?.deposits || []) {
-      const st = depositStatusDisplay(d);
-      items.push({
-        id: `dep-${d.id}`,
-        type: 'Deposit',
-        at: d.createdAt,
-        amount: depositAmountMinor(d),
-        currency: d.currency || 'chf',
-        statusLabel: st.label,
-        statusVariant: st.variant,
-        cardBrand: d.cardBrand,
-        cardLast4: d.cardLast4,
-      });
+  const allTransactions = useMemo(() => buildCustomerTransactionRows(group), [group]);
+
+  const txnDetailDeposit = useMemo(() => {
+    if (!selectedTxnDetail) return null;
+    if (selectedTxnDetail.depositId) {
+      return (group?.deposits || []).find((d) => d.id === selectedTxnDetail.depositId) || null;
     }
-    for (const o of directOrders) {
-      items.push({
-        id: `dir-${o.id}`,
-        type: 'Direct',
-        at: o.createdAt,
-        amount: o.amount,
-        currency: o.currency || 'chf',
-        statusLabel: o.status === 'paid' ? 'Succeeded' : o.status === 'failed' ? 'Failed' : 'Pending',
-        statusVariant: o.status === 'paid' ? 'success' : o.status === 'failed' ? 'danger' : 'warning',
-        cardBrand: o.cardBrand,
-        cardLast4: o.cardLast4,
-      });
+    if (selectedTxnDetail.paymentIntentId) {
+      return (
+        (group?.deposits || []).find((d) => d.paymentIntentId === selectedTxnDetail.paymentIntentId) ||
+        null
+      );
     }
-    for (const o of mailOrders) {
-      items.push({
-        id: `mail-${o.id}`,
-        type: 'Mail',
-        at: o.createdAt,
-        amount: o.amount,
-        currency: o.currency || 'chf',
-        statusLabel: o.status === 'paid' ? 'Succeeded' : 'Unpaid',
-        statusVariant: o.status === 'paid' ? 'success' : 'unpaid',
-        cardBrand: o.cardBrand,
-        cardLast4: o.cardLast4,
-      });
-    }
-    return items.sort((a, b) => {
-      const ta = a.at ? new Date(a.at).getTime() : 0;
-      const tb = b.at ? new Date(b.at).getTime() : 0;
-      return tb - ta;
-    });
-  }, [group, directOrders, mailOrders]);
+    return null;
+  }, [selectedTxnDetail, group]);
+
+  const openTxnDetail = (tx) => {
+    // Prefer full Stripe payment row when available so drawer fields are rich.
+    const stripeMatch = (group?.stripePayments || []).find(
+      (p) =>
+        (tx.paymentIntentId && p.paymentIntentId === tx.paymentIntentId) ||
+        (tx.depositId && p.depositId === tx.depositId),
+    );
+    const base = stripeMatch
+      ? {
+          ...stripeMatch,
+          mailOrderId: tx.mailOrderId || stripeMatch.mailOrderId,
+          paidAt: tx.paidAt || stripeMatch.paidAt,
+          category: tx.category || stripeMatch.category,
+          cancelReason: tx.cancelReason || stripeMatch.cancelReason,
+          cancelledByName: tx.cancelledByName || stripeMatch.cancelledByName,
+        }
+      : {
+          id: tx.id,
+          paymentIntentId: tx.paymentIntentId || null,
+          mailOrderId: tx.mailOrderId || null,
+          depositId: tx.depositId || null,
+          bucket: tx.bucket || (tx.statusLabel === 'Succeeded' ? 'successful' : 'pending'),
+          status: tx.statusLabel,
+          statusLabel: tx.statusLabel,
+          amount: tx.amount,
+          amountReceived: tx.amount,
+          currency: tx.currency,
+          customerName: tx.customerName || group?.customerName,
+          customerEmail: tx.customerEmail || group?.customerEmail,
+          resCode: tx.resCode || group?.resCode,
+          reference: tx.reference || tx.resCode || group?.resCode,
+          category: tx.category,
+          channelLabel: tx.channelLabel || tx.type,
+          cardBrand: tx.cardBrand,
+          cardLast4: tx.cardLast4,
+          createdAt: tx.createdAt || tx.at,
+          paidAt: tx.paidAt || null,
+          plate: tx.plate || '',
+          flowType: tx.flowType || null,
+          cancelReason: tx.cancelReason || null,
+          cancelledByName: tx.cancelledByName || null,
+        };
+    setSelectedTxnDetail(base);
+  };
 
   const panelShellClass =
     layout === 'inline'
@@ -456,11 +515,14 @@ export function StripeCustomerWorkbenchModal({
                 <div className="pal-cust-highlight pal-cust-highlight-hold">
                   <Lock size={14} />
                   <span>
-                    {activeDeposits.length} active hold{activeDeposits.length === 1 ? '' : 's'} Â·{' '}
+                    {activeDeposits.length} active hold{activeDeposits.length === 1 ? '' : 's'} ·{' '}
                     {formatMoney(
                       activeDeposits.reduce((s, d) => s + (d.currentHoldAmount || d.initialAmount || 0), 0),
                       'chf',
                     )}
+                    {activeDeposits[0]?.captureBefore
+                      ? ` · expires ${formatDate(activeDeposits[0].captureBefore)}`
+                      : ''}
                   </span>
                 </div>
               )}
@@ -631,6 +693,16 @@ export function StripeCustomerWorkbenchModal({
                         Capture charges the full hold. Refund or New payment opens amount entry below.
                       </p>
                     )}
+                    {paymentActionHint && (
+                      <p className="pal-fin-alert pal-fin-alert-warn pal-cust-pay-hint">{paymentActionHint}</p>
+                    )}
+                    {pendingDirectOrders.length > 0 && (
+                      <p className="pal-fin-alert pal-fin-alert-warn pal-cust-pay-hint">
+                        {formatMoney(pendingDirectOrders[0].amount, pendingDirectOrders[0].currency)} direct
+                        charge is still pending — the card form was not completed. You can still charge the
+                        customer&apos;s saved deposit card via New payment.
+                      </p>
+                    )}
                   </div>
                 </>
               )}
@@ -653,19 +725,29 @@ export function StripeCustomerWorkbenchModal({
                       </thead>
                       <tbody>
                         {allTransactions.map((tx) => (
-                          <tr key={tx.id}>
+                          <tr
+                            key={tx.id}
+                            className="pal-cust-tx-row-selectable"
+                            onClick={() => openTxnDetail(tx)}
+                            style={{ cursor: 'pointer' }}
+                          >
                             <td className="pal-fin-mono tabular-nums">
                               {formatMoney(tx.amount, tx.currency)}
                             </td>
                             <td>
-                              <StripeStatusBadge sharp variant={tx.statusVariant} label={tx.statusLabel} />
+                              <div className="stripe-pay-status-cell" title={tx.statusNote || undefined}>
+                                <StripeStatusBadge sharp variant={tx.statusVariant} label={tx.statusLabel} />
+                                {tx.statusNote && (
+                                  <span className="stripe-pay-status-note">{tx.statusNote}</span>
+                                )}
+                              </div>
                             </td>
                             <td className="pal-cust-tx-type-cell">{tx.type}</td>
                             <td>
                               {(tx.cardBrand || tx.cardLast4) ? (
                                 <StripePaymentMethodCell brand={tx.cardBrand} last4={tx.cardLast4} />
                               ) : (
-                                'â€”'
+                                '—'
                               )}
                             </td>
                             <td className="tabular-nums text-[var(--erpx-ink-secondary)]">{formatDate(tx.at)}</td>
@@ -697,6 +779,21 @@ export function StripeCustomerWorkbenchModal({
             emptyMessage="No matching audit entries."
           />
         </div>
+
+        {selectedTxnDetail && (
+          <StripePaymentDetailDrawer
+            transaction={selectedTxnDetail}
+            deposit={txnDetailDeposit}
+            franchiseId={franchiseId}
+            canPerformOperations={canPerformOperations}
+            onClose={() => setSelectedTxnDetail(null)}
+            onChanged={() => {
+              setSelectedTxnDetail(null);
+              onChanged?.();
+            }}
+            onFeedback={onCenterFeedback}
+          />
+        )}
 
         <footer className={layout === 'inline' ? 'pal-cust-inspector-footer' : layout === 'drawer' ? 'pal-cust-drawer-footer' : 'pal-fin-modal-footer'}>
           <button type="button" className="gm-btn gm-btn-secondary" onClick={onClose}>

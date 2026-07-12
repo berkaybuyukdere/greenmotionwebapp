@@ -63,6 +63,12 @@ function computeDashboardMetrics(cars, services, returns, exitIslemleri, officeO
         return returnDate && returnDate >= currentMonthStart && returnDate <= currentMonthEnd;
     }).length;
 
+    const monthlyExitReports = exitIslemleri.filter((exit) => {
+        if (exit.isDeleted) return false;
+        const exitDate = getDateFromTimestamp(exit.exitTarihi);
+        return exitDate && exitDate >= currentMonthStart && exitDate <= currentMonthEnd;
+    }).length;
+
     const monthlyOfficeOperations = officeOperations.filter((op) => {
         const opDate = getDateFromTimestamp(op.date);
         return opDate && opDate >= currentMonthStart && opDate <= currentMonthEnd;
@@ -169,6 +175,7 @@ function computeDashboardMetrics(cars, services, returns, exitIslemleri, officeO
         previousMonthDamageReports,
         monthlyServiceReports,
         monthlyReturnReports,
+        monthlyExitReports,
         monthlyCreditCardTotal,
         monthlyPosTotal,
         monthlyWashingTotal,
@@ -221,12 +228,27 @@ export function Dashboard({
     const activityDisplay = activities.length > 0 ? activities.length : (bootstrapKpis?.activityCount ?? activities.length);
 
     return (
-        <div className="erpx-page fd-dash space-y-3">
+        <div className="erpx-page fd-dash space-y-4">
             <style>{`
-                .fd-dash .fd-kpi-cell { cursor: pointer; transition: background .12s ease; }
+                .fd-dash .fd-kpi-cell { cursor: pointer; transition: background .12s ease; padding: 14px 14px; }
                 .fd-dash .fd-kpi-cell:hover { background: var(--fd-high); }
-                .fd-dash-feed-row { display: flex; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--fd-border); align-items: center; }
+                .fd-dash .fd-kpi-label { font-size: 10.5px; }
+                .fd-dash .fd-kpi-value { font-size: 26px; line-height: 1.1; }
+                .fd-dash .fd-kpi-sub { font-size: 10px; }
+                .fd-dash .fd-section-head { font-size: 12px; padding: 12px 14px; }
+                .fd-dash .fd-section-head-meta { font-size: 10px; }
+                .fd-dash-feed-row {
+                    display: flex; gap: 12px; padding: 11px 14px;
+                    border-bottom: 1px solid var(--fd-border); align-items: center;
+                    min-height: 44px;
+                }
                 .fd-dash-feed-row:hover { background: var(--fd-high); }
+                .fd-dash-feed-time { font-size: 12px; color: var(--fd-muted); min-width: 148px; }
+                .fd-dash-feed-pill { min-width: 72px; font-size: 10px; font-weight: 700; }
+                .fd-dash-feed-text { font-size: 13px; line-height: 1.35; color: var(--fd-text); }
+                .fd-dash-fin-row { padding: 10px 0; }
+                .fd-dash-fin-label { font-size: 10.5px !important; }
+                .fd-dash-fin-value { font-size: 14px !important; font-weight: 600; }
             `}</style>
             <div className="erpx-page-header !mb-0">
                 <div>
@@ -304,12 +326,12 @@ export function Dashboard({
                     previousMonthRecords={String(metrics.previousMonthDamageReports)}
                 />
                 <StatCard
-                    title="Monthly Returns"
-                    value={metrics.monthlyReturnReports}
-                    icon={<ArrowLeft size={11} />}
-                    tone="var(--fd-purple)"
-                    onClick={() => setCurrentView('returns')}
-                    previousMonthRecords={String(metrics.prevMonthReturnsCount)}
+                    title="Monthly Check-outs"
+                    value={metrics.monthlyExitReports}
+                    icon={<LogOut size={11} />}
+                    tone="var(--fd-accent)"
+                    onClick={() => setCurrentView('checkout')}
+                    previousMonthRecords={String(metrics.prevMonthExitsCount)}
                 />
                 <StatCard
                     title="Today's Services"
@@ -340,14 +362,14 @@ export function Dashboard({
                                         { pill: 'fd-pill', tag: 'EVENT' };
                                     return (
                                         <div key={activity.id} className="fd-dash-feed-row">
-                                            <span className="fd-cell-muted flex-none inline-flex items-center gap-1">
-                                                <Clock size={10} />
+                                            <span className="fd-dash-feed-time flex-none inline-flex items-center gap-1.5">
+                                                <Clock size={12} />
                                                 {formatDateTime(activity.tarih)}
                                             </span>
-                                            <span className={feedTone.pill} style={{ width: 62, textAlign: 'center', flex: 'none' }}>
+                                            <span className={`${feedTone.pill} fd-dash-feed-pill`} style={{ textAlign: 'center', flex: 'none' }}>
                                                 {feedTone.tag}
                                             </span>
-                                            <span className="flex-1 truncate" style={{ fontSize: '11.5px', color: 'var(--fd-text2)' }}>
+                                            <span className="flex-1 fd-dash-feed-text truncate">
                                                 {activity.aciklama || activity.description || activity.tip}
                                             </span>
                                         </div>
@@ -388,14 +410,14 @@ export function Dashboard({
 
 function FinancialRow({ icon, label, value, highlight = false }) {
     return (
-        <div className="flex items-center justify-between gap-3 border-b border-[var(--fd-border)] last:border-0" style={{ padding: '8px 0' }}>
+        <div className={`fd-dash-fin-row flex items-center justify-between gap-3 border-b border-[var(--fd-border)] last:border-0`}>
             <div className="flex items-center gap-2" style={{ color: 'var(--fd-muted)' }}>
                 {icon}
-                <span style={{ fontFamily: 'var(--fd-sans)', fontSize: 9, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                <span className="fd-dash-fin-label" style={{ fontFamily: 'var(--fd-sans)', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
                     {label}
                 </span>
             </div>
-            <span className="fd-cell-mono tabular-nums" style={{ color: highlight ? 'var(--fd-green)' : 'var(--fd-text)' }}>
+            <span className="fd-dash-fin-value fd-cell-mono tabular-nums" style={{ color: highlight ? 'var(--fd-green)' : 'var(--fd-text)' }}>
                 {value}
             </span>
         </div>

@@ -16,6 +16,7 @@ import {
     formatDisplayDate,
     formatPDFTime,
     stamp,
+    stampProcessPhoto,
 } from './processPhotoStampLabels';
 import {
     generateSwissCheckoutHTMLPDF,
@@ -371,7 +372,10 @@ function drawPhotoCardFrame(pdf, x, y, cardW, headerH, imgH, { number, date, tim
     pdf.setFont(MONO, 'bold');
     pdf.setFontSize(5.4);
     ink(pdf, danger ? C.red : C.gray500);
-    pdf.text(String(number).toUpperCase(), x + 1.6, y + headerH - 1.7);
+    const label = String(number || '').trim();
+    if (label) {
+        pdf.text(label.toUpperCase(), x + 1.6, y + headerH - 1.7);
+    }
     pdf.setFont(MONO, 'normal');
     const stampText = dateBlue && time ? `${date} ${time}` : String(date);
     ink(pdf, dateBlue ? C.accent : C.gray400);
@@ -511,12 +515,12 @@ async function generateSwissCheckoutPDFVector(exit, car, opts = {}) {
     const exitDateStr = formatDisplayDate(handoverDate, deCoverFour);
     const plate = exit?.aracPlaka || car?.plaka || 'N/A';
     const photos = exit?.fotograflar || [];
-    const photoStampForIndex = (globalIndex) => {
-        const info = stamp(globalIndex, handoverDate, returnDate);
+    const photoStampForIndex = () => {
+        const info = stampProcessPhoto(handoverDate, { deFranchise: deCoverFour });
         return {
             label: info.label,
             date: formatDisplayDate(info.date, false),
-            time: deCoverFour ? formatPDFTime(info.date) : null,
+            time: info.time,
         };
     };
     const photoGridStampOpts = {
@@ -529,7 +533,7 @@ async function generateSwissCheckoutPDFVector(exit, car, opts = {}) {
         brandSub: branch,
         badge: 'Check Out Report',
         titlePre: 'Vehicle',
-        titleStrong: 'Handover',
+        titleStrong: 'Check Out',
     });
 
     y = drawSectionLabel(pdf, MARGIN, y, CONTENT_W, 'Vehicle Details');
@@ -643,12 +647,12 @@ async function generateSwissReturnPDFVector(ret, car, returnPhotos, opts = {}) {
     const retDateStr = formatDisplayDate(returnDate, deCoverFour);
     const plate = ret?.aracPlaka || car?.plaka || 'N/A';
     const photos = returnPhotos || ret?.fotograflar || [];
-    const photoStampForIndex = (globalIndex) => {
-        const info = stamp(globalIndex, handoverDate, returnDate);
+    const photoStampForIndex = () => {
+        const info = stampProcessPhoto(returnDate, { deFranchise: deCoverFour });
         return {
             label: info.label,
             date: formatDisplayDate(info.date, false),
-            time: deCoverFour ? formatPDFTime(info.date) : null,
+            time: info.time,
         };
     };
     const photoGridStampOpts = {

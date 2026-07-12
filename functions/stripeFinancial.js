@@ -9,6 +9,7 @@ const admin = require('firebase-admin');
 const crypto = require('crypto');
 const { sendMailOrderPaymentEmail, sendMailOrderReceiptEmail } = require('./stripeMailOrderMail');
 const { formatStripeApiError } = require('./stripeDeclineMessages');
+const { recordOfficeOperationForChargeServer } = require('./stripeOfficeMirror');
 
 const MAIL_ORDER_LINK_VALID_DAYS = 30;
 const MAIL_ORDER_REMINDER_1_DAYS = 15;
@@ -24,7 +25,16 @@ const STRIPE_FINANCE_ROLES = new Set([
   'staff',
   'shuttle',
   'viewer',
+  'finance_cashier',
 ]);
+
+// Roles allowed to move funds (refunds, off-session saved-card charges).
+// 'viewer' is read-only by definition.
+const STRIPE_MONEY_ROLES = new Set(
+  [...STRIPE_FINANCE_ROLES].filter((role) => role !== 'viewer'),
+);
+/** Optional API version pin, e.g. 2025-02-24.acacia — unset keeps account default. */
+const STRIPE_API_VERSION = String(process.env.STRIPE_API_VERSION || '').trim();
 
 const STRIPE_FINANCE_ADMIN_ROLES = new Set(['globaladmin', 'superadmin', 'admin']);
 
@@ -148,6 +158,15 @@ async function assertFinancialCallable(request) {
   return { uid, profile };
 }
 
+/** Same as assertFinancialCallable but blocks read-only roles from moving funds. */
+async function assertMoneyCallable(request) {
+  const ctx = await assertFinancialCallable(request);
+  if (!STRIPE_MONEY_ROLES.has(normalizeRoleKey(ctx.profile.role))) {
+    throw new HttpsError('permission-denied', 'Read-only role cannot create, refund or charge payments.');
+  }
+  return ctx;
+}
+
 function normalizeFranchiseId(raw) {
   const fid = String(raw || '').trim().toUpperCase();
   if (!fid || fid.length > 80 || fid.includes('/')) {
@@ -189,7 +208,7 @@ function encodeForm(params, prefix = '') {
   return parts.filter(Boolean).join('&');
 }
 
-async function stripeRequest(method, path, params = null) {
+async function stripeRequestOnce(method, path, params = null, opts = {}) {
   const secret = getStripeSecretKey();
   const url = `https://api.stripe.com/v1${path}`;
   const init = {
@@ -197,6 +216,10 @@ async function stripeRequest(method, path, params = null) {
     headers: {
       Authorization: `Bearer ${secret}`,
       'Content-Type': 'application/x-www-form-urlencoded',
+      ...(STRIPE_API_VERSION ? { 'Stripe-Version': STRIPE_API_VERSION } : {}),
+      ...(opts.idempotencyKey
+        ? { 'Idempotency-Key': String(opts.idempotencyKey).slice(0, 255) }
+        : {}),
     },
   };
   if (method === 'GET' && params) {
@@ -210,6 +233,37 @@ async function stripeRequest(method, path, params = null) {
   }
   const res = await fetch(url, init);
   return parseStripeResponse(res);
+}
+
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isStripeTransientError(httpStatus, stripeCode) {
+  if (httpStatus === 429) return true;
+  if (stripeCode === 'lock_timeout') return true;
+  return false;
+}
+
+async function stripeRequest(method, path, params = null, opts = {}) {
+  const maxAttempts = Number(opts.maxAttempts) || 4;
+  let lastErr;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      return await stripeRequestOnce(method, path, params, opts);
+    } catch (e) {
+      lastErr = e;
+      const httpStatus = Number(e?.details?.httpStatus || 0);
+      const stripeCode = String(e?.details?.stripeCode || '');
+      if (!isStripeTransientError(httpStatus, stripeCode) || attempt >= maxAttempts - 1) {
+        throw e;
+      }
+      const delay = Math.min(8000, 350 * (2 ** attempt)) + Math.floor(Math.random() * 250);
+      console.warn('[stripeFinancial] retry', method, path, attempt + 1, httpStatus, stripeCode);
+      await sleepMs(delay);
+    }
+  }
+  throw lastErr;
 }
 
 function mailOrdersCol(franchiseId) {
@@ -340,6 +394,9 @@ async function createCheckoutSessionForMailOrder({
   saveCustomerInfo,
   customerEmail,
   uid,
+  category,
+  resNo,
+  customerName,
 }) {
   const p = await stripeRequest('GET', `/products/${encodeURIComponent(productId)}`, {
     expand: ['default_price'],
@@ -351,18 +408,31 @@ async function createCheckoutSessionForMailOrder({
   }
 
   const appBase = resolveAppBaseUrl();
+  const meta = {
+    franchiseId,
+    productId,
+    mailOrderId,
+    mailOrder: 'true',
+    flow: 'mail_order',
+    saveCustomerInfo: saveCustomerInfo ? 'true' : 'false',
+    createdByUid: uid || 'public_checkout',
+  };
+  if (category) meta.category = String(category);
+  if (resNo) {
+    meta.resNo = String(resNo);
+    meta.customerReference = String(resNo);
+  }
+  if (customerName) meta.customerName = String(customerName);
+  if (customerEmail) meta.customerEmail = String(customerEmail);
+
   const sessionParams = {
     mode: 'payment',
     line_items: [{ price: priceId, quantity: 1 }],
     success_url: `${appBase}/#stripeMailOrder?paid=1&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${appBase}/#stripeMailOrder?cancel=1`,
-    metadata: {
-      franchiseId,
-      productId,
-      mailOrderId,
-      mailOrder: 'true',
-      saveCustomerInfo: saveCustomerInfo ? 'true' : 'false',
-      createdByUid: uid || 'public_checkout',
+    metadata: meta,
+    payment_intent_data: {
+      metadata: meta,
     },
     billing_address_collection: 'auto',
     phone_number_collection: { enabled: true },
@@ -373,7 +443,7 @@ async function createCheckoutSessionForMailOrder({
   }
   if (saveCustomerInfo) {
     sessionParams.customer_creation = 'always';
-    sessionParams.payment_intent_data = { setup_future_usage: 'off_session' };
+    sessionParams.payment_intent_data.setup_future_usage = 'off_session';
   } else {
     sessionParams.customer_creation = 'if_required';
   }
@@ -412,17 +482,34 @@ async function syncMailOrderPaymentStatus(row) {
     );
     const status = paymentStatusFromSession(session);
     if (status === 'paid') {
+      const piId =
+        typeof session.payment_intent === 'string'
+          ? session.payment_intent
+          : session.payment_intent?.id || row.paymentIntentId || null;
       await mailOrdersCol(row.franchiseId).doc(row.id).set(
         {
           status: 'paid',
           paidAt: admin.firestore.FieldValue.serverTimestamp(),
           stripeSessionStatus: session.status || null,
+          ...(piId ? { paymentIntentId: piId } : {}),
         },
         { merge: true },
       );
+      const amountMinor = Number(session.amount_total || row.amount || 0);
+      await recordOfficeOperationForChargeServer({
+        franchiseId: row.franchiseId,
+        category: row.category,
+        resNo: row.resNo || row.productName,
+        customerName: row.customerName,
+        amountMajor: amountMinor / 100,
+        mailOrderId: row.id,
+        paymentIntentId: piId,
+        source: 'stripe_mail_order',
+      });
       return {
         ...row,
         status: 'paid',
+        paymentIntentId: piId,
         stripeSessionStatus: session.status || null,
         paymentStatus: session.payment_status || null,
       };
@@ -449,7 +536,18 @@ async function parseStripeResponse(res) {
   }
   if (!res.ok) {
     const msg = formatStripeApiError(data);
-    throw new HttpsError('failed-precondition', msg);
+    const err = data?.error || {};
+    // Structured details reach the client via HttpsError so the UI can offer
+    // a 3DS recovery path instead of a dead-end message.
+    throw new HttpsError('failed-precondition', msg, {
+      stripeCode: err.code || null,
+      declineCode: err.decline_code || null,
+      stripeType: err.type || null,
+      paymentIntentId: err.payment_intent?.id || null,
+      paymentIntentClientSecret: err.payment_intent?.client_secret || null,
+      requiresAuthentication: err.code === 'authentication_required',
+      httpStatus: res.status,
+    });
   }
   return data;
 }
@@ -1128,7 +1226,7 @@ async function runCreateMailOrderPayment(request) {
 
 /** Staff-entered card (MOTO) — creates mail order + PaymentIntent client secret. */
 async function runCreateDirectCardOperation(request) {
-  const { uid } = await assertFinancialCallable(request);
+  const { uid } = await assertMoneyCallable(request);
   const data = request.data || {};
   const franchiseId = normalizeFranchiseId(data.franchiseId);
   assertSwitzerlandFranchise(franchiseId);
@@ -1153,15 +1251,17 @@ async function runCreateDirectCardOperation(request) {
     throw new HttpsError('invalid-argument', 'Minimum amount is CHF 0.50');
   }
 
+  // Doc id first: it seeds Stripe idempotency keys so a retried request
+  // cannot create a duplicate customer or PaymentIntent.
+  const mailOrderRef = mailOrdersCol(franchiseId).doc();
+  const mailOrderId = mailOrderRef.id;
+
   const customer = await stripeRequest('POST', '/customers', {
     name: customerName,
     ...(customerEmail ? { email: customerEmail } : {}),
     'metadata[franchiseId]': franchiseId,
     'metadata[resNo]': resNo,
-  });
-
-  const mailOrderRef = mailOrdersCol(franchiseId).doc();
-  const mailOrderId = mailOrderRef.id;
+  }, { idempotencyKey: `dc-cust-${mailOrderId}` });
 
   const pi = await stripeRequest('POST', '/payment_intents', {
     amount: Math.round(unitAmount),
@@ -1169,6 +1269,9 @@ async function runCreateDirectCardOperation(request) {
     customer: customer.id,
     payment_method_types: ['card'],
     capture_method: 'automatic',
+    // Save the card during the customer-present (CIT) confirmation so later
+    // off-session retries are proper MITs instead of an after-the-fact attach.
+    setup_future_usage: 'off_session',
     description: `${category === 'traffic_fine' ? 'Traffic fine' : 'Damage'} — ${resNo}`,
     ...(customerEmail ? { receipt_email: customerEmail } : {}),
     'metadata[franchiseId]': franchiseId,
@@ -1178,7 +1281,7 @@ async function runCreateDirectCardOperation(request) {
     'metadata[resNo]': resNo,
     'metadata[customerName]': customerName,
     ...(customerEmail ? { 'metadata[customerEmail]': customerEmail } : {}),
-  });
+  }, { idempotencyKey: `dc-pi-${mailOrderId}` });
 
   await mailOrderRef.set({
     franchiseId,
@@ -1432,6 +1535,17 @@ async function runFinalizeDirectCardOperation(request) {
     cardLast4: card?.last4 || null,
   });
 
+  await recordOfficeOperationForChargeServer({
+    franchiseId,
+    category: row.category,
+    resNo: row.resNo || row.productName,
+    customerName: row.customerName,
+    amountMajor: (pi.amount_received || pi.amount || row.amount || 0) / 100,
+    mailOrderId,
+    paymentIntentId: pi.id,
+    source: 'stripe_direct',
+  });
+
   return {
     ok: true,
     mailOrderId,
@@ -1444,7 +1558,7 @@ async function runFinalizeDirectCardOperation(request) {
 
 /** Refund a succeeded direct charge or saved-card charge (staff+). */
 async function runRefundPayment(request) {
-  const { uid } = await assertFinancialCallable(request);
+  const { uid } = await assertMoneyCallable(request);
   const data = request.data || {};
   const franchiseId = normalizeFranchiseId(data.franchiseId);
   assertSwitzerlandFranchise(franchiseId);
@@ -1452,6 +1566,9 @@ async function runRefundPayment(request) {
   const mailOrderId = String(data.mailOrderId || '').trim();
   const reason = String(data.reason || 'requested_by_customer').trim().slice(0, 200);
   const amountChf = data.amountChf != null ? Number(data.amountChf) : null;
+  // Client-generated id — a repeated partial refund of the same amount is a
+  // legitimate action, so only an explicit per-action id can dedupe safely.
+  const requestId = String(data.requestId || '').trim().replace(/[^\w-]/g, '').slice(0, 64);
 
   if (!paymentIntentId.startsWith('pi_') && !mailOrderId) {
     throw new HttpsError('invalid-argument', 'paymentIntentId or mailOrderId required');
@@ -1476,14 +1593,26 @@ async function runRefundPayment(request) {
     throw new HttpsError('failed-precondition', `Payment is ${pi.status}; only succeeded charges can be refunded`);
   }
 
-  const refundBody = { payment_intent: piId, reason: 'requested_by_customer' };
+  // Stripe accepts only these enum values; anything else (free text from the
+  // UI) goes into metadata instead of being silently replaced.
+  const STRIPE_REFUND_REASONS = new Set(['duplicate', 'fraudulent', 'requested_by_customer']);
+  const stripeReason = STRIPE_REFUND_REASONS.has(reason) ? reason : 'requested_by_customer';
+  const refundBody = { payment_intent: piId, reason: stripeReason };
+  if (reason && reason !== stripeReason) {
+    refundBody['metadata[staffReason]'] = reason;
+  }
   if (amountChf != null && Number.isFinite(amountChf) && amountChf > 0) {
     const minor = Math.round(amountChf * 100);
     if (minor < 50) throw new HttpsError('invalid-argument', 'Minimum refund is CHF 0.50');
     refundBody.amount = minor;
   }
 
-  const refund = await stripeRequest('POST', '/refunds', refundBody);
+  const refund = await stripeRequest(
+    'POST',
+    '/refunds',
+    refundBody,
+    requestId ? { idempotencyKey: `refund-${piId}-${requestId}` } : {},
+  );
 
   if (mailRef && mailRow) {
     const refundedMinor = refund.amount || pi.amount_received || pi.amount;
@@ -1520,7 +1649,7 @@ async function runRefundPayment(request) {
 
 /** Retry unpaid direct-card operation with a new amount (new PaymentIntent). */
 async function runRetryDirectCardOperation(request) {
-  const { uid } = await assertFinancialCallable(request);
+  const { uid } = await assertMoneyCallable(request);
   const data = request.data || {};
   const franchiseId = normalizeFranchiseId(data.franchiseId);
   assertSwitzerlandFranchise(franchiseId);
@@ -1582,6 +1711,9 @@ async function runRetryDirectCardOperation(request) {
     customer: customerId,
     payment_method_types: ['card'],
     capture_method: 'automatic',
+    // Save the card during the customer-present (CIT) confirmation so later
+    // off-session retries are proper MITs instead of an after-the-fact attach.
+    setup_future_usage: 'off_session',
     description: `${category === 'traffic_fine' ? 'Traffic fine' : 'Damage'} — ${resNo}`,
     'metadata[franchiseId]': franchiseId,
     'metadata[flow]': 'direct_card_operation',
@@ -1626,16 +1758,22 @@ async function runRetryDirectCardOperation(request) {
 
 /** Off-session retry when card was saved on a prior attempt. */
 async function runRetryDirectCardSavedPayment(request) {
-  const { uid } = await assertFinancialCallable(request);
+  const { uid } = await assertMoneyCallable(request);
   const data = request.data || {};
   const franchiseId = normalizeFranchiseId(data.franchiseId);
   assertSwitzerlandFranchise(franchiseId);
   const mailOrderId = String(data.mailOrderId || '').trim();
   const unitAmount = Number(data.unitAmount);
+  // Client-generated id (one per user action) so a network retry of the same
+  // action cannot charge the card twice.
+  const requestId = String(data.requestId || '').trim().replace(/[^\w-]/g, '').slice(0, 64);
 
   if (!mailOrderId) throw new HttpsError('invalid-argument', 'mailOrderId required');
   if (!Number.isFinite(unitAmount) || unitAmount < 50) {
     throw new HttpsError('invalid-argument', 'Minimum amount is CHF 0.50');
+  }
+  if (unitAmount > 10000 * 100) {
+    throw new HttpsError('invalid-argument', 'Maximum off-session charge is CHF 10000.00 — split larger amounts.');
   }
 
   const docRef = mailOrdersCol(franchiseId).doc(mailOrderId);
@@ -1672,9 +1810,15 @@ async function runRetryDirectCardSavedPayment(request) {
       'metadata[mailOrderId]': mailOrderId,
       'metadata[resNo]': resNo,
       'metadata[retry]': 'saved_card',
-    });
+    }, requestId ? { idempotencyKey: `dc-retry-${mailOrderId}-${requestId}` } : {});
   } catch (e) {
-    throw new HttpsError('failed-precondition', String(e?.message || 'Saved card charge failed'));
+    // Keep structured details (authentication_required + client_secret) so the
+    // UI can route the customer to 3DS instead of blind-retrying off-session.
+    throw new HttpsError(
+      'failed-precondition',
+      String(e?.message || 'Saved card charge failed'),
+      e?.details,
+    );
   }
 
   await docRef.set(
@@ -1682,6 +1826,12 @@ async function runRetryDirectCardSavedPayment(request) {
       paymentIntentId: charged.id,
       amount: Math.round(unitAmount),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      ...(charged.status === 'succeeded'
+        ? {
+            status: 'paid',
+            paidAt: admin.firestore.FieldValue.serverTimestamp(),
+          }
+        : {}),
     },
     { merge: true },
   );
@@ -1691,6 +1841,19 @@ async function runRetryDirectCardSavedPayment(request) {
     paymentIntentId: charged.id,
     amount: Math.round(unitAmount),
   });
+
+  if (charged.status === 'succeeded') {
+    await recordOfficeOperationForChargeServer({
+      franchiseId,
+      category: row.category,
+      resNo: resNo,
+      customerName: row.customerName,
+      amountMajor: Math.round(unitAmount) / 100,
+      mailOrderId,
+      paymentIntentId: charged.id,
+      source: 'stripe_direct',
+    });
+  }
 
   return {
     ok: true,
@@ -1837,13 +2000,18 @@ function resolveDepositDisplayStatus(tx, dep) {
   const initial = Number(dep?.initialAmount || tx?.depositInitialAmount) || 0;
   const current = Number(dep?.currentHoldAmount || dep?.initialAmount || tx?.depositCurrentHold) || 0;
   const depStatus = String(dep?.status || '').toLowerCase();
+  const stripeStatus = String(dep?.stripeStatus || '').toLowerCase();
   const capturedAmount = Number(dep?.capturedAmount) || 0;
 
   if (depStatus === 'captured' || (tx?.bucket === 'successful' && tx?.flowType === 'deposit')) {
     if (capturedAmount > initial || current > initial) return 'captured_increased';
     return 'captured';
   }
-  if (depStatus === 'authorized' || tx?.bucket === 'hold') {
+  if (
+    depStatus === 'authorized' ||
+    stripeStatus === 'requires_capture' ||
+    tx?.bucket === 'hold'
+  ) {
     if (current > initial) return 'increased';
     return 'hold';
   }
@@ -1965,8 +2133,18 @@ function holdAmountForIntent(pi) {
 function detectPaymentChannel(chargeDetails, metadata) {
   const meta = metadata || {};
   if (chargeDetails?.card_present) return 'terminal';
-  if (meta.mailOrder === 'true' || meta.flow === 'mail_order' || meta.mailOrderId) {
+  if (
+    meta.mailOrder === 'true' ||
+    meta.flow === 'mail_order' ||
+    (meta.mailOrderId && meta.flow !== 'direct_card_operation' && meta.flow !== 'saved_token_charge')
+  ) {
     return 'mail_order';
+  }
+  if (meta.flow === 'direct_card_operation' || meta.flow === 'saved_token_charge') {
+    return 'direct_charge';
+  }
+  if (meta.flow === 'deposit' || meta.flow === 'deposit_increase') {
+    return 'deposit_capture';
   }
   return 'online';
 }
@@ -2004,6 +2182,8 @@ function channelLabel(channel, meta) {
   }
   if (channel === 'terminal') return 'Terminal';
   if (channel === 'mail_order') return 'Mail order';
+  if (channel === 'direct_charge') return 'Direct charge';
+  if (channel === 'deposit_capture') return 'Deposit capture';
   return 'Online';
 }
 
@@ -2550,6 +2730,9 @@ async function runMailOrderCheckoutRedirect(req, res) {
       saveCustomerInfo: row.saveCustomerInfo === true,
       customerEmail: String(row.customerEmail || '').trim(),
       uid: row.createdByUid || 'public_checkout',
+      category: row.category || null,
+      resNo: row.resNo || row.productName || '',
+      customerName: row.customerName || '',
     });
 
     await docRef.set(

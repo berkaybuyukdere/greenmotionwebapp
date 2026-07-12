@@ -2,7 +2,32 @@ import {
   depositStatusDisplay,
   auditStatusDisplay,
   formatAuditOperation,
+  enrichDepositsFromStripePayments,
+  stripeTxToSyntheticDeposit,
+  depositIsCapturable,
+  collectGroupDeposits,
 } from './stripeDepositDisplay';
+
+function stripeTxStatusDisplay(tx) {
+  const bucket = String(tx?.bucket || '').toLowerCase();
+  if (bucket === 'hold') return { variant: 'hold', label: 'Uncaptured' };
+  if (bucket === 'successful') return { variant: 'success', label: 'Succeeded' };
+  if (bucket === 'cancelled') {
+    const reason = String(tx?.cancelReason || '').toLowerCase();
+    if (reason.includes('expired') || reason.includes('auto-release')) {
+      return {
+        variant: 'danger',
+        label: 'Expired',
+        note: 'Hold expired automatically — not a staff refund',
+      };
+    }
+    return { variant: 'danger', label: 'Canceled' };
+  }
+  if (bucket === 'failed' || bucket === 'blocked') return { variant: 'danger', label: 'Failed' };
+  if (bucket === 'refunded') return { variant: 'refunded', label: 'Refunded' };
+  if (bucket === 'pending') return { variant: 'warning', label: 'Pending' };
+  return { variant: 'neutral', label: tx?.statusLabel || 'Unknown' };
+}
 
 function groupKeyFor({ resCode = '', customerName = '', customerEmail = '' } = {}) {
   const res = String(resCode || '').trim().toUpperCase();
@@ -43,7 +68,8 @@ export function isPaymentLinkMailOrder(order) {
   return Boolean(order) && !isDirectCardOrder(order);
 }
 
-export function buildStripeCustomerGroups(deposits = [], mailOrders = []) {
+export function buildStripeCustomerGroups(deposits = [], mailOrders = [], stripeTransactions = []) {
+  const mergedDeposits = enrichDepositsFromStripePayments(deposits, stripeTransactions);
   const map = new Map();
 
   const upsert = (key, patch) => {
@@ -65,7 +91,7 @@ export function buildStripeCustomerGroups(deposits = [], mailOrders = []) {
     });
   };
 
-  deposits.forEach((dep) => {
+  mergedDeposits.forEach((dep) => {
     const key = groupKeyFor({
       resCode: dep.resCode || dep.reference,
       customerName: dep.customerName,
@@ -113,15 +139,216 @@ export function buildStripeCustomerGroups(deposits = [], mailOrders = []) {
     upsert(key, entry);
   });
 
+  const seenStripePi = new Set(
+    mergedDeposits.map((d) => d.paymentIntentId).filter(Boolean),
+  );
+
+  stripeTransactions.forEach((tx) => {
+    if (!tx?.paymentIntentId || seenStripePi.has(tx.paymentIntentId)) return;
+    const synthetic = stripeTxToSyntheticDeposit(tx);
+    if (!synthetic) return;
+    const key = groupKeyFor({
+      resCode: synthetic.resCode || synthetic.reference,
+      customerName: synthetic.customerName,
+      customerEmail: synthetic.customerEmail,
+    });
+    const entry = map.get(key) || {
+      id: key,
+      resCode: '',
+      customerName: '',
+      customerEmail: '',
+      deposits: [],
+      mailOrders: [],
+      directOrders: [],
+      stripePayments: [],
+    };
+    entry.deposits.push(synthetic);
+    if (!entry.resCode) entry.resCode = synthetic.resCode || synthetic.reference || '';
+    if (!entry.customerName) entry.customerName = synthetic.customerName || '';
+    if (!entry.customerEmail) entry.customerEmail = synthetic.customerEmail || '';
+    upsert(key, entry);
+    seenStripePi.add(tx.paymentIntentId);
+  });
+
+  stripeTransactions.forEach((tx) => {
+    if (!tx?.paymentIntentId) return;
+    let entry = null;
+    for (const g of map.values()) {
+      const linked =
+        g.deposits.some((d) => d.paymentIntentId === tx.paymentIntentId) ||
+        (g.directOrders || []).some((o) => o.paymentIntentId === tx.paymentIntentId) ||
+        (g.mailOrders || []).some((o) => o.paymentIntentId === tx.paymentIntentId);
+      if (linked) {
+        entry = g;
+        break;
+      }
+    }
+    if (!entry) {
+      const key = groupKeyFor({
+        resCode: tx.resCode || tx.resNo || tx.reference,
+        customerName: tx.customerName,
+        customerEmail: tx.customerEmail,
+      });
+      entry = map.get(key);
+    }
+    if (!entry) return;
+    if (!entry.stripePayments) entry.stripePayments = [];
+    if (
+      entry.stripePayments.some(
+        (r) => r.paymentIntentId === tx.paymentIntentId && r.chargeId === tx.chargeId,
+      )
+    ) {
+      return;
+    }
+    entry.stripePayments.push(tx);
+    upsert(entry.id, entry);
+  });
+
   return [...map.values()]
     .map((group) => ({
       ...group,
       deposits: sortByCreatedDesc(group.deposits),
       mailOrders: sortByCreatedDesc(group.mailOrders),
       directOrders: sortByCreatedDesc(group.directOrders),
+      stripePayments: sortByCreatedDesc(group.stripePayments || [], 'createdAt'),
       displayTitle: displayTitle(group),
     }))
     .sort((a, b) => a.displayTitle.localeCompare(b.displayTitle));
+}
+
+/** All payment rows for customer workbench — deposits, direct, mail, and Stripe API rows. */
+export function buildCustomerTransactionRows(group) {
+  const items = [];
+  const seen = new Set();
+
+  const push = (row) => {
+    const key = row.depositId || row.paymentIntentId || row.id;
+    if (key && seen.has(key)) return;
+    if (key) seen.add(key);
+    items.push(row);
+  };
+
+  for (const d of collectGroupDeposits(group)) {
+    const linkedHold = (group?.stripePayments || []).find(
+      (tx) =>
+        String(tx.bucket || '').toLowerCase() === 'hold' &&
+        (tx.paymentIntentId === d.paymentIntentId ||
+          String(tx.resCode || tx.resNo || tx.reference || '').trim().toUpperCase() ===
+            String(d.resCode || d.reference || '').trim().toUpperCase()),
+    );
+    const st = depositStatusDisplay(d);
+    push({
+      id: `dep-${d.id || d.paymentIntentId}`,
+      depositId: d.id || null,
+      paymentIntentId: d.paymentIntentId || null,
+      type: 'Deposit',
+      at: d.createdAt,
+      amount: d.capturedAmount || d.currentHoldAmount || d.initialAmount || 0,
+      currency: d.currency || 'chf',
+      statusLabel: st.label,
+      statusVariant: st.variant,
+      statusNote: st.note || null,
+      cancelReason: d.cancelReason || null,
+      cancelledByName: d.cancelledByName || null,
+      cardBrand: d.cardBrand,
+      cardLast4: d.cardLast4,
+      capturable: depositIsCapturable(d, linkedHold),
+      tokenSaved: d.tokenSaved || Boolean(d.stripePaymentMethodId),
+    });
+  }
+
+  for (const o of group?.directOrders || []) {
+    const pendingDirect =
+      o.status !== 'paid' && o.status !== 'failed' && o.chargeMode === 'direct_card';
+    push({
+      id: `dir-${o.id}`,
+      mailOrderId: o.id,
+      paymentIntentId: o.paymentIntentId || null,
+      type: 'Direct charge',
+      at: o.paidAt || o.createdAt,
+      paidAt: o.paidAt || null,
+      amount: o.amount,
+      currency: o.currency || 'chf',
+      statusLabel: o.status === 'paid' ? 'Succeeded' : o.status === 'failed' ? 'Failed' : 'Pending',
+      statusVariant: o.status === 'paid' ? 'success' : o.status === 'failed' ? 'danger' : 'warning',
+      statusNote: pendingDirect
+        ? 'Manual charge started — card was not entered. Use New payment to charge the saved deposit card instead.'
+        : null,
+      cardBrand: o.cardBrand,
+      cardLast4: o.cardLast4,
+      customerName: o.customerName || group?.customerName || '',
+      customerEmail: o.customerEmail || group?.customerEmail || '',
+      category: o.category || null,
+      resCode: o.resNo || group?.resCode || '',
+      reference: o.resNo || '',
+      channelLabel: 'Direct charge',
+      bucket: o.status === 'paid' ? 'successful' : o.status === 'failed' ? 'failed' : 'pending',
+      createdAt: o.createdAt,
+    });
+  }
+
+  for (const o of group?.mailOrders || []) {
+    push({
+      id: `mail-${o.id}`,
+      mailOrderId: o.id,
+      paymentIntentId: o.paymentIntentId || null,
+      type: 'Mail order',
+      at: o.paidAt || o.createdAt,
+      paidAt: o.paidAt || null,
+      amount: o.amount,
+      currency: o.currency || 'chf',
+      statusLabel: o.status === 'paid' ? 'Succeeded' : 'Unpaid',
+      statusVariant: o.status === 'paid' ? 'success' : 'unpaid',
+      cardBrand: o.cardBrand,
+      cardLast4: o.cardLast4,
+      customerName: o.customerName || group?.customerName || '',
+      customerEmail: o.customerEmail || group?.customerEmail || '',
+      category: o.category || null,
+      resCode: o.resNo || group?.resCode || '',
+      reference: o.resNo || '',
+      channelLabel: 'Mail order',
+      bucket: o.status === 'paid' ? 'successful' : 'pending',
+      createdAt: o.createdAt,
+    });
+  }
+
+  for (const tx of group?.stripePayments || []) {
+    const st = stripeTxStatusDisplay(tx);
+    push({
+      id: `stripe-${tx.chargeId || tx.id || tx.paymentIntentId}`,
+      depositId: tx.depositId || null,
+      paymentIntentId: tx.paymentIntentId || null,
+      type: tx.channelLabel || 'Stripe',
+      at: tx.createdAt || (tx.created ? new Date(tx.created * 1000).toISOString() : null),
+      amount:
+        tx.bucket === 'successful'
+          ? Number(tx.amountReceived || tx.amount) || 0
+          : Number(tx.holdAmount || tx.amount) || 0,
+      currency: tx.currency || 'chf',
+      statusLabel: st.label,
+      statusVariant: st.variant,
+      cardBrand: tx.cardBrand,
+      cardLast4: tx.cardLast4,
+      capturable: tx.bucket === 'hold',
+      customerName: tx.customerName || group?.customerName || '',
+      customerEmail: tx.customerEmail || group?.customerEmail || '',
+      category: tx.category || null,
+      resCode: tx.resCode || tx.resNo || group?.resCode || '',
+      reference: tx.reference || tx.resNo || '',
+      channelLabel: tx.channelLabel || null,
+      bucket: tx.bucket,
+      flowType: tx.flowType || null,
+      createdAt: tx.createdAt,
+      amountReceived: tx.amountReceived,
+      plate: tx.plate || '',
+    });
+  }
+
+  return items.sort((a, b) => {
+    const ta = a.at ? new Date(a.at).getTime() : 0;
+    const tb = b.at ? new Date(b.at).getTime() : 0;
+    return tb - ta;
+  });
 }
 
 const AUDIT_ACTION_LABELS = {

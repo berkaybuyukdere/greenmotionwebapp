@@ -101,9 +101,9 @@ export function StripePaymentsDepositsTab({
       try {
         const [, depRes, payRes, mailRes] = await Promise.all([
           stripeFinancialGetConfig({ franchiseId }),
-          stripeFinancialListDeposits({ franchiseId, limit: 150, syncStripe }),
-          stripeFinancialListPayments({ franchiseId, period: 'all', lookbackDays: 60 }),
-          stripeFinancialListMailOrders({ franchiseId, limit: 150, syncStripe: false }),
+          stripeFinancialListDeposits({ franchiseId, limit: 300, syncStripe }),
+          stripeFinancialListPayments({ franchiseId, period: 'all', lookbackDays: 90 }),
+          stripeFinancialListMailOrders({ franchiseId, limit: 300, syncStripe }),
         ]);
         const enrichedDeposits = (depRes.deposits || []).map(enrichDepositRow);
         const orders = mailRes.orders || [];
@@ -127,12 +127,20 @@ export function StripePaymentsDepositsTab({
   );
 
   useEffect(() => {
-    load({ syncStripe: false });
+    load({ syncStripe: true });
   }, [load, refreshToken]);
 
+  useEffect(() => {
+    if (!franchiseId) return undefined;
+    const timer = window.setInterval(() => {
+      load({ syncStripe: true });
+    }, 60000);
+    return () => window.clearInterval(timer);
+  }, [franchiseId, load]);
+
   const groups = useMemo(
-    () => buildStripeCustomerGroups(deposits, mailOrders),
-    [deposits, mailOrders],
+    () => buildStripeCustomerGroups(deposits, mailOrders, paymentRows),
+    [deposits, mailOrders, paymentRows],
   );
 
   const sortedRows = useMemo(

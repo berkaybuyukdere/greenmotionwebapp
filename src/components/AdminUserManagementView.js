@@ -1001,6 +1001,7 @@ const ROLE_LABELS = {
     shuttle: 'Shuttle',
     viewer: 'Viewer',
     garage: 'Garage',
+    finance_cashier: 'Finance Cashier (CH)',
 };
 
 function EditUserModal({ db, user, userProfile, franchises, assignableRoles = [], lockFranchiseId = null, onClose, toast }) {

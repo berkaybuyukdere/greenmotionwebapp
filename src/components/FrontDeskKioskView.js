@@ -28,6 +28,43 @@ function titleCaseField(value) {
         .join(' ');
 }
 
+/** Downscale signature PNGs before callable payload — large canvases stall submit. */
+function compressSignatureForUpload(dataUrl, maxWidth = 640) {
+    return new Promise((resolve) => {
+        try {
+            const raw = String(dataUrl || '').trim();
+            if (!raw) {
+                resolve('');
+                return;
+            }
+            const src = raw.includes('base64,') ? raw : `data:image/png;base64,${raw}`;
+            const img = new Image();
+            img.onload = () => {
+                const scale = Math.min(1, maxWidth / Math.max(img.width, 1));
+                const w = Math.max(1, Math.round(img.width * scale));
+                const h = Math.max(1, Math.round(img.height * scale));
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, w, h);
+                ctx.drawImage(img, 0, 0, w, h);
+                const out = canvas.toDataURL('image/jpeg', 0.72);
+                const idx = out.indexOf('base64,');
+                resolve(idx >= 0 ? out.slice(idx + 7) : out);
+            };
+            img.onerror = () => {
+                const idx = raw.indexOf('base64,');
+                resolve(idx >= 0 ? raw.slice(idx + 7) : raw);
+            };
+            img.src = src;
+        } catch {
+            resolve('');
+        }
+    });
+}
+
 function cleanLegalText(raw) {
     const text = String(raw || '').trim();
     if (!text) return '';
@@ -639,21 +676,27 @@ export function FrontDeskKioskView({ franchiseId, functionsApp }) {
             return;
         }
         setSubmitting(true);
-        const submitTimeout = setTimeout(() => setSubmitting(false), 55_000);
+        const submitTimeout = setTimeout(() => {
+            setSubmitting(false);
+            toastError('Submission timed out. Check your connection and try again.');
+        }, 40_000);
         try {
             // PDF is built on the server with Noto Sans (Turkish-safe). Client jsPDF/Helvetica
-            // corrupts ş, ğ, ı, etc. — only send signature PNGs.
-            const rentalTermsSigPayload =
-                isTurkeyKiosk && rentalTermsSigned && rentalTermsSignatures.length > 0
-                    ? {
-                          rentalTermsSignatures: rentalTermsSignatures.map((s) => {
-                              const raw = String(s || '').trim();
-                              const idx = raw.indexOf('base64,');
-                              return idx >= 0 ? raw.slice(idx + 7) : raw;
-                          }),
-                          rentalTermsLanguageCode: rentalTermsLang === 'en' ? 'en' : 'tr',
-                      }
-                    : {};
+            // corrupts ş, ğ, ı, etc. — only send compressed signature images.
+            let rentalTermsSigPayload = {};
+            if (isTurkeyKiosk && rentalTermsSigned && rentalTermsSignatures.length > 0) {
+                const compressed = (
+                    await Promise.all(rentalTermsSignatures.map((s) => compressSignatureForUpload(s)))
+                ).filter((s) => s.length > 40);
+                if (compressed.length === 0) {
+                    toastError('Could not prepare signatures. Please sign again.');
+                    return;
+                }
+                rentalTermsSigPayload = {
+                    rentalTermsSignatures: compressed,
+                    rentalTermsLanguageCode: rentalTermsLang === 'en' ? 'en' : 'tr',
+                };
+            }
 
             await submitFn.current({
                 franchiseId,
@@ -662,7 +705,7 @@ export function FrontDeskKioskView({ franchiseId, functionsApp }) {
                 lastName: String(lastName || '').replace(/\s+/g, ' ').trim(),
                 fullName: `${String(firstName || '').trim()} ${String(lastName || '').trim()}`.trim(),
                 phone: String(phone || '').trim(),
-                email: String(email || '').trim().toLowerCase(),
+                email: String(email || '').trim().toLocaleLowerCase(),
                 addressLine: String(addressLine || '').replace(/\s+/g, ' ').trim(),
                 city: String(city || '').replace(/\s+/g, ' ').trim(),
                 postalCode: String(postalCode || '').replace(/\s+/g, ' ').trim(),
@@ -696,7 +739,7 @@ export function FrontDeskKioskView({ franchiseId, functionsApp }) {
                     <div className="w-14 h-14 sm:w-16 sm:h-16 bg-[var(--erpx-brand)] rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-md">
                         <Car className="text-white" size={30} />
                     </div>
-                    <h1 className="text-[22px] font-bold text-[var(--erpx-ink)] mb-0.5">Front desk</h1>
+                    <h1 className="text-[22px] font-bold text-[var(--erpx-ink)] mb-0.5">Kiosk</h1>
                     <p className="text-[13px] text-[var(--erpx-ink-muted)] flex items-center justify-center gap-1.5">
                         <MapPin size={13} />
                         Reservation information · {franchiseId}

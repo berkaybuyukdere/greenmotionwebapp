@@ -872,31 +872,260 @@
 .fd-photo-tile:hover { border-color: var(--fd-accent); }
 .fd-photo-tile > img { width: 100%; height: 100%; object-fit: cover; }
 
-/* ─── Login: compact centered card ─── */
+/* ─── Login: split hero + card (generous rhythm, ZDA-inspired) ─── */
 .pal-login-root {
     min-height: 100vh;
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1.08fr) minmax(300px, 420px);
     align-items: center;
-    justify-content: center;
-    padding: 24px 16px;
-    background: linear-gradient(180deg, #f8f9fb 0%, #eef1f5 100%);
+    gap: clamp(44px, 6.5vw, 96px);
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: clamp(40px, 5.5vh, 80px) clamp(28px, 4.5vw, 60px);
+    background-color: var(--fd-bg);
+    background-image:
+        linear-gradient(90deg, rgba(33, 93, 176, 0.04) 1px, transparent 1px),
+        linear-gradient(rgba(33, 93, 176, 0.04) 1px, transparent 1px);
+    background-size: 56px 56px;
+}
+
+.fd-login-brand {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-self: stretch;
+    min-height: clamp(440px, 70vh, 640px);
+    padding: 16px 12px 16px 0;
+    gap: 48px;
+}
+
+.fd-login-brand-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px 20px;
 }
 
 .fd-login-logo {
-    width: 26px;
-    height: 26px;
+    width: 32px;
+    height: 32px;
     border: 2px solid var(--fd-accent);
     display: grid;
     place-items: center;
-    font: 700 12px var(--fd-mono);
+    font: 700 13px var(--fd-mono);
     color: var(--fd-accent);
+    flex-shrink: 0;
 }
 
 .fd-login-wordmark {
-    font: 600 13px/1 var(--fd-sans);
-    letter-spacing: 0.14em;
+    font: 600 14px/1.35 var(--fd-sans);
+    letter-spacing: 0.16em;
     text-transform: uppercase;
     color: var(--fd-text);
+}
+
+.fd-login-platform-chip {
+    font: 500 9px/1.4 var(--fd-mono);
+    color: var(--fd-muted);
+    border: 1px solid var(--fd-border);
+    padding: 8px 12px;
+    margin-left: 0;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.fd-login-brand-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+    max-width: 34rem;
+    padding: 12px 0;
+}
+
+.fd-login-headline {
+    font: 600 clamp(2rem, 3.6vw, 2.75rem) / 1.22 var(--fd-sans);
+    letter-spacing: -0.025em;
+    color: var(--fd-text);
+    text-wrap: balance;
+    max-width: 15ch;
+}
+
+.fd-login-sub {
+    color: var(--fd-text2);
+    font-size: 15px;
+    line-height: 1.75;
+    max-width: 42ch;
+}
+
+.fd-login-build {
+    margin-top: auto;
+    padding-top: 36px;
+    font: 500 10px/1.65 var(--fd-mono);
+    color: var(--fd-muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    max-width: 38ch;
+}
+
+.pal-login-shell {
+    width: 100%;
+    max-width: 420px;
+    justify-self: end;
+}
+
+.pal-login-card {
+    border-radius: 2px;
+    overflow: hidden;
+    box-shadow:
+        0 16px 48px rgba(28, 33, 39, 0.07),
+        0 1px 0 rgba(255, 255, 255, 0.85) inset;
+}
+
+.pal-login-card .fd-section-head {
+    justify-content: space-between;
+    align-items: center;
+    padding: 22px 28px 20px !important;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    background: var(--fd-high) !important;
+    color: var(--fd-text) !important;
+    border-bottom: 1px solid var(--fd-border) !important;
+}
+
+.fd-login-nominal {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--fd-green);
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+}
+
+.pal-login-card .pal-login-form {
+    padding: 28px 28px 24px !important;
+}
+
+.pal-login-field-row {
+    gap: 20px !important;
+    margin-bottom: 10px !important;
+}
+
+.pal-login-field-group {
+    margin-bottom: 4px;
+}
+
+.pal-login-field-label,
+.pal-login-card label.pal-login-field-label {
+    display: block;
+    margin-bottom: 10px !important;
+    font-size: 10px !important;
+    font-weight: 600;
+    letter-spacing: 0.12em !important;
+    line-height: 1.45 !important;
+    text-transform: uppercase;
+}
+
+.pal-login-field,
+.pal-login-card input.pal-login-field,
+.pal-login-card select.pal-login-field {
+    height: 44px !important;
+    margin-bottom: 22px !important;
+    padding: 0 14px !important;
+    font-size: 14px !important;
+    border-radius: 2px !important;
+    background: var(--fd-surface) !important;
+    border: 1px solid var(--fd-border) !important;
+    color: var(--fd-text) !important;
+}
+
+.pal-login-franchise-pill {
+    height: 44px !important;
+    margin-bottom: 22px !important;
+    padding: 0 14px !important;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.pal-login-loader-wrap,
+.pal-login-inline-error,
+.pal-login-inline-warn {
+    margin-bottom: 22px !important;
+}
+
+.pal-login-error {
+    margin-bottom: 22px !important;
+    padding: 14px 16px !important;
+}
+
+.pal-login-form-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 16px !important;
+    margin-top: 14px !important;
+}
+
+.pal-login-forgot-btn {
+    min-height: 44px !important;
+    padding: 0 16px !important;
+    font-size: 13px !important;
+}
+
+.pal-login-submit {
+    min-height: 48px !important;
+    font-size: 11px !important;
+    font-weight: 600;
+    letter-spacing: 0.16em !important;
+    text-transform: uppercase;
+}
+
+.pal-login-footnote {
+    padding: 8px 28px 26px !important;
+    margin: 0;
+    font-size: 10px !important;
+    letter-spacing: 0.07em;
+    line-height: 1.55;
+    text-transform: uppercase;
+}
+
+.pal-login-recovery-panel {
+    padding: 20px !important;
+}
+
+.pal-login-recovery-head {
+    margin-bottom: 20px !important;
+    gap: 16px !important;
+}
+
+.pal-login-recovery-actions {
+    gap: 14px !important;
+}
+
+.pal-login-recovery-btn {
+    padding: 14px 16px !important;
+    gap: 14px !important;
+}
+
+@media (max-width: 960px) {
+    .pal-login-root {
+        grid-template-columns: 1fr;
+        max-width: 440px;
+        gap: 0;
+        padding: 44px 22px 56px;
+        background-size: 48px 48px;
+    }
+
+    .fd-login-brand {
+        display: none;
+    }
+
+    .pal-login-shell {
+        justify-self: center;
+        max-width: 100%;
+    }
 }
 
 /* Sidebar/topbar brand mark — same visual language as .fd-login-logo, chrome-scale sizing */
@@ -956,64 +1185,10 @@
     color: var(--fd-text2);
 }
 
-.fd-login-platform-chip {
-    font: 500 10px var(--fd-mono);
-    color: var(--fd-muted);
-    border: 1px solid var(--fd-border);
-    padding: 2px 6px;
-    margin-left: 6px;
-}
-
-.fd-login-brand-copy {
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-    max-width: 520px;
-}
-
-.fd-login-headline {
-    font: 600 34px/1.15 var(--fd-sans);
-    letter-spacing: -0.01em;
-    color: var(--fd-text);
-    text-wrap: balance;
-}
-
-.fd-login-sub {
-    color: var(--fd-text2);
-    font-size: 14px;
-    line-height: 1.6;
-}
-
-.fd-login-build {
-    font: 500 10px var(--fd-mono);
-    color: var(--fd-muted);
-    letter-spacing: 0.04em;
-}
-
-.pal-login-shell {
-    width: min(400px, 94vw);
-}
-
-@media (max-width: 900px) {
-    .fd-login-brand { display: none; }
-}
-
-.pal-login-card .fd-section-head {
-    justify-content: space-between;
-}
-
-.fd-login-nominal {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    color: var(--fd-green);
-    text-transform: uppercase;
-}
-
 .pal-login-brand--partner-only {
     display: flex;
     justify-content: flex-end;
-    padding: 10px 14px 0;
+    padding: 16px 28px 0;
 }
 
 /* ─── Right-side detail drawer (Vehicles / Checkout / Parked / Returns / Damage) ───

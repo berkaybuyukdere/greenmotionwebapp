@@ -182,7 +182,8 @@ export function canUseStripeFinance(userProfile, franchiseId) {
         r === 'manager' ||
         r === 'staff' ||
         r === 'shuttle' ||
-        r === 'viewer'
+        r === 'viewer' ||
+        r === 'finance_cashier'
     );
 }
 
@@ -198,7 +199,8 @@ export function canPerformStripeOperations(userProfile, franchiseId) {
         r === 'manager' ||
         r === 'staff' ||
         r === 'shuttle' ||
-        r === 'viewer'
+        r === 'viewer' ||
+        r === 'finance_cashier'
     );
 }
 
@@ -206,6 +208,17 @@ export function canPerformStripeOperations(userProfile, franchiseId) {
 export function canViewStripeFinancialTotals(userProfile) {
     const r = normalizeRoleKey(userProfile?.role);
     return r === 'globaladmin' || r === 'superadmin' || r === 'admin';
+}
+
+/** POS daily / today earnings — finance cashier + admin tier (not monthly aggregates). */
+export function canViewStripeDailyTotals(userProfile) {
+    const r = normalizeRoleKey(userProfile?.role);
+    return (
+        r === 'finance_cashier' ||
+        r === 'globaladmin' ||
+        r === 'superadmin' ||
+        r === 'admin'
+    );
 }
 
 /** Stripe daily reports dashboard — admin and above only. */

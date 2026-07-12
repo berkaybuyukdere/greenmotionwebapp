@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Plus, RefreshCw } from 'lucide-react';
+import { FlaskConical, Plus, RefreshCw } from 'lucide-react';
 import { StripePaymentsDepositsTab } from './StripePaymentsDepositsTab';
 import { StripePaymentsDirectTab } from './StripePaymentsDirectTab';
 import { StripePaymentsLogsTab } from './StripePaymentsLogsTab';
 import { StripeMailOrderView } from './StripeMailOrderView';
 import { StripeNewPaymentModal } from './StripeNewPaymentModal';
+import { StripeDepositCollectInputsTestModal } from './StripeDepositCollectInputsTestModal';
 import { useStripeFinFeedback } from './StripeFinFeedback';
 import { stripeFinancialGetConfig } from '../../services/stripeFinancialApi';
 import { logPaymentUiAction } from '../../utilities/logPaymentUiAction';
@@ -25,6 +26,7 @@ export function StripePaymentsHub({
 }) {
   const [tab, setTab] = useState(initialTab);
   const [showNewPayment, setShowNewPayment] = useState(false);
+  const [showTerminalInputTest, setShowTerminalInputTest] = useState(false);
   const [refreshToken, setRefreshToken] = useState(0);
   const [stripeMode, setStripeMode] = useState('unset');
   const { showFeedback, showSuccess, toast } = useStripeFinFeedback();
@@ -58,6 +60,20 @@ export function StripePaymentsHub({
             <RefreshCw size={15} />
             Refresh
           </button>
+          {canPerformOperations && tab === 'deposits' && (
+            <button
+              type="button"
+              className="gm-btn gm-btn-secondary gm-btn-sm pal-fin-action-btn"
+              title="Test POS signature, phone and email only — does not create a deposit"
+              onClick={() => {
+                logPaymentUiAction(franchiseId, 'terminal_input_test_open');
+                setShowTerminalInputTest(true);
+              }}
+            >
+              <FlaskConical size={15} />
+              Terminal input test
+            </button>
+          )}
           {canPerformOperations && (
             <button
               type="button"
@@ -125,6 +141,14 @@ export function StripePaymentsHub({
             setShowNewPayment(false);
             bumpRefresh();
           }}
+        />
+      )}
+
+      {showTerminalInputTest && (
+        <StripeDepositCollectInputsTestModal
+          franchiseId={franchiseId}
+          onClose={() => setShowTerminalInputTest(false)}
+          onFeedback={showFeedback}
         />
       )}
 

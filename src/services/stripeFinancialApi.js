@@ -11,6 +11,15 @@ function callEu(name, data = {}) {
   return fn(data).then((res) => res.data);
 }
 
+/**
+ * One id per money-moving user action — the server turns it into a Stripe
+ * idempotency key so a transport-level retry cannot charge/refund twice.
+ */
+function newRequestId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return `req-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 /** CH Stripe daily KPI reports (europe-west6). */
 export function chStripeGetDailyReports({ franchiseId, period = '7d', startDayKey, endDayKey } = {}) {
   return callEu('getCHStripeDailyReports', {
@@ -44,6 +53,7 @@ export function stripeFinancialChargeSavedPaymentMethod({ franchiseId, depositId
     ...(paymentIntentId ? { paymentIntentId } : {}),
     amountChf,
     note,
+    requestId: newRequestId(),
   });
 }
 
@@ -180,6 +190,14 @@ export function stripeFinancialProcessDepositOnTerminal(payload) {
   return call('stripeFinancialProcessDepositOnTerminal', payload);
 }
 
+export function stripeFinancialStartDepositCollectInputsTest(payload) {
+  return call('stripeFinancialStartDepositCollectInputsTest', payload);
+}
+
+export function stripeFinancialPollDepositCollectInputsTest(payload) {
+  return call('stripeFinancialPollDepositCollectInputsTest', payload);
+}
+
 export function stripeFinancialListTerminals({ franchiseId } = {}) {
   return call('stripeFinancialListTerminals', { franchiseId });
 }
@@ -233,7 +251,10 @@ export function stripeFinancialRetryDirectCardOperation(payload) {
 }
 
 export function stripeFinancialRetryDirectCardSavedPayment(payload) {
-  return call('stripeFinancialRetryDirectCardSavedPayment', payload);
+  return call('stripeFinancialRetryDirectCardSavedPayment', {
+    requestId: newRequestId(),
+    ...payload,
+  });
 }
 
 export function stripeFinancialSendMailOrderEmail(payload) {
@@ -252,6 +273,7 @@ export function stripeFinancialRefundPayment({ franchiseId, paymentIntentId, mai
     ...(mailOrderId ? { mailOrderId } : {}),
     ...(amountChf != null ? { amountChf } : {}),
     ...(reason ? { reason } : {}),
+    requestId: newRequestId(),
   });
 }
 

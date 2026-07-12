@@ -168,7 +168,7 @@ export function StripeMailOrderView({ franchiseId, showFinancialTotals = true, c
     try {
       const [cfg, mailRes] = await Promise.all([
         stripeFinancialGetConfig({ franchiseId }),
-        stripeFinancialListMailOrders({ franchiseId, limit: 200 }),
+        stripeFinancialListMailOrders({ franchiseId, limit: 200, syncStripe: true }),
       ]);
       setConfigured(cfg?.configured !== false);
       setStripeMode(cfg?.mode || 'unset');
@@ -184,6 +184,12 @@ export function StripeMailOrderView({ franchiseId, showFinancialTotals = true, c
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!franchiseId) return undefined;
+    const timer = window.setInterval(() => load(), 60000);
+    return () => window.clearInterval(timer);
+  }, [franchiseId, load]);
 
   const filtered = useMemo(() => {
     let rows = mailOrders;

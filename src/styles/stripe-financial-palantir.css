@@ -4500,3 +4500,81 @@
   display: block;
   grid-template-columns: none;
 }
+
+.pal-fin-signature-pad {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pal-fin-signature-pad-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--erpx-ink-secondary);
+}
+
+.pal-fin-signature-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--erpx-border);
+  background: var(--erpx-surface);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.pal-fin-signature-canvas {
+  border: 2px dashed var(--erpx-brand);
+  border-radius: 12px;
+  background: var(--erpx-subtle);
+  cursor: crosshair;
+}
+
+.pal-fin-collect-test-results {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  width: 100%;
+  text-align: left;
+  margin-top: 8px;
+}
+
+.pal-fin-test-result-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--erpx-ink-secondary);
+}
+
+.pal-fin-pos-signature-preview {
+  width: 100%;
+  max-width: 320px;
+  margin-top: 12px;
+  border: 1px solid var(--erpx-border);
+  border-radius: 10px;
+  padding: 8px;
+  background: #fff;
+}
+
+.pal-fin-pos-signature-preview svg {
+  width: 100%;
+  height: auto;
+}
+
+.pal-fin-web-signature-preview img {
+  max-width: 280px;
+  border: 1px solid var(--erpx-border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+@media (max-width: 640px) {
+  .pal-fin-collect-test-results {
+    grid-template-columns: 1fr;
+  }
+}

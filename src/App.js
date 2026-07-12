@@ -223,6 +223,7 @@ import {
     canUseStripeFinance,
     canPerformStripeOperations as userCanPerformStripeOperations,
     canViewStripeFinancialTotals as userCanViewStripeFinancialTotals,
+    canViewStripeDailyTotals as userCanViewStripeDailyTotals,
     canViewStripeReports as userCanViewStripeReports,
     isGarageOnlyRole,
     canAccessFrontDeskCustomersWeb,
@@ -1612,6 +1613,10 @@ function AppContent({ user, userProfile: initialUserProfile }) {
         () => userCanViewStripeFinancialTotals(userProfile),
         [userProfile],
     );
+    const showStripeDailyTotals = useMemo(
+        () => userCanViewStripeDailyTotals(userProfile),
+        [userProfile],
+    );
     const canPerformStripeOperations = useMemo(
         () => userCanPerformStripeOperations(userProfile, effectiveFranchiseId),
         [userProfile, effectiveFranchiseId],
@@ -2698,7 +2703,7 @@ function AppContent({ user, userProfile: initialUserProfile }) {
                                 )}
                                 {currentView === 'office' && (
                                     <div className="erpx-view-layer w-full min-w-0">
-                                        <OfficeOperationsView operations={officeOperations} cars={fleetCars} onRefresh={loadData} addActivity={addActivity} user={user} franchiseId={effectiveFranchiseId || 'ch'} canViewFinancials={canViewFinancials} showStripeFinancialTotals={showStripeFinancialTotals} />
+                                        <OfficeOperationsView operations={officeOperations} cars={fleetCars} onRefresh={loadData} addActivity={addActivity} user={user} franchiseId={effectiveFranchiseId || 'ch'} canViewFinancials={canViewFinancials} showStripeFinancialTotals={showStripeFinancialTotals} showStripeDailyTotals={showStripeDailyTotals} />
                                     </div>
                                 )}
                                 {currentView === 'workingTimetable' && (
@@ -11948,8 +11953,7 @@ function ReturnsView({ returns, cars, onRefresh, addActivity, franchiseId = 'ch'
                 </div>
             </div>
 
-            <div className="pal-ops-master-detail">
-            <div className="pal-ops-master-detail-main gm-table-wrap gm-list-panel overflow-x-auto">
+            <div className="gm-table-wrap gm-list-panel overflow-x-auto">
             <StripeFilterChips
                 variant="strip"
                 value={statusFilter}
@@ -12082,25 +12086,17 @@ function ReturnsView({ returns, cars, onRefresh, addActivity, franchiseId = 'ch'
                     <p className="text-sm text-[var(--erpx-ink-muted)]">Return records will appear here</p>
                 </div>
             )}
+
             </div>
 
-            <aside className="pal-ops-master-detail-aside">
-                {selectedReturn ? (
-                    <ReturnDetailModal
-                        embedded
-                        return={selectedReturn}
-                        cars={cars}
-                        onClose={() => setSelectedReturn(null)}
-                        onSoftDeleteReturn={onSoftDeleteReturn}
-                    />
-                ) : (
-                    <div className="pal-ops-master-detail-empty">
-                        <ArrowLeft size={28} className="mb-3 opacity-40" />
-                        <p>Select a return record to open details on the right.</p>
-                    </div>
-                )}
-            </aside>
-            </div>
+            {selectedReturn && (
+                <ReturnDetailModal
+                    return={selectedReturn}
+                    cars={cars}
+                    onClose={() => setSelectedReturn(null)}
+                    onSoftDeleteReturn={onSoftDeleteReturn}
+                />
+            )}
 
             {/* Context Menu */}
             {contextMenu && (
@@ -12222,7 +12218,7 @@ async function generateReturnReportPdfDocument({ ret, car, returnPhotos, lang, t
     }
 }
 
-function ReturnDetailModal({ return: ret, cars, onClose, onSoftDeleteReturn, embedded = false }) {
+function ReturnDetailModal({ return: ret, cars, onClose, onSoftDeleteReturn }) {
     const toast = useToast();
     const car = findFleetCarByAracId(cars, ret.aracId);
     const returnPhotos = ret.fotograflar || [];
@@ -12231,16 +12227,18 @@ function ReturnDetailModal({ return: ret, cars, onClose, onSoftDeleteReturn, emb
     const [pdfOverlay, setPdfOverlay] = useState(null);
     const showDualReturnPdf = Boolean(car && isTurkeyFranchiseId(ret.franchiseId || car?.franchiseId));
 
-    // ESC key handler
     React.useEffect(() => {
         const handleEsc = (e) => {
-            if (e.key === 'Escape') {
-                onClose();
+            if (e.key !== 'Escape') return;
+            if (showImageGallery) {
+                setShowImageGallery(null);
+                return;
             }
+            onClose();
         };
         document.addEventListener('keydown', handleEsc);
         return () => document.removeEventListener('keydown', handleEsc);
-    }, [onClose]);
+    }, [onClose, showImageGallery]);
 
     const handleReturnDetailPdf = async (e) => {
         const lang = e?.currentTarget?.getAttribute?.('data-lang') || 'en';
@@ -12260,7 +12258,7 @@ function ReturnDetailModal({ return: ret, cars, onClose, onSoftDeleteReturn, emb
     const resCode = getBookingCode(ret);
 
     return (
-        <PalantirWorkbench onClose={onClose} size={embedded ? 'large' : 'drawer'} embedded={embedded}>
+        <PalantirWorkbench onClose={onClose} size="drawer">
             <PalantirCommandBar
                 eyebrow="Return operation"
                 title={ret.aracPlaka || '—'}
@@ -12306,7 +12304,14 @@ function ReturnDetailModal({ return: ret, cars, onClose, onSoftDeleteReturn, emb
                     <PalantirPhotoCanvas
                         images={returnPhotos}
                         emptyLabel="No return photos attached"
-                        openGalleryOnClick={false}
+                        onOpenAt={(i) =>
+                            setShowImageGallery({
+                                images: returnPhotos,
+                                startIndex: i,
+                                returnData: ret,
+                                car,
+                            })
+                        }
                     />
                 </PalantirCanvas>
 
@@ -12376,17 +12381,31 @@ function ReturnDetailModal({ return: ret, cars, onClose, onSoftDeleteReturn, emb
     );
 }
 
-function CheckoutDetailModal({ exit, cars, onClose, runPdfFlow, generateCheckoutPDF, setShowImageGallery, onSoftDeleteExit, embedded = false }) {
+function CheckoutDetailModal({ exit, cars, onClose, runPdfFlow, generateCheckoutPDF, onSoftDeleteExit }) {
     const toast = useToast();
     const car = findFleetCarByAracId(cars, exit.aracId);
     const checkoutPhotos = exit.fotograflar || [];
     const [busyPdf, setBusyPdf] = useState(false);
+    const [showImageGallery, setShowImageGallery] = useState(null);
     const isTurkeyPdfVdm = isTurkeyFranchiseId(exit?.franchiseId || car?.franchiseId);
+
+    React.useEffect(() => {
+        const handleEsc = (e) => {
+            if (e.key !== 'Escape') return;
+            if (showImageGallery) {
+                setShowImageGallery(null);
+                return;
+            }
+            onClose();
+        };
+        document.addEventListener('keydown', handleEsc);
+        return () => document.removeEventListener('keydown', handleEsc);
+    }, [onClose, showImageGallery]);
 
     const resCode = getExitBookingCode(exit);
 
     return (
-        <PalantirWorkbench onClose={onClose} size={embedded ? 'large' : 'drawer'} embedded={embedded}>
+        <PalantirWorkbench onClose={onClose} size="drawer">
             <PalantirCommandBar
                 eyebrow="Checkout operation"
                 title={exit.aracPlaka || '—'}
@@ -12423,7 +12442,12 @@ function CheckoutDetailModal({ exit, cars, onClose, runPdfFlow, generateCheckout
                     <PalantirPhotoCanvas
                         images={checkoutPhotos}
                         emptyLabel="No checkout photos attached"
-                        openGalleryOnClick={false}
+                        onOpenAt={(i) =>
+                            setShowImageGallery({
+                                images: checkoutPhotos,
+                                startIndex: i,
+                            })
+                        }
                     />
                 </PalantirCanvas>
 
@@ -12551,6 +12575,14 @@ function CheckoutDetailModal({ exit, cars, onClose, runPdfFlow, generateCheckout
                     Close
                 </button>
             </PalantirActionBar>
+
+            {showImageGallery && (
+                <ImageGallery
+                    images={showImageGallery.images}
+                    startIndex={showImageGallery.startIndex}
+                    onClose={() => setShowImageGallery(null)}
+                />
+            )}
         </PalantirWorkbench>
     );
 }
@@ -13210,7 +13242,7 @@ function ServiceFirmDetailModal({ firm, onClose, onUpdate, addActivity, initialE
 // Devam Part 4'te: OfficeOperationsView ve ReportsView
 
 // OFFICE OPERATIONS VIEW - Includes Banking Transactions and Traffic Fines
-function OfficeOperationsView({ operations, cars, onRefresh, addActivity, user, franchiseId = 'ch', canViewFinancials = true, showStripeFinancialTotals = false }) {
+function OfficeOperationsView({ operations, cars, onRefresh, addActivity, user, franchiseId = 'ch', canViewFinancials = true, showStripeFinancialTotals = false, showStripeDailyTotals = false }) {
     const toast = useToast();
     const [selectedType, setSelectedType] = useState('all');
     const [searchQuery, setSearchQuery] = useState('');
@@ -13466,8 +13498,9 @@ function OfficeOperationsView({ operations, cars, onRefresh, addActivity, user, 
                 </div>
             </div>
 
-            {canViewFinancials && (
+            {(canViewFinancials || (showStripeDailyTotals && isCHFranchise)) && (
                 <StripeMetricRow className="pal-kpi-grid">
+                    {canViewFinancials && (
                     <StripeMetricTile
                         label="Total this month"
                         value={formatCurrency(monthTotals.total)}
@@ -13477,7 +13510,8 @@ function OfficeOperationsView({ operations, cars, onRefresh, addActivity, user, 
                         selected={selectedType === 'all'}
                         onClick={() => setSelectedType('all')}
                     />
-                    {operationTypes.map((type) => {
+                    )}
+                    {canViewFinancials && operationTypes.map((type) => {
                         const amount = getTypeAmount(type.value, monthTotals);
                         const prevAmount = getTypeAmount(type.value, prevMonthTotals);
                         const count = monthOperations.filter((op) => op.type === type.value).length;
@@ -13501,6 +13535,7 @@ function OfficeOperationsView({ operations, cars, onRefresh, addActivity, user, 
                             franchiseId={franchiseId}
                             selectedMonth={selectedMonth}
                             showFinancialTotals={showStripeFinancialTotals}
+                            showDailyTotals={showStripeDailyTotals}
                         />
                     )}
                 </StripeMetricRow>
@@ -23828,8 +23863,7 @@ function CheckoutOperationsView({ exits, cars, onRefresh, addActivity, onSoftDel
                 </div>
             </div>
 
-            <div className="pal-ops-master-detail">
-            <div className="pal-ops-master-detail-main">
+            <div className="gm-table-wrap">
             <StripeFilterChips
                 value={photoFilter}
                 onChange={setPhotoFilter}
@@ -23963,26 +23997,16 @@ function CheckoutOperationsView({ exits, cars, onRefresh, addActivity, onSoftDel
 
             </div>
 
-            <aside className="pal-ops-master-detail-aside">
-                {selectedExit ? (
-                    <CheckoutDetailModal
-                        embedded
-                        exit={selectedExit}
-                        cars={cars}
-                        onClose={() => setSelectedExit(null)}
-                        runPdfFlow={runPdfFlow}
-                        generateCheckoutPDF={generateCheckoutPDF}
-                        setShowImageGallery={setShowImageGallery}
-                        onSoftDeleteExit={onSoftDeleteExit}
-                    />
-                ) : (
-                    <div className="pal-ops-master-detail-empty">
-                        <ArrowRight size={28} className="mb-3 opacity-40" />
-                        <p>Select a checkout record to open details on the right.</p>
-                    </div>
-                )}
-            </aside>
-            </div>
+            {selectedExit && (
+                <CheckoutDetailModal
+                    exit={selectedExit}
+                    cars={cars}
+                    onClose={() => setSelectedExit(null)}
+                    runPdfFlow={runPdfFlow}
+                    generateCheckoutPDF={generateCheckoutPDF}
+                    onSoftDeleteExit={onSoftDeleteExit}
+                />
+            )}
 
             {/* Context Menu */}
             {contextMenu && (

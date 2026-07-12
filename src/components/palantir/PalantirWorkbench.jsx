@@ -129,6 +129,7 @@ export function PalantirPhotoCanvas({
 }) {
     const [active, setActive] = useState(0);
     const safe = Array.isArray(images) ? images.filter(Boolean) : [];
+    const galleryOnClick = openGalleryOnClick || Boolean(onOpenAt);
 
     useEffect(() => {
         if (active >= safe.length) setActive(0);
@@ -140,10 +141,10 @@ export function PalantirPhotoCanvas({
 
     const open = (index) => {
         setActive(index);
-        if (openGalleryOnClick) onOpenAt?.(index);
+        if (galleryOnClick) onOpenAt?.(index);
     };
 
-    const StageTag = openGalleryOnClick && onOpenAt ? 'button' : 'div';
+    const StageTag = galleryOnClick && onOpenAt ? 'button' : 'div';
 
     return (
         <div className="pal-wb-photo-viewer">

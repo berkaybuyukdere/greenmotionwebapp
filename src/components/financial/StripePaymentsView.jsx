@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, RefreshCw } from 'lucide-react';
+import { FlaskConical, Plus, RefreshCw } from 'lucide-react';
 import {
   StripeFilterChips,
   StripeListToolbar,
@@ -8,6 +8,7 @@ import {
 } from '../StripeListUI';
 import { StripePaymentMethodCell } from './StripePaymentMethodCell';
 import { StripeDepositModal } from './StripeDepositModal';
+import { StripeDepositCollectInputsTestModal } from './StripeDepositCollectInputsTestModal';
 import { StripePaymentDetailDrawer } from './StripePaymentDetailDrawer';
 import { PalantirFinKpiCard, PalantirFinKpiRow } from './PalantirFinKpiCard';
 import { useStripeFinFeedback } from './StripeFinFeedback';
@@ -152,11 +153,15 @@ function mergeDepositIntoTransaction(tx, dep) {
     };
   }
   if (dep.status === 'cancelled') {
+    const reason = String(dep.cancelReason || '').toLowerCase();
+    const expired = reason.includes('expired') || reason.includes('auto-release');
     return {
       ...next,
       bucket: 'cancelled',
       depositDisplayStatus: 'cancelled',
-      statusLabel: 'Canceled',
+      statusLabel: expired ? 'Expired' : 'Canceled',
+      cancelReason: dep.cancelReason || next.cancelReason || '',
+      cancelledByName: dep.cancelledByName || next.cancelledByName || null,
     };
   }
   return next;
@@ -186,7 +191,9 @@ function depositToSyntheticTransaction(dep) {
   } else if (status === 'cancelled') {
     bucket = 'cancelled';
     depositDisplayStatus = 'cancelled';
-    statusLabel = 'Released';
+    const reason = String(dep.cancelReason || '').toLowerCase();
+    statusLabel =
+      reason.includes('expired') || reason.includes('auto-release') ? 'Expired' : 'Canceled';
   } else if (status === 'pending_collection') {
     bucket = 'pending';
     depositDisplayStatus = 'pending';
@@ -242,7 +249,7 @@ export function StripePaymentsView({ franchiseId, showFinancialTotals = true, fl
   const [error, setError] = useState('');
   const [configured, setConfigured] = useState(true);
   const [stripeMode, setStripeMode] = useState('unset');
-  const [period, setPeriod] = useState('1d');
+  const [period, setPeriod] = useState('30d');
   const [dayKey, setDayKey] = useState(todayKeyZurich());
   const [transactions, setTransactions] = useState([]);
   const [deposits, setDeposits] = useState([]);
@@ -252,6 +259,7 @@ export function StripePaymentsView({ franchiseId, showFinancialTotals = true, fl
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [showDepositModal, setShowDepositModal] = useState(false);
+  const [showCollectInputsTest, setShowCollectInputsTest] = useState(false);
   const [selectedTx, setSelectedTx] = useState(null);
   const [audit, setAudit] = useState([]);
   const { showFeedback, showSuccess, toast: feedbackToast } = useStripeFinFeedback();
@@ -274,7 +282,7 @@ export function StripePaymentsView({ franchiseId, showFinancialTotals = true, fl
       const [cfg, payRes, depRes] = await Promise.all([
         stripeFinancialGetConfig({ franchiseId }),
         stripeFinancialListPayments({ franchiseId, dayKey, period }),
-        stripeFinancialListDeposits({ franchiseId, limit: 250, syncStripe: false }),
+        stripeFinancialListDeposits({ franchiseId, limit: 250, syncStripe: true }),
       ]);
       setConfigured(cfg?.configured !== false);
       setStripeMode(cfg?.mode || 'unset');
@@ -295,6 +303,14 @@ export function StripePaymentsView({ franchiseId, showFinancialTotals = true, fl
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!franchiseId) return undefined;
+    const timer = window.setInterval(() => {
+      load();
+    }, 60000);
+    return () => window.clearInterval(timer);
+  }, [franchiseId, load]);
 
   const currency = transactions[0]?.currency || deposits[0]?.currency || 'chf';
 
@@ -393,18 +409,24 @@ export function StripePaymentsView({ franchiseId, showFinancialTotals = true, fl
         render: (row) => {
           const depStatus = row.depositDisplayStatus;
           const statusVariant = depStatus || (row.bucket === 'successful' ? 'paid' : row.bucket === 'hold' ? 'hold' : row.bucket === 'cancelled' ? (row.stripeFailed ? 'danger' : 'danger') : 'unpaid');
-          const statusLabel = depStatus
-            ? DEPOSIT_STATUS_LABEL[depStatus]
-            : row.statusLabel || BUCKET_LABEL[row.bucket] || row.status;
+          const statusLabel =
+            row.statusLabel === 'Expired' || row.statusLabel === 'Canceled'
+              ? row.statusLabel
+              : depStatus
+                ? DEPOSIT_STATUS_LABEL[depStatus]
+                : row.statusLabel || BUCKET_LABEL[row.bucket] || row.status;
           return (
           <div className="stripe-pay-status-cell">
             <StripeStatusBadge sharp variant={statusVariant} label={statusLabel} />
             {row.tokenSaved && (
               <StripeStatusBadge sharp variant="success" label="Token saved" />
             )}
-            {depStatus === 'cancelled' && row.cancelledByName && (
+            {depStatus === 'cancelled' && (row.cancelReason || row.cancelledByName) && (
               <span className="stripe-pay-status-meta">
-                Released by {row.cancelledByName}
+                {row.cancelReason ||
+                  (row.cancelledByName
+                    ? `Released by ${row.cancelledByName}`
+                    : '')}
                 {row.cancelledAt ? ` · ${formatStripeDate(row.cancelledAt)}` : ''}
               </span>
             )}
@@ -527,6 +549,15 @@ export function StripePaymentsView({ franchiseId, showFinancialTotals = true, fl
           )}
         </div>
         <div className="pal-fin-command-actions pal-fin-command-actions-symmetric">
+          <button
+            type="button"
+            className="gm-btn gm-btn-secondary gm-btn-sm pal-fin-action-btn"
+            onClick={() => setShowCollectInputsTest(true)}
+            disabled={!canPerformOperations}
+            title="Test POS signature, phone and email collection"
+          >
+            <FlaskConical size={15} /> POS input test
+          </button>
           <button
             type="button"
             className="gm-btn gm-btn-primary gm-btn-sm pal-fin-action-btn"
@@ -666,6 +697,14 @@ export function StripePaymentsView({ franchiseId, showFinancialTotals = true, fl
             setShowDepositModal(false);
             load();
           }}
+        />
+      )}
+
+      {showCollectInputsTest && (
+        <StripeDepositCollectInputsTestModal
+          franchiseId={franchiseId}
+          onClose={() => setShowCollectInputsTest(false)}
+          onFeedback={showFeedback}
         />
       )}
 

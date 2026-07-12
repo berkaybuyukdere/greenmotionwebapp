@@ -530,41 +530,44 @@ async function runSubmitFrontDeskIntake(request) {
 
   const existing = await docRef.get();
   if (existing.exists) {
-    let kioskRentalTermsPdfUrl = null;
-    let pdfEarly = '';
-    if (rentalTermsSignaturesEarly.length > 0) {
-      try {
-        const pdfBuffer = await buildKioskRentalTermsPdfForIntake(db, franchiseId, {
-          signatures: rentalTermsSignaturesEarly,
-          languageCode: rentalTermsLangEarly,
-          firstName: firstNameIn,
-          lastName: lastNameIn,
-          email,
-          callOk: request.data?.callOk === true,
-          emailOk: request.data?.emailOk === true,
-          smsOk: request.data?.smsOk === true,
+    // Never block the kiosk UI on GRT PDF rebuild for idempotent retries.
+    const existingPdf =
+      String(existing.data()?.kioskRentalTermsPdfUrl || '').trim() || null;
+    if (rentalTermsSignaturesEarly.length > 0 && !existingPdf) {
+      Promise.resolve()
+        .then(async () => {
+          const pdfBuffer = await buildKioskRentalTermsPdfForIntake(db, franchiseId, {
+            signatures: rentalTermsSignaturesEarly,
+            languageCode: rentalTermsLangEarly,
+            firstName: firstNameIn,
+            lastName: lastNameIn,
+            email,
+            callOk: request.data?.callOk === true,
+            emailOk: request.data?.emailOk === true,
+            smsOk: request.data?.smsOk === true,
+          });
+          await persistKioskRentalTermsPdf(
+            franchiseId,
+            clientSubmissionId,
+            pdfBuffer.toString('base64'),
+            rentalTermsLangEarly,
+            { allowOverwrite: true }
+          );
+        })
+        .catch((e) => {
+          console.error(
+            '[submitFrontDeskIntake] duplicate retry deferred PDF failed:',
+            e?.message || e
+          );
         });
-        pdfEarly = pdfBuffer.toString('base64');
-      } catch (e) {
-        console.error('[submitFrontDeskIntake] duplicate retry PDF build failed:', e?.message || e);
-      }
-    }
-    if (pdfEarly.length >= 100) {
-      const saved = await persistKioskRentalTermsPdf(
-        franchiseId,
-        clientSubmissionId,
-        pdfEarly,
-        rentalTermsLangEarly,
-        { allowOverwrite: true }
-      );
-      kioskRentalTermsPdfUrl = saved.pdfUrl;
     }
     return {
       success: true,
       id: clientSubmissionId,
       duplicate: true,
-      kioskRentalTermsPdfUrl,
+      kioskRentalTermsPdfUrl: existingPdf,
       kioskUploadToken: issueKioskUploadToken(franchiseId, clientSubmissionId),
+      rentalTermsPdfPending: Boolean(rentalTermsSignaturesEarly.length > 0 && !existingPdf),
     };
   }
 
@@ -615,6 +618,9 @@ async function runSubmitFrontDeskIntake(request) {
     termsAccepted: true,
     privacyAccepted: true,
     legalAcceptedAt: admin.firestore.FieldValue.serverTimestamp(),
+    callOk: request.data?.callOk === true,
+    emailOk: request.data?.emailOk === true,
+    smsOk: request.data?.smsOk === true,
   };
   if (customerDocuments) {
     payload.customerDocuments = customerDocuments;
@@ -637,54 +643,8 @@ async function runSubmitFrontDeskIntake(request) {
           .filter((s) => s.length > 40)
       : [];
   let kioskRentalTermsPdfUrl = null;
-  let pdfBase64ToStore = '';
-  if (rentalTermsSignatures.length > 0) {
-    try {
-      const pdfBuffer = await buildKioskRentalTermsPdfForIntake(db, franchiseId, {
-        signatures: rentalTermsSignatures,
-        languageCode: rentalTermsLang,
-        firstName: firstNameIn,
-        lastName: lastNameIn,
-        email,
-        callOk: request.data?.callOk === true,
-        emailOk: request.data?.emailOk === true,
-        smsOk: request.data?.smsOk === true,
-      });
-      pdfBase64ToStore = pdfBuffer.toString('base64');
-    } catch (e) {
-      console.error('[submitFrontDeskIntake] server PDF build failed:', e?.message || e);
-    }
-  } else if (rentalTermsPdfBase64.length >= 100) {
-    pdfBase64ToStore = rentalTermsPdfBase64;
-  }
-  if (pdfBase64ToStore.length >= 100) {
-    try {
-      const pdfBuffer = Buffer.from(pdfBase64ToStore, 'base64');
-      const { pdfUrl, storagePath } = await uploadKioskRentalTermsPdfBuffer(
-        franchiseId,
-        clientSubmissionId,
-        pdfBuffer
-      );
-      const grtFields = kioskRentalTermsFirestoreFields(pdfUrl, storagePath, rentalTermsLang);
-      delete grtFields.languageCode;
-      Object.assign(payload, grtFields);
-      kioskRentalTermsPdfUrl = pdfUrl;
-    } catch (e) {
-      console.error('[submitFrontDeskIntake] rental terms PDF failed:', e?.message || e);
-      if (rentalTermsSignatures.length > 0) {
-        throw new HttpsError(
-          'internal',
-          'General Rental Terms PDF could not be stored. Please try again.'
-        );
-      }
-    }
-  } else if (rentalTermsSignatures.length > 0) {
-    throw new HttpsError(
-      'internal',
-      'General Rental Terms were signed but the PDF could not be created. Please try again.'
-    );
-  }
-
+  // Persist intake first so the kiosk UI is not blocked on heavy GRT PDF work.
+  // PDF is built/uploaded after success and patched onto the customer doc.
   await docRef.set(payload);
 
   try {
@@ -702,12 +662,70 @@ async function runSubmitFrontDeskIntake(request) {
   } catch (e) {
     console.warn('[submitFrontDeskIntake] customerContactRemember', e?.message || e);
   }
+
+  const uploadToken = issueKioskUploadToken(franchiseId, clientSubmissionId);
+
+  if (rentalTermsSignatures.length > 0 || rentalTermsPdfBase64.length >= 100) {
+    // Soft-await PDF briefly so most submits get a stored GRT URL; never fail intake.
+    const pdfWork = (async () => {
+      let pdfBase64ToStore = '';
+      if (rentalTermsSignatures.length > 0) {
+        const pdfBuffer = await buildKioskRentalTermsPdfForIntake(db, franchiseId, {
+          signatures: rentalTermsSignatures,
+          languageCode: rentalTermsLang,
+          firstName: firstNameIn,
+          lastName: lastNameIn,
+          email,
+          callOk: request.data?.callOk === true,
+          emailOk: request.data?.emailOk === true,
+          smsOk: request.data?.smsOk === true,
+        });
+        pdfBase64ToStore = pdfBuffer.toString('base64');
+      } else if (rentalTermsPdfBase64.length >= 100) {
+        pdfBase64ToStore = rentalTermsPdfBase64;
+      }
+      if (pdfBase64ToStore.length < 100) return null;
+      const pdfBuffer = Buffer.from(pdfBase64ToStore, 'base64');
+      const { pdfUrl, storagePath } = await uploadKioskRentalTermsPdfBuffer(
+        franchiseId,
+        clientSubmissionId,
+        pdfBuffer
+      );
+      const grtFields = kioskRentalTermsFirestoreFields(pdfUrl, storagePath, rentalTermsLang);
+      delete grtFields.languageCode;
+      await docRef.set(grtFields, { merge: true });
+      return pdfUrl;
+    })();
+    try {
+      kioskRentalTermsPdfUrl = await Promise.race([
+        pdfWork,
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('grt-pdf-timeout')), 18000)
+        ),
+      ]);
+    } catch (e) {
+      console.error('[submitFrontDeskIntake] GRT PDF deferred/failed:', e?.message || e);
+      pdfWork
+        .then((pdfUrl) => {
+          if (pdfUrl) {
+            console.log('[submitFrontDeskIntake] background GRT PDF saved', clientSubmissionId);
+          }
+        })
+        .catch((err) => {
+          console.error('[submitFrontDeskIntake] background GRT PDF failed:', err?.message || err);
+        });
+    }
+  }
+
   return {
     success: true,
     id: clientSubmissionId,
     duplicate: false,
     kioskRentalTermsPdfUrl,
-    kioskUploadToken: issueKioskUploadToken(franchiseId, clientSubmissionId),
+    kioskUploadToken: uploadToken,
+    rentalTermsPdfPending:
+      (rentalTermsSignatures.length > 0 || rentalTermsPdfBase64.length >= 100) &&
+      !kioskRentalTermsPdfUrl,
   };
 }
 
@@ -1103,7 +1121,12 @@ async function runSaveKioskRentalTerms(request) {
   return { success: true, pdfUrl, duplicate: !!duplicate };
 }
 
-const frontDeskIntakeOpts = { cors: true, invoker: 'public' };
+const frontDeskIntakeOpts = {
+  cors: true,
+  invoker: 'public',
+  memory: '1GiB',
+  timeoutSeconds: 120,
+};
 exports.submitFrontDeskIntake = onCall(frontDeskIntakeOpts, runSubmitFrontDeskIntake);
 /** Legacy name used by some hosting builds — same implementation. */
 exports.frontDeskIntake = onCall(frontDeskIntakeOpts, runSubmitFrontDeskIntake);
@@ -2957,7 +2980,7 @@ async function assertGlobalAdminCallable(request) {
 }
 
 const FRANCHISE_USER_ADMIN_ROLES = ['admin', 'superadmin', 'manager', 'globaladmin'];
-const FRANCHISE_ASSIGNABLE_ROLES = ['admin', 'manager', 'staff', 'shuttle', 'viewer', 'garage'];
+const FRANCHISE_ASSIGNABLE_ROLES = ['admin', 'manager', 'staff', 'shuttle', 'viewer', 'garage', 'finance_cashier'];
 
 async function assertFranchiseUserAdminCallable(request, franchiseId) {
   if (!request.auth?.uid) {
@@ -3011,7 +3034,7 @@ function normalizeProfileUsername(username, firstName) {
 // --- roleScope helpers (server-side, mirrors src/utilities/roleScope.js) ---
 
 const ROLE_SCOPE_LEVELS_SRV = ['global', 'country', 'franchise'];
-const ROLE_KEYS_SRV = ['admin', 'manager', 'staff', 'shuttle', 'viewer', 'garage', 'globaladmin', 'superadmin'];
+const ROLE_KEYS_SRV = ['admin', 'manager', 'staff', 'shuttle', 'viewer', 'garage', 'finance_cashier', 'globaladmin', 'superadmin'];
 
 function normalizeUpperFid(value) {
   return String(value ?? '').trim().toUpperCase();
@@ -3771,6 +3794,14 @@ exports.stripeFinancialProcessDepositOnTerminal = onCall(
   stripeTerminalOpts,
   stripeTerminalDeposits.runProcessDepositOnTerminal,
 );
+exports.stripeFinancialStartDepositCollectInputsTest = onCall(
+  stripeTerminalOpts,
+  stripeTerminalDeposits.runStartDepositCollectInputsTest,
+);
+exports.stripeFinancialPollDepositCollectInputsTest = onCall(
+  stripeTerminalOpts,
+  stripeTerminalDeposits.runPollDepositCollectInputsTest,
+);
 exports.stripeFinancialListTerminals = onCall(
   stripeTerminalOpts,
   stripeTerminalDeposits.runListTerminals,
@@ -3802,4 +3833,27 @@ exports.stripeFinancialAttachDepositDocuments = onCall(
 exports.stripeFinancialSendDepositEmail = onCall(
   stripeTerminalOpts,
   stripeTerminalDeposits.runSendDepositEmail,
+);
+
+// Stripe webhook — PaymentIntent / charge lifecycle → Firestore (deposits,
+// mail orders). Signature-verified via STRIPE_CH_WEBHOOK_SECRET env; answers
+// 503 (and changes nothing) until that secret is configured.
+const stripeWebhook = require('./stripeWebhook');
+exports.stripeFinancialWebhook = onRequest(
+  { cors: false, secrets: stripeTerminalOpts.secrets },
+  stripeWebhook.handleStripeWebhookRequest,
+);
+
+// Daily safety net: sync open deposit holds from Stripe so expired
+// authorizations surface even if no webhook fired and nobody opened the list.
+exports.stripeDepositDailySync = onSchedule(
+  {
+    schedule: 'every day 06:30',
+    timeZone: 'Europe/Zurich',
+    secrets: stripeTerminalOpts.secrets,
+    timeoutSeconds: 540,
+  },
+  async () => {
+    await stripeTerminalDeposits.syncOpenDepositsSweep();
+  },
 );

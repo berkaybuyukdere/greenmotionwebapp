@@ -26,6 +26,7 @@ import {
     formatDisplayDate,
     formatPDFTime,
     stamp,
+    stampProcessPhoto,
 } from './processPhotoStampLabels';
 
 const A4_W_PX = 794; // 210mm @ 96dpi
@@ -302,13 +303,17 @@ function photoCardHtml(num, dateStr, photo, danger, compactFour = false, stampOp
     const dateClass = blueStamp ? ' gm-photo-date-blue' : '';
     const dateContent = blueStamp && timeStr ? `${dateStr} ${timeStr}` : dateStr;
     const src = photo?.src || (typeof photo === 'string' ? photo : null);
+    const numLabel = String(num || '').trim();
+    const numHtml = numLabel
+        ? `<span class="gm-photo-num${cls}">${esc(numLabel)}</span>`
+        : '';
     const body =
         src != null
             ? `<div class="gm-photo-frame${cls}${fourFrame}"><img class="gm-photo-img${cls}" src="${esc(src)}" crossorigin="anonymous" alt="" decoding="sync" /></div>`
             : `<div class="gm-photo-frame${cls}${fourFrame}">${PLACEHOLDER_SVG}</div>`;
     return `<div class="gm-photo-card${cls}${four}">
       <div class="gm-photo-head${cls}">
-        <span class="gm-photo-num${cls}">${esc(num)}</span>
+        ${numHtml}
         <span class="gm-photo-date${dateClass}">${esc(dateContent)}</span>
       </div>${body}
     </div>`;
@@ -398,7 +403,7 @@ async function buildHandover(kind, record, car, photosUrls, opts) {
         : '--rt-accent:var(--accent); --rt-accent-dark:var(--accent-dark); --rt-accent-light:var(--accent-light);';
     const branch = resolveBranchName(opts, record, car);
     const badge = isReturn ? 'Return Report' : 'Check Out Report';
-    const titleStrong = isReturn ? 'Return' : 'Handover';
+    const titleStrong = isReturn ? 'Return' : 'Check Out';
     const dateRaw = isReturn
         ? record?.iadeTarihi ?? record?.returnDate ?? record?.createdAt
         : record?.exitTarihi ?? record?.checkOutDate ?? record?.createdAt;
@@ -471,10 +476,10 @@ async function buildHandover(kind, record, car, photosUrls, opts) {
                 : `${photoSectionTitle} (${from}–${to})`;
         const cards = batch
             .map((src, batchIdx) => {
-                const globalIndex = globalOffset + batchIdx;
-                const info = stamp(globalIndex, handoverDate, returnDate);
+                const eventDate = isReturn ? returnDate : handoverDate;
+                const info = stampProcessPhoto(eventDate, { deFranchise: deFranchise });
                 const stampOpts = deFranchise
-                    ? { timeStr: formatPDFTime(info.date), blueStamp: true }
+                    ? { timeStr: info.time, blueStamp: true }
                     : {};
                 return photoCardHtml(
                     info.label,

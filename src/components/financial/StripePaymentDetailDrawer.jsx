@@ -2,16 +2,17 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { X, Ban, CreditCard, RotateCcw, Plus } from 'lucide-react';
 import { StripeStatusBadge } from '../StripeListUI';
 import { StripePaymentMethodCell } from './StripePaymentMethodCell';
-import { StripeNewPaymentModal } from './StripeNewPaymentModal';
 import {
   stripeFinancialCancelPaymentHold,
   stripeFinancialCaptureDeposit,
+  stripeFinancialChargeSavedPaymentMethod,
   stripeFinancialIncrementDeposit,
   stripeFinancialRefundPayment,
 } from '../../services/stripeFinancialApi';
 import { humanizeStripeFinancialError } from './StripeFinFeedback';
 import { logPaymentUiAction } from '../../utilities/logPaymentUiAction';
 import { paymentFailureNote } from '../../utilities/stripePaymentsRows';
+import { depositExpiryExplanation, depositCanOffSessionCharge } from '../../utilities/stripeDepositDisplay';
 
 const BUCKET_VARIANT = {
   successful: 'success',
@@ -88,7 +89,12 @@ function resolveDepositLifecycle(transaction, deposit) {
     stripePiStatus === 'succeeded' ||
     displayStatus === 'captured' ||
     displayStatus === 'captured_increased' ||
-    (bucket === 'successful' && (transaction?.flowType === 'deposit' || Boolean(deposit)));
+    (bucket === 'successful' && (transaction?.flowType === 'deposit' || Boolean(deposit))) ||
+    // Non-deposit succeeded Stripe charges (direct / mail / terminal capture)
+    (bucket === 'successful' &&
+      !deposit &&
+      transaction?.flowType !== 'deposit' &&
+      String(transaction?.status || '').toLowerCase() !== 'requires_capture');
 
   const isCancelled =
     depositStatus === 'cancelled' ||
@@ -98,7 +104,13 @@ function resolveDepositLifecycle(transaction, deposit) {
   const isAuthorizedHold =
     !isCaptured &&
     !isCancelled &&
-    (depositStatus === 'authorized' || stripePiStatus === 'requires_capture');
+    (depositStatus === 'authorized' ||
+      stripePiStatus === 'requires_capture' ||
+      transaction?.bucket === 'hold' ||
+      displayStatus === 'hold' ||
+      displayStatus === 'increased' ||
+      (depositStatus === 'pending_collection' &&
+        (stripePiStatus === 'requires_capture' || transaction?.bucket === 'hold')));
 
   const isPendingCollection =
     !isCaptured &&
@@ -145,7 +157,8 @@ export function StripePaymentDetailDrawer({
   const [totalAmountChf, setTotalAmountChf] = useState('');
   const [showIncreasePanel, setShowIncreasePanel] = useState(false);
   const [showCancelPanel, setShowCancelPanel] = useState(false);
-  const [showNewPayment, setShowNewPayment] = useState(false);
+  const [showChargePanel, setShowChargePanel] = useState(false);
+  const [chargeAmountChf, setChargeAmountChf] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -171,6 +184,7 @@ export function StripePaymentDetailDrawer({
     bucket,
     isCaptured,
     isCancelled,
+    isAuthorizedHold,
     isPendingCollection,
     canCancel,
     canCaptureDeposit,
@@ -198,7 +212,68 @@ export function StripePaymentDetailDrawer({
   const canRefund =
     canPerformOperations &&
     isCaptured &&
-    Boolean(deposit?.paymentIntentId || transaction?.paymentIntentId);
+    Boolean(
+      deposit?.paymentIntentId ||
+        transaction?.paymentIntentId ||
+        transaction?.mailOrderId,
+    );
+
+  const canChargeSavedToken =
+    canPerformOperations &&
+    Boolean(deposit?.paymentIntentId || transaction?.paymentIntentId) &&
+    depositCanOffSessionCharge(
+      deposit || {
+        paymentIntentId: transaction?.paymentIntentId,
+        status: transaction?.bucket === 'cancelled' ? 'cancelled' : transaction?.status,
+        tokenSaved: transaction?.tokenSaved,
+        stripePaymentMethodId: transaction?.stripePaymentMethodId,
+        stripeCustomerId: transaction?.stripeCustomerId,
+      },
+    );
+
+  const runChargeSaved = async () => {
+    const amount = Number(chargeAmountChf);
+    if (!Number.isFinite(amount) || amount < 0.5) {
+      setError('Minimum charge is CHF 0.50');
+      return;
+    }
+    const piId = deposit?.paymentIntentId || transaction?.paymentIntentId;
+    if (!piId && !deposit?.id) {
+      setError('No deposit with saved card on file.');
+      return;
+    }
+    logClick('charge_saved', { amountChf: amount });
+    setBusy(true);
+    setError('');
+    try {
+      const res = await stripeFinancialChargeSavedPaymentMethod({
+        franchiseId,
+        ...(deposit?.id ? { depositId: deposit.id } : {}),
+        ...(piId ? { paymentIntentId: piId } : {}),
+        amountChf: amount,
+      });
+      const charged = (Number(res?.chargedAmount) || amount * 100) / 100;
+      if (res?.topUpError) {
+        pushFeedback(
+          'error',
+          'Hold captured — extra charge failed',
+          res.topUpError,
+        );
+      } else if (res?.mode === 'capture') {
+        pushFeedback('success', 'Hold captured', `CHF ${charged.toFixed(2)} captured from deposit hold.`);
+      } else {
+        pushFeedback('success', 'Charge completed', `CHF ${charged.toFixed(2)} charged from saved card.`);
+      }
+      setShowChargePanel(false);
+      setChargeAmountChf('');
+      onChanged?.();
+    } catch (e) {
+      pushFeedbackFromError('Charge failed', e);
+      setError(e?.message || 'Charge failed');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const amountDisplay = useMemo(() => {
     if (!transaction) return '—';
@@ -278,11 +353,16 @@ export function StripePaymentDetailDrawer({
   const runCapture = async () => {
     logClick('capture');
     const depositId = deposit?.id || transaction.depositId;
-    if (!depositId) return;
+    const paymentIntentId = deposit?.paymentIntentId || transaction.paymentIntentId;
+    if (!paymentIntentId && !depositId) return;
     setBusy(true);
     setError('');
     try {
-      const res = await stripeFinancialCaptureDeposit({ franchiseId, depositId });
+      const res = await stripeFinancialCaptureDeposit({
+        franchiseId,
+        ...(depositId ? { depositId } : {}),
+        paymentIntentId,
+      });
       const capturedChf =
         (Number(res?.amountReceived) || currentHoldCents || 0) / 100;
       pushFeedback(
@@ -303,11 +383,16 @@ export function StripePaymentDetailDrawer({
   const runRefund = async () => {
     logClick('refund');
     const pi = deposit?.paymentIntentId || transaction.paymentIntentId;
-    if (!pi) return;
+    const mailOrderId = transaction.mailOrderId || deposit?.mailOrderId || null;
+    if (!pi && !mailOrderId) return;
     setBusy(true);
     setError('');
     try {
-      await stripeFinancialRefundPayment({ franchiseId, paymentIntentId: pi });
+      await stripeFinancialRefundPayment({
+        franchiseId,
+        ...(pi ? { paymentIntentId: pi } : {}),
+        ...(mailOrderId ? { mailOrderId } : {}),
+      });
       pushFeedback('success', 'Refund issued', 'Full refund processed — logged to admin audit.');
       onChanged?.();
       onClose?.();
@@ -375,7 +460,7 @@ export function StripePaymentDetailDrawer({
         </button>
       </header>
 
-      {canPerformOperations && (canCaptureDeposit || canRefund || (deposit?.tokenSaved || transaction?.tokenSaved)) && (
+      {canPerformOperations && (canCaptureDeposit || canRefund || canChargeSavedToken) && (
         <div className="pal-pay-action-bar">
           {canCaptureDeposit && (
             <button
@@ -397,14 +482,16 @@ export function StripePaymentDetailDrawer({
               <RotateCcw size={14} /> Refund
             </button>
           )}
-          {(deposit?.tokenSaved || transaction?.tokenSaved) && (
+          {canChargeSavedToken && (
             <button
               type="button"
-              className="gm-btn gm-btn-secondary gm-btn-sm"
+              className={`gm-btn gm-btn-secondary gm-btn-sm ${showChargePanel ? 'pal-cust-pay-tool-active' : ''}`}
               disabled={busy}
               onClick={() => {
                 logClick('new_payment');
-                setShowNewPayment(true);
+                setShowChargePanel((v) => !v);
+                setShowIncreasePanel(false);
+                setShowCancelPanel(false);
               }}
             >
               <Plus size={14} /> New payment
@@ -422,7 +509,25 @@ export function StripePaymentDetailDrawer({
           value={transaction.resCode || transaction.reference || deposit?.resCode || transaction.displayDescription}
           mono
         />
+        {transaction.category && (
+          <DetailRow
+            label="Category"
+            value={
+              String(transaction.category) === 'traffic_fine'
+                ? 'Traffic fine'
+                : String(transaction.category) === 'damage'
+                  ? 'Traffic accident / damage'
+                  : transaction.category
+            }
+          />
+        )}
+        {transaction.channelLabel && !channelLabel && (
+          <DetailRow label="Channel" value={transaction.channelLabel} />
+        )}
         <DetailRow label="Date" value={formatDate(transaction.createdAt)} />
+        {transaction.paidAt && (
+          <DetailRow label="Paid at" value={formatDate(transaction.paidAt)} />
+        )}
         {isDeposit && (
           <DetailRow label="Deposit hold" value={formatMoney(currentHoldCents, transaction.currency)} />
         )}
@@ -450,7 +555,36 @@ export function StripePaymentDetailDrawer({
         {isCaptured && deposit?.capturedAt && (
           <DetailRow label="Captured at" value={formatDate(deposit.capturedAt)} />
         )}
-        {deposit?.cancelReason && <DetailRow label="Cancel note" value={deposit.cancelReason} />}
+        {isAuthorizedHold && deposit?.captureBefore && (
+          <DetailRow label="Hold expires" value={formatDate(deposit.captureBefore)} />
+        )}
+        {isAuthorizedHold && deposit?.captureWindowDays != null && (
+          <DetailRow
+            label="Capture window"
+            value={
+              // Show Stripe's real remaining window — never inflate to 30 days;
+              // holds without confirmed extended auth die in 5-7 days.
+              deposit.extendedAuthorizationApplied
+                ? `~${deposit.captureWindowDays} days left (extended auth)`
+                : `~${deposit.captureWindowDays} days left`
+            }
+          />
+        )}
+        {(deposit?.tokenSaved || transaction?.tokenSaved) && (
+          <DetailRow
+            label="Card token"
+            value="Saved — chargeable after release, refund, or expiry"
+          />
+        )}
+        {deposit?.cancelledByName && (
+          <DetailRow label="Released by" value={deposit.cancelledByName} />
+        )}
+        {(isCancelled || bucket === 'cancelled') && depositExpiryExplanation(deposit) && (
+          <DetailRow label="Status detail" value={depositExpiryExplanation(deposit)} />
+        )}
+        {deposit?.cancelReason && !depositExpiryExplanation(deposit) && (
+          <DetailRow label="Cancel note" value={deposit.cancelReason} />
+        )}
 
         {isPendingCollection && (
           <p className="pal-fin-alert pal-fin-alert-warn">
@@ -473,6 +607,34 @@ export function StripePaymentDetailDrawer({
                 : deposit.emailSentMessage || 'Failed'
             }
           />
+        )}
+
+        {showChargePanel && canChargeSavedToken && (
+          <div className="pal-pay-drawer-section pal-pay-increase-panel">
+            <p className="text-caption">
+              Charge the saved card — works after hold release, refund, or Stripe auto-expiry.
+            </p>
+            <label className="pal-fin-field pal-fin-field-full">
+              <span>Amount (CHF)</span>
+              <input
+                type="number"
+                min="0.5"
+                step="0.05"
+                value={chargeAmountChf}
+                onChange={(e) => setChargeAmountChf(e.target.value)}
+                placeholder="0.00"
+                disabled={busy}
+              />
+            </label>
+            <button
+              type="button"
+              className="gm-btn gm-btn-primary gm-btn-sm"
+              disabled={busy}
+              onClick={runChargeSaved}
+            >
+              Charge saved card
+            </button>
+          </div>
         )}
 
         {canManageDeposit && (
@@ -585,21 +747,6 @@ export function StripePaymentDetailDrawer({
       </div>
     </>
   );
-
-  if (showNewPayment) {
-    return (
-      <StripeNewPaymentModal
-        franchiseId={franchiseId}
-        fleetCars={fleetCars}
-        onClose={() => setShowNewPayment(false)}
-        onFeedback={onFeedback}
-        onSuccess={() => {
-          setShowNewPayment(false);
-          onChanged?.();
-        }}
-      />
-    );
-  }
 
   if (inline) {
     return (

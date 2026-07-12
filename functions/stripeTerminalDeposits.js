@@ -16,7 +16,15 @@ const STRIPE_FINANCE_ROLES = new Set([
   'staff',
   'shuttle',
   'viewer',
+  'finance_cashier',
 ]);
+// Roles allowed to move funds (create/increment/capture/cancel holds,
+// off-session charges). 'viewer' is read-only by definition.
+const STRIPE_MONEY_ROLES = new Set(
+  [...STRIPE_FINANCE_ROLES].filter((role) => role !== 'viewer'),
+);
+/** Optional API version pin, e.g. 2025-02-24.acacia — unset keeps account default. */
+const STRIPE_API_VERSION = String(process.env.STRIPE_API_VERSION || '').trim();
 const CH_TIMEZONE = 'Europe/Zurich';
 const MAX_DEPOSIT_CHF = 5000;
 const MAX_INCREMENT_CHF = 10000;
@@ -63,7 +71,7 @@ function encodeForm(params, prefix = '') {
   return parts.filter(Boolean).join('&');
 }
 
-async function stripeRequest(method, path, params = null) {
+async function stripeRequestOnce(method, path, params = null, opts = {}) {
   const secret = getStripeSecretKey();
   const url = `https://api.stripe.com/v1${path}`;
   const init = {
@@ -71,6 +79,10 @@ async function stripeRequest(method, path, params = null) {
     headers: {
       Authorization: `Bearer ${secret}`,
       'Content-Type': 'application/x-www-form-urlencoded',
+      ...(STRIPE_API_VERSION ? { 'Stripe-Version': STRIPE_API_VERSION } : {}),
+      ...(opts.idempotencyKey
+        ? { 'Idempotency-Key': String(opts.idempotencyKey).slice(0, 255) }
+        : {}),
     },
   };
   if (method === 'GET' && params) {
@@ -86,6 +98,37 @@ async function stripeRequest(method, path, params = null) {
   return parseStripeResponse(res);
 }
 
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isStripeTransientError(httpStatus, stripeCode) {
+  if (httpStatus === 429) return true;
+  if (stripeCode === 'lock_timeout') return true;
+  return false;
+}
+
+async function stripeRequest(method, path, params = null, opts = {}) {
+  const maxAttempts = Number(opts.maxAttempts) || 4;
+  let lastErr;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      return await stripeRequestOnce(method, path, params, opts);
+    } catch (e) {
+      lastErr = e;
+      const httpStatus = Number(e?.details?.httpStatus || 0);
+      const stripeCode = String(e?.details?.stripeCode || '');
+      if (!isStripeTransientError(httpStatus, stripeCode) || attempt >= maxAttempts - 1) {
+        throw e;
+      }
+      const delay = Math.min(8000, 350 * (2 ** attempt)) + Math.floor(Math.random() * 250);
+      console.warn('[stripeRequest] retry', method, path, attempt + 1, httpStatus, stripeCode);
+      await sleepMs(delay);
+    }
+  }
+  throw lastErr;
+}
+
 async function parseStripeResponse(res) {
   const text = await res.text();
   let data;
@@ -95,7 +138,16 @@ async function parseStripeResponse(res) {
     throw new HttpsError('internal', `Stripe invalid JSON (${res.status})`);
   }
   if (!res.ok) {
-    throw new HttpsError('failed-precondition', data?.error?.message || `Stripe ${res.status}`);
+    const err = data?.error || {};
+    throw new HttpsError('failed-precondition', err.message || `Stripe ${res.status}`, {
+      stripeCode: err.code || null,
+      declineCode: err.decline_code || null,
+      stripeType: err.type || null,
+      paymentIntentId: err.payment_intent?.id || null,
+      paymentIntentClientSecret: err.payment_intent?.client_secret || null,
+      requiresAuthentication: err.code === 'authentication_required',
+      httpStatus: res.status,
+    });
   }
   return data;
 }
@@ -131,6 +183,15 @@ async function assertFinancialCallable(request) {
     throw new HttpsError('permission-denied', 'Stripe finance access required.');
   }
   return { uid, profile };
+}
+
+/** Same as assertFinancialCallable but blocks read-only roles from moving funds. */
+async function assertMoneyCallable(request) {
+  const ctx = await assertFinancialCallable(request);
+  if (!STRIPE_MONEY_ROLES.has(normalizeRoleKey(ctx.profile.role))) {
+    throw new HttpsError('permission-denied', 'Read-only role cannot create, capture or cancel payments.');
+  }
+  return ctx;
 }
 
 const STRIPE_FINANCE_ADMIN_ROLES = new Set(['globaladmin', 'superadmin', 'admin']);
@@ -231,6 +292,31 @@ function normalizeResCode(raw) {
   else if (s.startsWith('RES')) s = s.slice(3).replace(/^[-_\s]+/, '');
   const digits = s.replace(/\D/g, '');
   return digits ? `RES-${digits}` : String(raw || '').trim();
+}
+
+/** Only rows that may still change on Stripe need live sync (rate-limit friendly). */
+function depositNeedsStripeSync(row = {}) {
+  const status = String(row.status || '').toLowerCase();
+  const stripeStatus = String(row.stripeStatus || '').toLowerCase();
+  if (['pending_collection', 'authorized'].includes(status)) return true;
+  if (
+    ['requires_payment_method', 'requires_confirmation', 'requires_capture', 'processing'].includes(
+      stripeStatus,
+    )
+  ) {
+    return true;
+  }
+  if (!row.tokenSaved && !row.stripePaymentMethodId && ['authorized', 'captured'].includes(status)) {
+    return true;
+  }
+  if (
+    status === 'cancelled' &&
+    !String(row.cancelReason || '').toLowerCase().includes('expired') &&
+    row.paymentIntentId
+  ) {
+    return true;
+  }
+  return false;
 }
 
 async function loadReadersForFranchise(franchiseId) {
@@ -387,7 +473,101 @@ function enrichDepositActorNames(mapped, nameByUid) {
   };
 }
 
+function captureBeforeFromCharge(charge) {
+  if (!charge) return null;
+  const unix =
+    Number(charge.payment_method_details?.card_present?.capture_before) ||
+    Number(charge.capture_before) ||
+    0;
+  if (!unix) return null;
+  return new Date(unix * 1000).toISOString();
+}
+
+function extendedAuthAppliedFromCharge(charge) {
+  // Stripe reports "enabled" or "disabled" here. "requested" is NOT a grant —
+  // treating it as applied showed 30-day windows on holds that die in 5-7 days.
+  const status = String(
+    charge?.payment_method_details?.card_present?.extended_authorization?.status || '',
+  ).toLowerCase();
+  return status === 'enabled';
+}
+
+/** Days remaining / total window from now to captureBefore ISO. */
+function captureWindowDays(captureBeforeIso) {
+  if (!captureBeforeIso) return null;
+  const ms = new Date(captureBeforeIso).getTime() - Date.now();
+  if (!Number.isFinite(ms)) return null;
+  return Math.max(0, Math.round(ms / (24 * 60 * 60 * 1000)));
+}
+
+/**
+ * Days remaining until captureBefore. No synthetic fallback: Stripe's
+ * capture_before is the only source of truth for the hold window — assuming
+ * 30 days when extended auth was merely *requested* hid real 5-7 day expiries.
+ */
+function depositCaptureWindowDays(row, captureBeforeIso) {
+  return captureWindowDays(captureBeforeIso);
+}
+
+/** ISO capture deadline — Stripe capture_before only, never a computed guess. */
+function depositCaptureBeforeIso(row, fromChargeIso) {
+  return fromChargeIso || null;
+}
+
+/** Stripe PI has extended authorization requested (car rental ~30d hold window). */
+function cardPresentExtendedAuthRequested(pi) {
+  return pi?.payment_method_options?.card_present?.request_extended_authorization === true;
+}
+
+function depositCardPresentPaymentOptions() {
+  return {
+    card_present: {
+      request_extended_authorization: true,
+      request_incremental_authorization_support: true,
+    },
+  };
+}
+
+/**
+ * Ensure PI requests extended authorization before card is presented on Terminal.
+ * https://docs.stripe.com/terminal/features/extended-authorizations
+ */
+async function ensurePaymentIntentExtendedAuthorization(paymentIntentId, piPrefetched = null) {
+  let pi =
+    piPrefetched ||
+    (await stripeRequest('GET', `/payment_intents/${encodeURIComponent(paymentIntentId)}`, null));
+  if (cardPresentExtendedAuthRequested(pi)) {
+    return pi;
+  }
+  if (!['requires_payment_method', 'requires_confirmation'].includes(pi.status)) {
+    console.warn('[ensureExtendedAuth] cannot patch PI', paymentIntentId, 'status', pi.status);
+    return pi;
+  }
+  return stripeRequest('POST', `/payment_intents/${encodeURIComponent(paymentIntentId)}`, {
+    payment_method_options: depositCardPresentPaymentOptions(),
+  });
+}
+
+/** Persist reusable card token + display fields on deposit doc. */
+async function snapshotDepositTokenFields(franchiseId, row, paymentIntentId, pi, charge = null) {
+  const effectiveCharge =
+    charge || (typeof pi?.latest_charge === 'object' ? pi.latest_charge : null);
+  const resolved = await resolveDepositCardForReuse(franchiseId, row, paymentIntentId, pi);
+  const pmd = effectiveCharge?.payment_method_details || {};
+  const cardPresent = pmd.card_present || {};
+  const card = pmd.card || {};
+  return {
+    stripeCustomerId: resolved.customerId,
+    stripePaymentMethodId: resolved.paymentMethodId,
+    tokenSaved: true,
+    cardBrand: cardPresent.brand || card.brand || row.cardBrand || null,
+    cardLast4: cardPresent.last4 || card.last4 || row.cardLast4 || null,
+    cardholderName: extractCardholderName(effectiveCharge, pi) || row.cardholderName || null,
+  };
+}
+
 function mapDepositDoc(id, row) {
+  const captureBefore = depositCaptureBeforeIso(row, row.captureBefore || null);
   return {
     id,
     paymentIntentId: row.paymentIntentId || null,
@@ -412,7 +592,7 @@ function mapDepositDoc(id, row) {
     emailSentOk: row.emailSentOk === true,
     emailSentMessage: row.emailSentMessage || '',
     documents: Array.isArray(row.documents) ? row.documents : [],
-    tokenSaved: row.tokenSaved === true,
+    tokenSaved: row.tokenSaved === true || Boolean(row.stripePaymentMethodId),
     stripeCustomerId: row.stripeCustomerId || null,
     stripePaymentMethodId: row.stripePaymentMethodId || null,
     createdAt: row.createdAt?.toDate?.()?.toISOString?.() || null,
@@ -430,6 +610,10 @@ function mapDepositDoc(id, row) {
     stripeStatus: row.stripeStatus || null,
     cardBrand: row.cardBrand || null,
     cardLast4: row.cardLast4 || null,
+    captureBefore,
+    extendedAuthorizationRequested: row.extendedAuthorizationRequested === true,
+    extendedAuthorizationApplied: row.extendedAuthorizationApplied === true,
+    captureWindowDays: depositCaptureWindowDays(row, captureBefore),
   };
 }
 
@@ -556,7 +740,7 @@ async function runCreateTerminalConnectionToken(request) {
 }
 
 async function runCreateDeposit(request) {
-  const { uid, profile } = await assertFinancialCallable(request);
+  const { uid, profile } = await assertMoneyCallable(request);
   const data = request.data || {};
   const franchiseId = normalizeFranchiseId(data.franchiseId);
   assertSwitzerlandFranchise(franchiseId);
@@ -608,6 +792,7 @@ async function runCreateDeposit(request) {
     description: depositDescription,
     statement_descriptor_suffix: 'DEPOSIT',
     setup_future_usage: 'off_session',
+    payment_method_options: depositCardPresentPaymentOptions(),
     'metadata[franchiseId]': franchiseId,
     'metadata[flow]': 'deposit',
     'metadata[plate]': plate,
@@ -618,8 +803,11 @@ async function runCreateDeposit(request) {
     ...(customerEmail ? { 'metadata[customerEmail]': customerEmail } : {}),
     'metadata[maxAuthAmount]': String(maxCents),
     'metadata[source]': source === 'wheelsys' ? 'wheelsys' : 'terminal',
-    'payment_method_options[card_present][request_incremental_authorization_support]': 'true',
   };
+
+  // Doc id first: it seeds Stripe idempotency keys so a retried request
+  // cannot create a second customer or a second uncollected hold.
+  const docRef = depositsCol(franchiseId).doc();
 
   const customerParams = {
     name: customerName,
@@ -627,13 +815,33 @@ async function runCreateDeposit(request) {
     'metadata[resCode]': resCode,
   };
   if (customerEmail) customerParams.email = customerEmail;
-  const customer = await stripeRequest('POST', '/customers', customerParams);
+  const customer = await stripeRequest('POST', '/customers', customerParams, {
+    idempotencyKey: `dep-cust-${docRef.id}`,
+  });
   const stripeCustomerId = customer.id;
   piParams.customer = stripeCustomerId;
 
-  const pi = await stripeRequest('POST', '/payment_intents', piParams);
+  let pi = await stripeRequest('POST', '/payment_intents', piParams, {
+    idempotencyKey: `dep-pi-${docRef.id}`,
+  });
+  pi = await ensurePaymentIntentExtendedAuthorization(pi.id, pi);
+  const extendedAuthOnPi = cardPresentExtendedAuthRequested(pi);
+  if (!extendedAuthOnPi) {
+    console.error('[runCreateDeposit] extended authorization not set on PI', pi.id);
+    await writeAudit(
+      franchiseId,
+      uid,
+      'deposit_extended_auth_missing',
+      {
+        paymentIntentId: pi.id,
+        resCode,
+        customerName,
+        stripeStatus: pi.status,
+      },
+      profile,
+    );
+  }
 
-  const docRef = depositsCol(franchiseId).doc();
   await docRef.set({
     paymentIntentId: pi.id,
     stripeCustomerId,
@@ -650,6 +858,10 @@ async function runCreateDeposit(request) {
     readerLabel: effectiveReaderLabel,
     source: source === 'wheelsys' ? 'wheelsys' : 'terminal',
     status: 'pending_collection',
+    // Honest value: display code must never infer a 30-day window from a
+    // request that Stripe did not actually accept onto the PI.
+    extendedAuthorizationRequested: extendedAuthOnPi,
+    extendedAuthorizationOnPi: extendedAuthOnPi,
     emailSubject,
     emailBodyHtml,
     emailTemplateId,
@@ -682,6 +894,8 @@ async function runCreateDeposit(request) {
     maxAuthAmount: maxCents,
     currency: 'chf',
     readerId: effectiveReaderId,
+    extendedAuthorizationRequested: extendedAuthOnPi,
+    extendedAuthorizationOnPi: extendedAuthOnPi,
   };
 }
 
@@ -695,6 +909,7 @@ async function runListDeposits(request) {
   const snap = await depositsCol(franchiseId).orderBy('createdAt', 'desc').limit(limit).get();
 
   const baseRows = snap.docs.map((docSnap) => ({
+    docRef: docSnap.ref,
     row: docSnap.data() || {},
     mapped: mapDepositDoc(docSnap.id, docSnap.data() || {}),
   }));
@@ -702,38 +917,133 @@ async function runListDeposits(request) {
   // Stripe sync runs in bounded parallel batches instead of one request per
   // row in series — 100 rows used to mean 100 sequential round-trips.
   if (syncStripe) {
-    const SYNC_CONCURRENCY = 10;
-    for (let i = 0; i < baseRows.length; i += SYNC_CONCURRENCY) {
-      const batch = baseRows.slice(i, i + SYNC_CONCURRENCY);
+    const SYNC_CONCURRENCY = 4;
+    const syncRows = baseRows.filter((entry) => depositNeedsStripeSync(entry.row));
+    for (let i = 0; i < syncRows.length; i += SYNC_CONCURRENCY) {
+      const batch = syncRows.slice(i, i + SYNC_CONCURRENCY);
       await Promise.all(batch.map(async (entry) => {
         if (!entry.row.paymentIntentId) return;
         try {
           const pi = await stripeRequest(
             'GET',
             `/payment_intents/${encodeURIComponent(entry.row.paymentIntentId)}`,
-            null,
+            { expand: ['latest_charge'] },
           );
-          const charge = pi.charges?.data?.[0];
+          const charge = pi.charges?.data?.[0] || (typeof pi.latest_charge === 'object' ? pi.latest_charge : null);
           const pmd = charge?.payment_method_details || {};
           const cardPresent = pmd.card_present || {};
           const card = pmd.card || {};
           const isSucceeded = pi.status === 'succeeded';
           const amountReceived = Number(pi.amount_received) || 0;
+          const amountCapturable = Number(pi.amount_capturable) || 0;
+          const captureBeforeRaw = captureBeforeFromCharge(charge);
+          const captureBefore = depositCaptureBeforeIso(entry.row, captureBeforeRaw);
+          const extendedApplied = extendedAuthAppliedFromCharge(charge);
           entry.mapped = {
             ...entry.mapped,
             stripeStatus: pi.status,
+            captureBefore: captureBefore || entry.mapped.captureBefore || null,
+            extendedAuthorizationApplied:
+              extendedApplied || entry.mapped.extendedAuthorizationApplied || false,
+            captureWindowDays: depositCaptureWindowDays(
+              entry.row,
+              captureBefore || entry.mapped.captureBefore || null,
+            ),
             currentHoldAmount: isSucceeded
               ? amountReceived || entry.mapped.currentHoldAmount || entry.mapped.initialAmount
-              : Number(pi.amount_capturable) || entry.mapped.currentHoldAmount,
+              : amountCapturable || entry.mapped.currentHoldAmount,
             capturedAmount: isSucceeded
               ? amountReceived || entry.mapped.capturedAmount || entry.mapped.initialAmount
               : entry.mapped.capturedAmount,
             cardBrand: cardPresent.brand || card.brand || entry.mapped.cardBrand || null,
             cardLast4: cardPresent.last4 || card.last4 || entry.mapped.cardLast4 || null,
           };
-          if (pi.status === 'requires_capture') entry.mapped.status = 'authorized';
+          if (pi.status === 'requires_capture') {
+            entry.mapped.status = 'authorized';
+            entry.mapped.stripeBucket = 'hold';
+          }
           if (isSucceeded) entry.mapped.status = 'captured';
-          if (pi.status === 'canceled') entry.mapped.status = 'cancelled';
+          if (pi.status === 'canceled') {
+            entry.mapped.status = 'cancelled';
+            const cancelReasonFromStripe =
+              String(pi.cancellation_reason || '').toLowerCase() === 'expired'
+                ? 'Authorization expired (Stripe auto-release) — not a staff refund'
+                : entry.row.cancelReason || 'Hold cancelled';
+            entry.mapped.cancelReason = cancelReasonFromStripe;
+            entry.mapped.cancelledByName =
+              entry.mapped.cancelledByName ||
+              (String(pi.cancellation_reason || '').toLowerCase() === 'expired'
+                ? 'Stripe (authorization expired)'
+                : entry.mapped.cancelledByName);
+          }
+
+          const firestorePatch = {};
+          if (captureBefore && captureBefore !== entry.row.captureBefore) {
+            firestorePatch.captureBefore = captureBefore;
+          }
+          if (extendedApplied && !entry.row.extendedAuthorizationApplied) {
+            firestorePatch.extendedAuthorizationApplied = true;
+          }
+          // Always snapshot reusable card token while we still have charge details —
+          // including when the hold already expired/canceled/refunded.
+          try {
+            const resolved = await resolveDepositCardForReuse(
+              franchiseId,
+              entry.row,
+              entry.row.paymentIntentId,
+              pi,
+            );
+            firestorePatch.stripePaymentMethodId = resolved.paymentMethodId;
+            firestorePatch.stripeCustomerId = resolved.customerId;
+            firestorePatch.tokenSaved = true;
+            entry.mapped.tokenSaved = true;
+            entry.mapped.stripePaymentMethodId = resolved.paymentMethodId;
+            entry.mapped.stripeCustomerId = resolved.customerId;
+          } catch (tokenErr) {
+            console.warn(
+              '[runListDeposits] token snapshot',
+              entry.docRef.id,
+              tokenErr?.message || tokenErr,
+            );
+          }
+          if (pi.status === 'requires_capture' && entry.row.status === 'pending_collection') {
+            firestorePatch.status = 'authorized';
+            firestorePatch.stripeStatus = pi.status;
+            firestorePatch.currentHoldAmount = amountCapturable || entry.row.currentHoldAmount || entry.row.initialAmount;
+            firestorePatch.terminalFailed = false;
+            firestorePatch.terminalFailureMessage = '';
+            firestorePatch.lastPaymentError = '';
+          } else if (isSucceeded && entry.row.status !== 'captured') {
+            firestorePatch.status = 'captured';
+            firestorePatch.stripeStatus = pi.status;
+            firestorePatch.capturedAmount = amountReceived || entry.row.capturedAmount || entry.row.initialAmount;
+          } else if (pi.status === 'canceled' && entry.row.status !== 'cancelled') {
+            firestorePatch.status = 'cancelled';
+            firestorePatch.stripeStatus = pi.status;
+            firestorePatch.cancelReason =
+              String(pi.cancellation_reason || '').toLowerCase() === 'expired'
+                ? 'Authorization expired (Stripe auto-release) — not a staff refund'
+                : entry.row.cancelReason || 'Hold cancelled';
+            if (String(pi.cancellation_reason || '').toLowerCase() === 'expired') {
+              firestorePatch.cancelledByName = 'Stripe (authorization expired)';
+              firestorePatch.cancelledBy = null;
+            }
+          } else if (pi.status === 'canceled' && entry.row.status === 'cancelled') {
+            // Backfill clearer expiry reason on already-synced rows.
+            if (
+              String(pi.cancellation_reason || '').toLowerCase() === 'expired' &&
+              !String(entry.row.cancelReason || '').toLowerCase().includes('expired')
+            ) {
+              firestorePatch.cancelReason =
+                'Authorization expired (Stripe auto-release) — not a staff refund';
+              firestorePatch.cancelledByName = 'Stripe (authorization expired)';
+            }
+          }
+          if (Object.keys(firestorePatch).length > 0) {
+            firestorePatch.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+            await entry.docRef.set(firestorePatch, { merge: true });
+            entry.row = { ...entry.row, ...firestorePatch };
+          }
         } catch {
           /* keep firestore status */
         }
@@ -770,7 +1080,7 @@ async function runListDeposits(request) {
 }
 
 async function runIncrementDeposit(request) {
-  const { uid, profile } = await assertFinancialCallable(request);
+  const { uid, profile } = await assertMoneyCallable(request);
   const data = request.data || {};
   const franchiseId = normalizeFranchiseId(data.franchiseId);
   assertSwitzerlandFranchise(franchiseId);
@@ -810,10 +1120,36 @@ async function runIncrementDeposit(request) {
     );
   }
 
+  // Incremental authorization does NOT extend the validity window — verify the
+  // hold is still live and capture_before has not passed before incrementing.
+  const piBefore = await stripeRequest(
+    'GET',
+    `/payment_intents/${encodeURIComponent(paymentIntentId)}`,
+    { expand: ['latest_charge'] },
+  );
+  if (piBefore.status !== 'requires_capture') {
+    throw new HttpsError(
+      'failed-precondition',
+      `Cannot increase hold — Stripe status is "${piBefore.status}". Use Sync, then charge the saved card instead.`,
+    );
+  }
+  const chargeBefore =
+    typeof piBefore.latest_charge === 'object' ? piBefore.latest_charge : null;
+  const captureBeforeIso = captureBeforeFromCharge(chargeBefore);
+  if (captureBeforeIso && new Date(captureBeforeIso).getTime() <= Date.now()) {
+    throw new HttpsError(
+      'failed-precondition',
+      'The authorization window has expired — this hold can no longer be increased. Charge the saved card instead.',
+    );
+  }
+
+  // Increment targets an absolute total, so a stable key makes accidental
+  // double-submits replay the same result instead of stacking increments.
   const pi = await stripeRequest(
     'POST',
     `/payment_intents/${encodeURIComponent(paymentIntentId)}/increment_authorization`,
     { amount: newCents },
+    { idempotencyKey: `inc-${paymentIntentId}-${newCents}` },
   );
 
   const nextMaxCents = customIncrease ? Math.max(maxCents, newCents) : maxCents;
@@ -822,6 +1158,7 @@ async function runIncrementDeposit(request) {
     {
       currentHoldAmount: Number(pi.amount_capturable) || newCents,
       maxAuthAmount: nextMaxCents,
+      ...(captureBeforeIso ? { captureBefore: captureBeforeIso } : {}),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       status: 'authorized',
     },
@@ -852,20 +1189,38 @@ async function runIncrementDeposit(request) {
 }
 
 async function runCaptureDeposit(request) {
-  const { uid, profile } = await assertFinancialCallable(request);
+  const { uid, profile } = await assertMoneyCallable(request);
   const data = request.data || {};
   const franchiseId = normalizeFranchiseId(data.franchiseId);
   assertSwitzerlandFranchise(franchiseId);
   const depositId = String(data.depositId || '').trim();
+  let paymentIntentId = String(data.paymentIntentId || '').trim();
   const amountChf = data.amountChf;
 
-  const docRef = depositsCol(franchiseId).doc(depositId);
-  const docSnap = await docRef.get();
-  if (!docSnap.exists) {
-    throw new HttpsError('not-found', 'Deposit not found');
+  let docRef = null;
+  let row = {};
+
+  if (depositId) {
+    docRef = depositsCol(franchiseId).doc(depositId);
+    const docSnap = await docRef.get();
+    if (!docSnap.exists) {
+      throw new HttpsError('not-found', 'Deposit not found');
+    }
+    row = docSnap.data() || {};
+    paymentIntentId = String(row.paymentIntentId || paymentIntentId).trim();
+  } else if (paymentIntentId) {
+    const q = await depositsCol(franchiseId)
+      .where('paymentIntentId', '==', paymentIntentId)
+      .limit(1)
+      .get();
+    if (!q.empty) {
+      docRef = q.docs[0].ref;
+      row = q.docs[0].data() || {};
+    }
+  } else {
+    throw new HttpsError('invalid-argument', 'depositId or paymentIntentId required');
   }
-  const row = docSnap.data() || {};
-  const paymentIntentId = String(row.paymentIntentId || '').trim();
+
   if (!paymentIntentId) {
     throw new HttpsError('failed-precondition', 'Missing payment intent');
   }
@@ -877,14 +1232,16 @@ async function runCaptureDeposit(request) {
   );
 
   if (piBefore.status === 'canceled') {
-    await docRef.set(
-      {
-        status: 'cancelled',
-        stripeStatus: 'canceled',
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      },
-      { merge: true },
-    );
+    if (docRef) {
+      await docRef.set(
+        {
+          status: 'cancelled',
+          stripeStatus: 'canceled',
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+    }
     throw new HttpsError(
       'failed-precondition',
       'This deposit hold was already released or cancelled. Refresh the list — it cannot be captured.',
@@ -892,15 +1249,17 @@ async function runCaptureDeposit(request) {
   }
 
   if (piBefore.status === 'succeeded') {
-    await docRef.set(
-      {
-        status: 'captured',
-        stripeStatus: 'succeeded',
-        capturedAmount: piBefore.amount_received,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      },
-      { merge: true },
-    );
+    if (docRef) {
+      await docRef.set(
+        {
+          status: 'captured',
+          stripeStatus: 'succeeded',
+          capturedAmount: piBefore.amount_received,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+    }
     throw new HttpsError(
       'failed-precondition',
       'This deposit was already captured. Refresh the list.',
@@ -941,28 +1300,35 @@ async function runCaptureDeposit(request) {
     'POST',
     `/payment_intents/${encodeURIComponent(paymentIntentId)}/capture`,
     params,
+    { idempotencyKey: `cap-${paymentIntentId}-${requestedCents ?? 'full'}` },
   );
 
   const actor = actorFromProfile(profile, uid);
 
-  await docRef.set(
-    {
-      status: 'captured',
-      capturedAmount: pi.amount_received,
-      capturedBy: uid,
-      capturedByName: actor.actorName,
-      capturedAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    },
-    { merge: true },
-  );
+  if (docRef) {
+    await docRef.set(
+      {
+        status: 'captured',
+        stripeStatus: 'succeeded',
+        capturedAmount: pi.amount_received,
+        capturedBy: uid,
+        capturedByName: actor.actorName,
+        capturedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+  }
 
   await writeAudit(
     franchiseId,
     uid,
     'deposit_captured',
     {
-      ...depositAuditContext(row, { depositId, paymentIntentId }),
+      ...depositAuditContext(row, {
+        depositId: docRef?.id || depositId || null,
+        paymentIntentId,
+      }),
       amountReceived: pi.amount_received,
       capturedBy: actor.actorName,
       requestedTotal: requestedCents,
@@ -973,6 +1339,8 @@ async function runCaptureDeposit(request) {
 
   let topUpResult = null;
   let topUpError = null;
+  let topUpRequiresAuthentication = false;
+  let topUpClientSecret = null;
   if (topUpCents > 0) {
     try {
       const resolved = await resolveDepositCardForReuse(franchiseId, row, paymentIntentId);
@@ -992,7 +1360,7 @@ async function runCaptureDeposit(request) {
         'metadata[resCode]': resCode,
         'metadata[customerName]': row.customerName || '',
         'metadata[note]': 'capture_top_up',
-      });
+      }, { idempotencyKey: `topup-${paymentIntentId}-${topUpCents}` });
       topUpResult = {
         paymentIntentId: charged.id,
         amount: charged.amount_received || topUpCents,
@@ -1008,11 +1376,14 @@ async function runCaptureDeposit(request) {
       });
     } catch (e) {
       topUpError = friendlyPmReuseError(e?.message);
+      topUpRequiresAuthentication = e?.details?.requiresAuthentication === true;
+      topUpClientSecret = e?.details?.paymentIntentClientSecret || null;
       await writeAudit(franchiseId, uid, 'saved_token_charge_failed', {
         depositId,
         parentPaymentIntentId: paymentIntentId,
         amountChf: topUpCents / 100,
         error: topUpError,
+        requiresAuthentication: topUpRequiresAuthentication,
         via: 'capture_top_up',
       });
     }
@@ -1027,11 +1398,13 @@ async function runCaptureDeposit(request) {
     topUp: topUpResult,
     topUpAmount: topUpCents || null,
     topUpError,
+    topUpRequiresAuthentication,
+    topUpClientSecret,
   };
 }
 
 async function runCancelDeposit(request) {
-  const { uid, profile } = await assertFinancialCallable(request);
+  const { uid, profile } = await assertMoneyCallable(request);
   const data = request.data || {};
   const franchiseId = normalizeFranchiseId(data.franchiseId);
   assertSwitzerlandFranchise(franchiseId);
@@ -1055,14 +1428,14 @@ async function runCancelDeposit(request) {
         `/payment_intents/${encodeURIComponent(paymentIntentId)}`,
         { expand: ['payment_method', 'latest_charge'] },
       );
-      if (pi.status === 'requires_capture') {
-        const resolved = await resolveDepositCardForReuse(franchiseId, row, paymentIntentId, pi);
-        tokenPatch = {
-          stripePaymentMethodId: resolved.paymentMethodId,
-          stripeCustomerId: resolved.customerId,
-          tokenSaved: true,
-        };
-      }
+      // Save reusable card for ANY terminal state we can still read a card from,
+      // including already-canceled / expired holds — not only requires_capture.
+      const resolved = await resolveDepositCardForReuse(franchiseId, row, paymentIntentId, pi);
+      tokenPatch = {
+        stripePaymentMethodId: resolved.paymentMethodId,
+        stripeCustomerId: resolved.customerId,
+        tokenSaved: true,
+      };
     } catch (e) {
       console.warn('[runCancelDeposit] token snapshot', e?.message || e);
     }
@@ -1137,9 +1510,104 @@ async function runCancelDeposit(request) {
   return { ok: true };
 }
 
+function depositStatusFromPi(pi) {
+  if (pi?.status === 'requires_capture') return 'authorized';
+  if (pi?.status === 'succeeded') return 'captured';
+  if (pi?.status === 'canceled') return 'cancelled';
+  return 'pending_collection';
+}
+
+function rowFromPaymentIntent(pi, franchiseId) {
+  const meta = pi?.metadata || {};
+  const metaFranchise = String(meta.franchiseId || meta.franchise || '').trim().toUpperCase();
+  if (metaFranchise && metaFranchise !== String(franchiseId || '').trim().toUpperCase()) {
+    throw new HttpsError('permission-denied', 'This payment belongs to another franchise.');
+  }
+  const charge = pi.charges?.data?.[0] || (typeof pi.latest_charge === 'object' ? pi.latest_charge : null);
+  const pmd = charge?.payment_method_details || {};
+  const cardPresent = pmd.card_present || {};
+  const card = pmd.card || {};
+  const amountReceived = Number(pi.amount_received) || 0;
+  const amountCapturable = Number(pi.amount_capturable) || 0;
+  const isSucceeded = pi.status === 'succeeded';
+  const captureBeforeRaw = captureBeforeFromCharge(charge);
+  return {
+    franchiseId,
+    paymentIntentId: pi.id,
+    resCode: meta.resCode || meta.resNo || meta.rescode || meta.customerReference || '',
+    reference: meta.customerReference || meta.resCode || meta.resNo || '',
+    customerName: meta.customerName || '',
+    customerEmail: meta.customerEmail || '',
+    plate: meta.plate || '',
+    initialAmount: Number(pi.amount) || amountReceived,
+    currentHoldAmount:
+      pi.status === 'requires_capture'
+        ? amountCapturable || Number(pi.amount)
+        : Number(pi.amount),
+    capturedAmount: isSucceeded ? amountReceived || Number(pi.amount) : null,
+    currency: pi.currency || 'chf',
+    status: depositStatusFromPi(pi),
+    stripeStatus: pi.status,
+    source: meta.source || (meta.flow === 'deposit' ? 'terminal' : 'stripe'),
+    cardBrand: cardPresent.brand || card.brand || null,
+    cardLast4: cardPresent.last4 || card.last4 || null,
+    captureBefore: depositCaptureBeforeIso({}, captureBeforeRaw),
+    extendedAuthorizationApplied: extendedAuthAppliedFromCharge(charge),
+    cancelReason:
+      pi.status === 'canceled' &&
+      String(pi.cancellation_reason || '').toLowerCase() === 'expired'
+        ? 'Authorization expired (Stripe auto-release) — not a staff refund'
+        : null,
+  };
+}
+
+/** Resolve Firestore deposit for saved-card charge; backfill from Stripe when missing. */
+async function resolveDepositDocForCharge(franchiseId, { depositId, paymentIntentId }) {
+  if (depositId) {
+    const docRef = depositsCol(franchiseId).doc(depositId);
+    const docSnap = await docRef.get();
+    if (!docSnap.exists) {
+      throw new HttpsError('not-found', 'Deposit not found');
+    }
+    return { docRef, row: docSnap.data() || {} };
+  }
+
+  const piId = String(paymentIntentId || '').trim();
+  if (!piId.startsWith('pi_')) {
+    throw new HttpsError('invalid-argument', 'depositId or paymentIntentId is required');
+  }
+
+  const snap = await depositsCol(franchiseId)
+    .where('paymentIntentId', '==', piId)
+    .limit(1)
+    .get();
+  if (!snap.empty) {
+    return { docRef: snap.docs[0].ref, row: snap.docs[0].data() || {} };
+  }
+
+  const pi = await stripeRequest('GET', `/payment_intents/${encodeURIComponent(piId)}`, {
+    expand: ['payment_method', 'latest_charge'],
+  });
+  const bootstrap = rowFromPaymentIntent(pi, franchiseId);
+  const docRef = depositsCol(franchiseId).doc();
+  await docRef.set(
+    {
+      ...bootstrap,
+      createdAt: pi.created
+        ? admin.firestore.Timestamp.fromMillis(pi.created * 1000)
+        : admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      backfilledFromStripe: true,
+    },
+    { merge: true },
+  );
+  console.info('[resolveDepositDocForCharge] backfilled deposit from PI', piId, docRef.id);
+  return { docRef, row: bootstrap };
+}
+
 /** Off-session charge using card saved during a prior deposit (staff+). */
 async function runChargeSavedPaymentMethod(request) {
-  const { uid, profile } = await assertFinancialCallable(request);
+  const { uid, profile } = await assertMoneyCallable(request);
   const data = request.data || {};
   const franchiseId = normalizeFranchiseId(data.franchiseId);
   assertSwitzerlandFranchise(franchiseId);
@@ -1147,32 +1615,27 @@ async function runChargeSavedPaymentMethod(request) {
   const paymentIntentId = String(data.paymentIntentId || '').trim();
   const amountChf = Math.round(Number(data.amountChf || 0) * 100);
   const note = String(data.note || data.description || '').trim().slice(0, 500);
+  // Client-generated id (one per user action) so a network retry of the same
+  // action cannot charge the card twice.
+  const requestId = String(data.requestId || '').trim().replace(/[^\w-]/g, '').slice(0, 64);
 
   if (amountChf < 50) {
     throw new HttpsError('invalid-argument', 'Minimum charge amount is CHF 0.50');
   }
+  if (amountChf > MAX_INCREMENT_CHF * 100) {
+    throw new HttpsError(
+      'invalid-argument',
+      `Maximum off-session charge is CHF ${MAX_INCREMENT_CHF.toFixed(2)} — split larger amounts.`,
+    );
+  }
 
   let row = null;
   let docRef = null;
-  if (depositId) {
-    docRef = depositsCol(franchiseId).doc(depositId);
-    const docSnap = await docRef.get();
-    if (!docSnap.exists) {
-      throw new HttpsError('not-found', 'Deposit not found');
-    }
-    row = docSnap.data() || {};
-  } else if (paymentIntentId.startsWith('pi_')) {
-    const snap = await depositsCol(franchiseId)
-      .where('paymentIntentId', '==', paymentIntentId)
-      .limit(1)
-      .get();
-    if (snap.empty) {
-      throw new HttpsError('not-found', 'Deposit not found for PaymentIntent');
-    }
-    docRef = snap.docs[0].ref;
-    row = snap.docs[0].data() || {};
-  } else {
-    throw new HttpsError('invalid-argument', 'depositId or paymentIntentId is required');
+  try {
+    ({ docRef, row } = await resolveDepositDocForCharge(franchiseId, { depositId, paymentIntentId }));
+  } catch (e) {
+    if (e instanceof HttpsError) throw e;
+    throw new HttpsError('not-found', 'Deposit not found for PaymentIntent');
   }
 
   const sourcePiId = String(row.paymentIntentId || paymentIntentId || '').trim();
@@ -1203,6 +1666,7 @@ async function runChargeSavedPaymentMethod(request) {
       'POST',
       `/payment_intents/${encodeURIComponent(sourcePiId)}/capture`,
       captureParams,
+      { idempotencyKey: `cap-${sourcePiId}-${captureParams.amount_to_capture ?? 'full'}` },
     );
     const actor = actorFromProfile(profile, uid);
     await docRef.set(
@@ -1247,7 +1711,7 @@ async function runChargeSavedPaymentMethod(request) {
           'metadata[resCode]': resCodeTopUp,
           'metadata[customerName]': row.customerName || '',
           'metadata[note]': note || 'charge_top_up',
-        });
+        }, { idempotencyKey: `topup-${sourcePiId}-${topUpCents}` });
         topUpResult = {
           paymentIntentId: chargedTopUp.id,
           amount: chargedTopUp.amount_received || topUpCents,
@@ -1288,18 +1752,16 @@ async function runChargeSavedPaymentMethod(request) {
     };
   }
 
-  if (sourcePi.status === 'canceled') {
-    throw new HttpsError(
-      'failed-precondition',
-      'The deposit hold was cancelled — use a new manual charge or create a fresh deposit.',
-    );
-  }
-
   let resolved;
   try {
-    resolved = await resolveDepositCardForReuse(franchiseId, row, sourcePiId);
+    resolved = await resolveDepositCardForReuse(
+      franchiseId,
+      row,
+      sourcePiId,
+      sourcePi,
+    );
   } catch (e) {
-    throw new HttpsError('failed-precondition', friendlyPmReuseError(e?.message));
+    throw new HttpsError('failed-precondition', friendlyPmReuseError(e?.message), e?.details);
   }
   const { customerId, paymentMethodId } = resolved;
 
@@ -1331,9 +1793,9 @@ async function runChargeSavedPaymentMethod(request) {
       'metadata[resCode]': resCode,
       'metadata[customerName]': row.customerName || '',
       'metadata[note]': note,
-    });
+    }, requestId ? { idempotencyKey: `charge-${docRef.id}-${requestId}` } : {});
   } catch (e) {
-    throw new HttpsError('failed-precondition', friendlyPmReuseError(e?.message));
+    throw new HttpsError('failed-precondition', friendlyPmReuseError(e?.message), e?.details);
   }
 
   await writeAudit(franchiseId, uid, 'saved_token_charge', {
@@ -1405,7 +1867,7 @@ async function runCancelTerminalAction(request) {
 }
 
 async function runCancelPaymentHold(request) {
-  const { uid } = await assertFinancialCallable(request);
+  const { uid } = await assertMoneyCallable(request);
   const data = request.data || {};
   const franchiseId = normalizeFranchiseId(data.franchiseId);
   assertSwitzerlandFranchise(franchiseId);
@@ -1448,6 +1910,47 @@ async function runCancelPaymentHold(request) {
     if (!msg.includes('canceled') && !msg.includes('cancelled')) {
       throw e;
     }
+  }
+
+  let tokenPatch = {};
+  try {
+    const depSnap = await depositsCol(franchiseId)
+      .where('paymentIntentId', '==', paymentIntentId)
+      .limit(1)
+      .get();
+    if (!depSnap.empty) {
+      const depRef = depSnap.docs[0].ref;
+      const depRow = depSnap.docs[0].data() || {};
+      const pi = await stripeRequest(
+        'GET',
+        `/payment_intents/${encodeURIComponent(paymentIntentId)}`,
+        { expand: ['payment_method', 'latest_charge'] },
+      );
+      try {
+        const resolved = await resolveDepositCardForReuse(
+          franchiseId,
+          depRow,
+          paymentIntentId,
+          pi,
+        );
+        tokenPatch = {
+          stripePaymentMethodId: resolved.paymentMethodId,
+          stripeCustomerId: resolved.customerId,
+          tokenSaved: true,
+          status: 'cancelled',
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+      } catch (tokenErr) {
+        console.warn('[runCancelPaymentHold] token snapshot', tokenErr?.message);
+        tokenPatch = {
+          status: 'cancelled',
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+      }
+      await depRef.set(tokenPatch, { merge: true });
+    }
+  } catch (lookupErr) {
+    console.warn('[runCancelPaymentHold] deposit lookup', lookupErr?.message);
   }
 
   await writeAudit(franchiseId, uid, 'payment_hold_cancelled', {
@@ -1583,6 +2086,9 @@ async function runGetDepositStatus(request) {
 
 function friendlyPmReuseError(raw) {
   const msg = String(raw || '');
+  if (/authentication[\s_-]?required/i.test(msg)) {
+    return 'The card issuer requires 3-D Secure approval for this charge — off-session retries will keep failing. Send the customer a payment link (Mail order) so they can approve it online.';
+  }
   if (/without Customer attachment/i.test(msg) || /may not be used again/i.test(msg)) {
     return 'This card cannot be reused — it was not linked to a Stripe customer during the original deposit. Create a new deposit on POS; after hold + cancel the card will be chargeable.';
   }
@@ -1658,6 +2164,21 @@ async function resolveReusablePaymentMethodId(pi) {
  * @param {object} [piPrefetched] optional PI from caller
  */
 async function resolveDepositCardForReuse(franchiseId, row, paymentIntentId, piPrefetched) {
+  const storedCustomerId = String(row?.stripeCustomerId || '').trim();
+  const storedPaymentMethodId = String(row?.stripePaymentMethodId || '').trim();
+  if (storedCustomerId && storedPaymentMethodId) {
+    try {
+      await ensurePaymentMethodSavedForReuse(storedPaymentMethodId, storedCustomerId);
+      return {
+        customerId: storedCustomerId,
+        paymentMethodId: storedPaymentMethodId,
+        tokenSaved: true,
+      };
+    } catch (e) {
+      console.warn('[resolveDepositCard] stored token verify', e?.message);
+    }
+  }
+
   const pi =
     piPrefetched ||
     (await stripeRequest('GET', `/payment_intents/${encodeURIComponent(paymentIntentId)}`, {
@@ -1667,7 +2188,7 @@ async function resolveDepositCardForReuse(franchiseId, row, paymentIntentId, piP
   const customerId = await ensureStripeCustomerForDeposit(franchiseId, row, pi);
   const piCustomer = typeof pi.customer === 'string' ? pi.customer : pi.customer?.id;
 
-  if (!piCustomer && customerId && ['requires_capture', 'requires_payment_method'].includes(pi.status)) {
+  if (!piCustomer && customerId && ['requires_capture', 'requires_payment_method', 'canceled', 'succeeded'].includes(pi.status)) {
     try {
       await stripeRequest('POST', `/payment_intents/${encodeURIComponent(paymentIntentId)}`, {
         customer: customerId,
@@ -1677,7 +2198,10 @@ async function resolveDepositCardForReuse(franchiseId, row, paymentIntentId, piP
     }
   }
 
-  const paymentMethodId = await resolveReusablePaymentMethodId(pi);
+  let paymentMethodId = storedPaymentMethodId || null;
+  if (!paymentMethodId) {
+    paymentMethodId = await resolveReusablePaymentMethodId(pi);
+  }
   if (!paymentMethodId) {
     throw new HttpsError('failed-precondition', 'No card on file for this deposit.');
   }
@@ -1733,7 +2257,7 @@ async function ensurePaymentMethodSavedForReuse(paymentMethodId, stripeCustomerI
  * Push PaymentIntent to POS via Stripe API (no browser LAN connection required).
  */
 async function runProcessDepositOnTerminal(request) {
-  const { uid } = await assertFinancialCallable(request);
+  const { uid } = await assertMoneyCallable(request);
   const data = request.data || {};
   const franchiseId = normalizeFranchiseId(data.franchiseId);
   assertSwitzerlandFranchise(franchiseId);
@@ -1770,10 +2294,13 @@ async function runProcessDepositOnTerminal(request) {
     );
   }
 
-  const pi = await stripeRequest(
-    'GET',
-    `/payment_intents/${encodeURIComponent(paymentIntentId)}`,
-    null,
+  const pi = await ensurePaymentIntentExtendedAuthorization(
+    paymentIntentId,
+    await stripeRequest(
+      'GET',
+      `/payment_intents/${encodeURIComponent(paymentIntentId)}`,
+      null,
+    ),
   );
   if (pi.status === 'canceled') {
     throw new HttpsError('failed-precondition', 'Payment already cancelled.');
@@ -1863,32 +2390,69 @@ async function runConfirmDepositCollection(request) {
     pi.status === 'requires_capture' ? 'authorized' :
     pi.status === 'succeeded' ? 'captured' :
     pi.status === 'canceled' ? 'cancelled' : 'pending_collection';
+  const captureBeforeRaw = captureBeforeFromCharge(charge);
+  const captureBefore = depositCaptureBeforeIso(row, captureBeforeRaw);
+  const extendedAuthorizationApplied = extendedAuthAppliedFromCharge(charge);
+  const extendedAuthRequestedOnPi = cardPresentExtendedAuthRequested(pi);
 
-  const paymentMethodId = extractPaymentMethodIdFromPi(pi);
-  let stripeCustomerId = await ensureStripeCustomerForDeposit(franchiseId, row, pi);
-  let stripePaymentMethodId = paymentMethodId;
-  let tokenSaved = false;
-  if (paymentMethodId && status === 'authorized') {
-    try {
-      const resolved = await resolveDepositCardForReuse(franchiseId, row, paymentIntentId, pi);
-      stripeCustomerId = resolved.customerId;
-      stripePaymentMethodId = resolved.paymentMethodId;
-      tokenSaved = true;
-    } catch (e) {
-      console.warn('[runConfirmDepositCollection] card reuse', e?.message);
+  let tokenFields = null;
+  let tokenError = null;
+  if (status === 'authorized' || status === 'captured') {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        tokenFields = await snapshotDepositTokenFields(
+          franchiseId,
+          row,
+          paymentIntentId,
+          pi,
+          charge,
+        );
+        break;
+      } catch (e) {
+        tokenError = e?.message || String(e);
+        if (attempt === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 400));
+        }
+      }
+    }
+    if (!tokenFields) {
+      await writeAudit(
+        franchiseId,
+        uid,
+        'deposit_token_save_failed',
+        {
+          ...depositAuditContext(row, { depositId, paymentIntentId }),
+          error: friendlyPmReuseError(tokenError),
+          status,
+        },
+        profile,
+      );
+      throw new HttpsError(
+        'failed-precondition',
+        friendlyPmReuseError(tokenError || 'Could not save card token for this deposit.'),
+      );
     }
   }
+
+  const stripeCustomerId = tokenFields?.stripeCustomerId || (await ensureStripeCustomerForDeposit(franchiseId, row, pi));
+  const stripePaymentMethodId = tokenFields?.stripePaymentMethodId || row.stripePaymentMethodId || extractPaymentMethodIdFromPi(pi) || null;
+  const tokenSaved = tokenFields?.tokenSaved === true || row.tokenSaved === true;
 
   await docRef.set(
     {
       status,
+      stripeStatus: pi.status || null,
       currentHoldAmount: Number(pi.amount_capturable) || row.currentHoldAmount,
-      cardBrand: charge?.payment_method_details?.card_present?.brand || null,
-      cardLast4: charge?.payment_method_details?.card_present?.last4 || null,
-      cardholderName: extractCardholderName(charge, pi),
+      cardBrand: tokenFields?.cardBrand || charge?.payment_method_details?.card_present?.brand || null,
+      cardLast4: tokenFields?.cardLast4 || charge?.payment_method_details?.card_present?.last4 || null,
+      cardholderName: tokenFields?.cardholderName || extractCardholderName(charge, pi),
       stripePaymentMethodId,
       stripeCustomerId,
       tokenSaved,
+      extendedAuthorizationRequested: extendedAuthRequestedOnPi,
+      extendedAuthorizationOnPi: extendedAuthRequestedOnPi,
+      ...(extendedAuthorizationApplied ? { extendedAuthorizationApplied: true } : {}),
+      ...(captureBefore ? { captureBefore } : {}),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     },
     { merge: true },
@@ -1902,7 +2466,11 @@ async function runConfirmDepositCollection(request) {
       ...depositAuditContext(row, { depositId, paymentIntentId }),
       status,
       amountCapturable: pi.amount_capturable,
-      cardLast4: charge?.payment_method_details?.card_present?.last4 || null,
+      captureBefore: captureBefore || null,
+      extendedAuthorizationApplied,
+      extendedAuthorizationOnPi: extendedAuthRequestedOnPi,
+      cardLast4: tokenFields?.cardLast4 || charge?.payment_method_details?.card_present?.last4 || null,
+      tokenSaved,
     },
     profile,
   );
@@ -1940,6 +2508,11 @@ async function runConfirmDepositCollection(request) {
     amountCapturable: pi.amount_capturable,
     cardholderName: extractCardholderName(charge, pi),
     tokenSaved,
+    captureBefore: captureBefore || null,
+    captureWindowDays: captureWindowDays(captureBefore),
+    extendedAuthorizationRequested: extendedAuthRequestedOnPi,
+    extendedAuthorizationOnPi: extendedAuthRequestedOnPi,
+    extendedAuthorizationApplied,
     emailSent: emailResult?.sent === true,
     emailMessage: emailResult?.message || null,
   };
@@ -2188,6 +2761,351 @@ async function runSendDepositEmail(request) {
   return { ok: true, message: emailResult.message };
 }
 
+function depositInputTestsCol(franchiseId) {
+  return admin
+    .firestore()
+    .collection('franchises')
+    .doc(franchiseId)
+    .collection('stripeDepositInputTests');
+}
+
+/** Stripe Terminal collect_inputs — signature + phone (deposit test flow only). */
+function buildDepositTerminalCollectInputsPayload(sessionMeta = {}) {
+  return {
+    inputs: [
+      {
+        type: 'signature',
+        custom_text: {
+          title: 'Rental Agreement',
+          description: 'Please sign below to agree to the deposit hold terms.',
+          submit_button: 'Submit',
+        },
+        required: true,
+      },
+      {
+        type: 'phone',
+        custom_text: {
+          title: 'Enter your phone',
+          description: 'We may contact you about this rental deposit.',
+          submit_button: 'Submit',
+        },
+        required: true,
+      },
+    ],
+    metadata: {
+      flow: 'deposit_collect_inputs_test',
+      franchiseId: String(sessionMeta.franchiseId || ''),
+      sessionId: String(sessionMeta.sessionId || ''),
+      resCode: String(sessionMeta.resCode || ''),
+    },
+  };
+}
+
+function extractCollectedInputValue(item) {
+  if (!item || typeof item !== 'object') return '';
+  const direct = String(item.value || '').trim();
+  if (direct) return direct;
+  const type = String(item.type || '').trim();
+  const typed = item[type]?.value;
+  if (typed != null && String(typed).trim()) return String(typed).trim();
+  for (const key of ['phone', 'signature', 'email', 'text', 'numeric', 'selection']) {
+    const nested = item[key]?.value;
+    if (nested != null && String(nested).trim()) return String(nested).trim();
+  }
+  return '';
+}
+
+function normalizeCollectedTerminalInputs(reader) {
+  const action = reader?.action || {};
+  if (action.type !== 'collect_inputs') {
+    return {
+      actionType: action.type || null,
+      actionStatus: action.status || null,
+      collected: [],
+      failed: action.status === 'failed',
+      failureMessage: String(action.failure_message || action.failure_code || '').trim(),
+    };
+  }
+  const rawList =
+    action.collect_inputs?.inputs ||
+    action.collect_inputs?.collected_inputs ||
+    [];
+  const collected = (Array.isArray(rawList) ? rawList : []).map((item) => ({
+    type: String(item?.type || ''),
+    value: extractCollectedInputValue(item),
+    skipped: item?.skipped === true,
+    toggles: Array.isArray(item?.toggles) ? item.toggles : [],
+  }));
+  return {
+    actionType: 'collect_inputs',
+    actionStatus: action.status || '',
+    collected,
+    failed: action.status === 'failed',
+    failureMessage: String(action.failure_message || action.failure_code || '').trim(),
+  };
+}
+
+async function downloadStripeSignatureSvg(fileId) {
+  if (!fileId) return null;
+  const file = await stripeRequest('GET', `/files/${encodeURIComponent(fileId)}`, null);
+  const url = file?.url;
+  if (!url) return null;
+  const secret = getStripeSecretKey();
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${secret}` } });
+  if (!res.ok) return null;
+  const text = await res.text();
+  return text.slice(0, 500000);
+}
+
+/**
+ * Start POS collect_inputs test (signature + phone + email on WisePOS E / S700).
+ * https://docs.stripe.com/terminal/features/collect-inputs
+ */
+async function runStartDepositCollectInputsTest(request) {
+  const { uid, profile } = await assertFinancialCallable(request);
+  const data = request.data || {};
+  const franchiseId = normalizeFranchiseId(data.franchiseId);
+  assertSwitzerlandFranchise(franchiseId);
+
+  const readerHint = String(data.readerId || '').trim();
+  const resolved = await resolveReaderForDeposit(franchiseId, readerHint);
+  const readerId = String(resolved?.readerId || readerHint || '').trim();
+  if (!readerId) {
+    throw new HttpsError('failed-precondition', 'Select a POS terminal first.');
+  }
+
+  const reader = await stripeRequest('GET', `/terminal/readers/${encodeURIComponent(readerId)}`, null);
+  if (reader.status !== 'online') {
+    throw new HttpsError(
+      'failed-precondition',
+      `POS "${reader.label || readerId}" is ${reader.status || 'offline'}.`,
+    );
+  }
+
+  const sessionRef = depositInputTestsCol(franchiseId).doc();
+  const sessionId = sessionRef.id;
+  const resCodeRaw = String(data.resCode || '').trim();
+  const resCode = normalizeResCode(resCodeRaw) || resCodeRaw;
+  if (!resCode) {
+    throw new HttpsError('invalid-argument', 'RES code is required');
+  }
+  const sessionMeta = {
+    franchiseId,
+    sessionId,
+    resCode,
+  };
+
+  await sessionRef.set({
+    resCode,
+    readerId,
+    readerLabel: reader.label || '',
+    status: 'starting',
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdBy: uid,
+    createdByName: profile?.name || profile?.displayName || null,
+  });
+
+  try {
+    await stripeRequest('POST', `/terminal/readers/${encodeURIComponent(readerId)}/cancel_action`, {});
+  } catch {
+    /* clear stale reader action */
+  }
+
+  const payload = buildDepositTerminalCollectInputsPayload(sessionMeta);
+  await stripeRequest(
+    'POST',
+    `/terminal/readers/${encodeURIComponent(readerId)}/collect_inputs`,
+    payload,
+  );
+
+  await sessionRef.set(
+    { status: 'in_progress', updatedAt: admin.firestore.FieldValue.serverTimestamp() },
+    { merge: true },
+  );
+  await writeAudit(franchiseId, uid, 'deposit_collect_inputs_test_started', {
+    sessionId,
+    readerId,
+    resCode: sessionMeta.resCode,
+  }, profile);
+
+  return {
+    ok: true,
+    sessionId,
+    readerId,
+    readerLabel: reader.label || readerId,
+    message: 'POS is collecting signature and phone from the customer.',
+  };
+}
+
+/** Poll POS collect_inputs test session until succeeded / failed. */
+async function runPollDepositCollectInputsTest(request) {
+  await assertFinancialCallable(request);
+  const data = request.data || {};
+  const franchiseId = normalizeFranchiseId(data.franchiseId);
+  assertSwitzerlandFranchise(franchiseId);
+  const sessionId = String(data.sessionId || '').trim();
+  const readerId = String(data.readerId || '').trim();
+  if (!sessionId || !readerId) {
+    throw new HttpsError('invalid-argument', 'sessionId and readerId required');
+  }
+
+  const sessionRef = depositInputTestsCol(franchiseId).doc(sessionId);
+  const sessionSnap = await sessionRef.get();
+  if (!sessionSnap.exists) {
+    throw new HttpsError('not-found', 'Test session not found');
+  }
+  const row = sessionSnap.data() || {};
+
+  const reader = await stripeRequest('GET', `/terminal/readers/${encodeURIComponent(readerId)}`, null);
+  const parsed = normalizeCollectedTerminalInputs(reader);
+
+  if (parsed.actionStatus === 'in_progress') {
+    return {
+      status: 'in_progress',
+      sessionId,
+      message: 'Waiting for customer on POS…',
+    };
+  }
+
+  if (parsed.failed) {
+    await sessionRef.set(
+      {
+        status: 'failed',
+        posFailureMessage: parsed.failureMessage || 'POS input collection failed',
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+    return {
+      status: 'failed',
+      sessionId,
+      message: parsed.failureMessage || 'POS input collection failed or timed out (2 min).',
+    };
+  }
+
+  if (parsed.actionStatus !== 'succeeded' || parsed.actionType !== 'collect_inputs') {
+    return {
+      status: parsed.actionStatus || 'waiting',
+      sessionId,
+      message: 'POS action not complete yet.',
+    };
+  }
+
+  const posPhone = parsed.collected.find((i) => i.type === 'phone')?.value || '';
+  const sigFileId = parsed.collected.find((i) => i.type === 'signature')?.value || '';
+  if (!posPhone && !sigFileId) {
+    return {
+      status: 'in_progress',
+      sessionId,
+      message: 'Waiting for POS signature and phone…',
+    };
+  }
+  let posSignatureSvg = null;
+  if (sigFileId) {
+    try {
+      posSignatureSvg = await downloadStripeSignatureSvg(sigFileId);
+    } catch (e) {
+      console.warn('[pollCollectInputs] signature download', e?.message);
+    }
+  }
+
+  await sessionRef.set(
+    {
+      status: 'succeeded',
+      posPhone,
+      posSignatureFileId: sigFileId || null,
+      posSignatureSvg: posSignatureSvg || null,
+      posCollected: parsed.collected,
+      completedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+
+  return {
+    status: 'succeeded',
+    sessionId,
+    resCode: row.resCode || '',
+    posPhone,
+    posSignatureFileId: sigFileId || null,
+    posSignatureSvg: posSignatureSvg || null,
+    collected: parsed.collected,
+    message: 'POS collected signature and phone.',
+  };
+}
+
+/**
+ * Scheduled safety net: refresh open deposit holds from Stripe so expired or
+ * externally captured/cancelled authorizations surface even when nobody opens
+ * the deposits list (no webhook fired or webhook not yet configured).
+ */
+async function syncOpenDepositsSweep({ maxPerFranchise = 100 } = {}) {
+  const db = admin.firestore();
+  const franchiseRefs = await db.collection('franchises').listDocuments();
+  const summary = { franchises: 0, checked: 0, updated: 0 };
+  for (const fRef of franchiseRefs) {
+    if (!/^CH/i.test(fRef.id)) continue;
+    summary.franchises += 1;
+    let snap;
+    try {
+      snap = await depositsCol(fRef.id)
+        .where('status', 'in', ['pending_collection', 'authorized'])
+        .limit(maxPerFranchise)
+        .get();
+    } catch (e) {
+      console.warn('[depositSweep] query', fRef.id, e?.message);
+      continue;
+    }
+    for (const docSnap of snap.docs) {
+      const row = docSnap.data() || {};
+      const piId = String(row.paymentIntentId || '').trim();
+      if (!piId.startsWith('pi_')) continue;
+      summary.checked += 1;
+      try {
+        const pi = await stripeRequest(
+          'GET',
+          `/payment_intents/${encodeURIComponent(piId)}`,
+          { expand: ['latest_charge'] },
+        );
+        const charge = typeof pi.latest_charge === 'object' ? pi.latest_charge : null;
+        const patch = {};
+        if (pi.status !== row.stripeStatus) patch.stripeStatus = pi.status;
+        const captureBeforeIso = captureBeforeFromCharge(charge);
+        if (captureBeforeIso && captureBeforeIso !== row.captureBefore) {
+          patch.captureBefore = captureBeforeIso;
+        }
+        if (extendedAuthAppliedFromCharge(charge) && !row.extendedAuthorizationApplied) {
+          patch.extendedAuthorizationApplied = true;
+        }
+        if (pi.status === 'requires_capture' && row.status !== 'authorized') {
+          patch.status = 'authorized';
+          patch.currentHoldAmount =
+            Number(pi.amount_capturable) || row.currentHoldAmount || row.initialAmount || 0;
+        } else if (pi.status === 'succeeded' && row.status !== 'captured') {
+          patch.status = 'captured';
+          patch.capturedAmount = Number(pi.amount_received) || row.capturedAmount || null;
+        } else if (pi.status === 'canceled' && row.status !== 'cancelled') {
+          patch.status = 'cancelled';
+          if (String(pi.cancellation_reason || '').toLowerCase() === 'expired') {
+            patch.cancelReason = 'Authorization expired (Stripe auto-release) — not a staff refund';
+            patch.cancelledByName = 'Stripe (authorization expired)';
+          }
+        }
+        if (Object.keys(patch).length > 0) {
+          patch.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+          await docSnap.ref.set(patch, { merge: true });
+          summary.updated += 1;
+        }
+      } catch (e) {
+        console.warn('[depositSweep] pi sync', fRef.id, docSnap.id, e?.message);
+      }
+    }
+  }
+  console.info('[depositSweep] done', JSON.stringify(summary));
+  return summary;
+}
+
 const callableOpts = { cors: true, secrets: [stripeCHSecretKey] };
 
 module.exports = {
@@ -2215,5 +3133,12 @@ module.exports = {
   runGetDepositStatus,
   runProcessDepositOnTerminal,
   runConfirmDepositCollection,
+  runStartDepositCollectInputsTest,
+  runPollDepositCollectInputsTest,
+  syncOpenDepositsSweep,
   extractCardholderName,
+  // Shared with the webhook module — single source for Stripe REST + hold parsing.
+  stripeRequest,
+  captureBeforeFromCharge,
+  extendedAuthAppliedFromCharge,
 };
